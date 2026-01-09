@@ -1,4 +1,4 @@
-# Your startup name here
+# Workout Log
 
 [My Notes](notes.md)
 
