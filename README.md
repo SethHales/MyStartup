@@ -16,26 +16,20 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 ### Elevator pitch
 
-Have you ever gone to try a workout you hadn´t done in a while and forgotten what weight you used last time? Leave those days in the past. With this workout log, users can easily log and review workouts, allowing them to see growth trends and to pick up where they left off.
+Have you ever gone to try a workout you hadn´t done in a while and forgotten what weight or how many reps you did last time? Leave those days in the past. With this workout log, users can easily log and review workouts, allowing them to see growth trends and to pick up where they left off.
 
 ### Design
 
 ![Design image](webapp.png)
 
-This is a small preview of 
+This image represents a small preview of what the final web app will look like. It will be designed primarily for a phone. 
 
-```mermaid
-sequenceDiagram
-    actor You
-    actor Website
-    You->>Website: Replace this with your design
-```
 
 ### Key features
 
-- Describe your key feature
-- Describe your key feature
-- Describe your key feature
+- The home tab will allow users to record workouts including sets, reps, weight, and duration.
+- The history tab will enable users to view past workouts, including filtering by workout to more easily see trends and review past entries.
+- The profile tab will allow users to see stats on themselves including workouts completed this month, average weekly workouts, etc.
 
 ### Technologies
 
