@@ -35,12 +35,12 @@ This image represents a small preview of what the final web app will look like. 
 
 I am going to use the required technologies in the following ways.
 
-- **HTML** - Description here
-- **CSS** - Description here
-- **React** - Description here
-- **Service** - Description here
-- **DB/Login** - Description here
-- **WebSocket** - Description here
+- **HTML** - HTML will be the backbone of the application, providing forms, inputs, etc.
+- **CSS** - CSS will be used to style the forms, inputs, entries, etc. and make them look inviting and professional.
+- **React** - React will bring the frontend and backend together, handling state changes and updating the page.
+- **Service** - Service will act as backend API to process requests and connect the frontend to stored data.
+- **DB/Login** - The database will store each user's account and workout log data. The login will allow individuals to access _their_ data securely.
+- **WebSocket** - Websocket functionality is not particularly useful for this application. However I will find some way to integrate it eventually.
 
 ## 🚀 AWS deliverable
 
