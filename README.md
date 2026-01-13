@@ -16,7 +16,7 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 ### Elevator pitch
 
-Have you ever gone to do a workout you hadn´t done in a while and forgotten what weight or how many reps you did last time? Leave those days in the past. With this workout log, users can easily log and review workouts, allowing them to see growth trends and to pick up where they left off.
+Have you ever done a workout for the first time in a while and forgotten what weight or how many reps you did last time? It's frusturating because you have to waste time finding the right weight and you have no reference for improving yourself. Now you can leave those days in the past. With this workout log web app, users can easily log and review workouts, allowing them to see growth trends and to pick up where they left off.
 
 ### Design
 
