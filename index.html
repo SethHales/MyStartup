@@ -1,56 +1,53 @@
+<!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Tell browsers not to scale the viewport automatically -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simon HTML</title>
+    <link rel="icon" href="favicon.ico" />
+  </head>
+  <body>
+    <!-- Use header, main, and footer elements to give semantic structure -->
+    <header>
+      <h1>Simon<sup>&reg;</sup></h1>
 
-<head>
-    <meta charset="UTF-8">
-    <title>QuickSets - Log</title>
-    <link href="style.css" rel="stylesheet">
-</head>
+      <!-- Navigation elements -->
+      <nav>
+        <!-- Menu is a semantic alternative to <ul> that represents an interaction -->
+        <menu>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="play.html">Play</a></li>
+          <li><a href="scores.html">Scores</a></li>
+          <li><a href="about.html">About</a></li>
+        </menu>
+      </nav>
 
-<body>
+      <!-- Since we don't have the ability to style we use old style HTML to give some visual formatting -->
+      <hr />
+    </header>
+
     <main>
-        <h2>Log Workout</h2>
-
-        <form>
-            <label>
-                Date
-                <input type="date" required />
-            </label>
-
-            <label>
-                Exercise
-                <input type="text" placeholder="Bench Press" />
-            </label>
-            <section>
-                <h3>Sets</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Reps</th>
-                            <th>Weight</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- JS will add rows later -->
-                    </tbody>
-                </table>
-
-                <button type="button">+ Add Set</button>
-            </section>
-            <label>
-                Notes
-                <textarea rows="3"></textarea>
-            </label>
-
-            <button type="submit">Save Workout</button>
-        </form>
+      <h1>Welcome to Simon</h1>
+      <form method="get" action="play.html">
+        <div>
+          <span>@</span>
+          <input type="text" placeholder="your@email.com" />
+        </div>
+        <div>
+          <span>🔒</span>
+          <input type="password" placeholder="password" />
+        </div>
+        <button type="submit">Login</button>
+        <button type="submit">Create</button>
+      </form>
     </main>
-    <nav id="bottom-nav">
-        <a href="index.html" class="active">Log</a>
-        <a href="history.html">History</a>
-        <a href="profile.html">Profile</a>
-    </nav>
-</body>
 
+    <footer>
+      <hr />
+      <span class="text-reset">Author Name(s)</span>
+      <br />
+      <a href="https://github.com/webprogramming260/simon-html">GitHub</a>
+    </footer>
+  </body>
 </html>
