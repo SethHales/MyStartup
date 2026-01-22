@@ -8,49 +8,21 @@
 
 <body>
     <main>
-        <h2>Log Workout</h2>
+        <h2>QuickSets Login</h2>
 
-        <form>
+        <form action="app.html">
             <label>
-                Date
-                <input type="date" required />
+                Email
+                <input type="email" required />
             </label>
 
             <label>
-                Exercise
-                <input type="text" placeholder="Bench Press" />
-            </label>
-            <section>
-                <h3>Sets</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Reps</th>
-                            <th>Weight</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- JS will add rows later -->
-                    </tbody>
-                </table>
-
-                <button type="button">+ Add Set</button>
-            </section>
-            <label>
-                Notes
-                <textarea rows="3"></textarea>
+                Password
+                <input type="password" required />
             </label>
 
-            <button type="submit">Save Workout</button>
+            <button type="submit">Log In</button>
         </form>
-    </main>
-    <nav id="bottom-nav">
-        <a href="index.html" class="active">Log</a>
-        <a href="history.html">History</a>
-        <a href="profile.html">Profile</a>
-    </nav>
 </body>
 
 </html>
