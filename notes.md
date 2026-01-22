@@ -19,7 +19,7 @@ No problems worked just like it said in the [instruction](https://github.com/web
 
 ## HTML
 
-This was easy. I was careful to use the correct structural elements such as header, footer, main, nav, and form. The links between the three views work great using the `a` element.
+This was easy. I was careful to use the correct structural elements such as header, footer, main, nav, and form. The links between the three views work great using the `a` element. It is a very rudimentary outline though. As I was creating it I felt a little dissatisfied knowing I would be rewriting much of my code later (for example, I want my website to be all one html page for faster navigation). But it was also exciting to feel like I was getting somewhere.
 
 The part I didn't like was the duplication of the header and footer code. This is messy, but it will get cleaned up when I get to React.
 
