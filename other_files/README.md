@@ -52,15 +52,15 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **HTML pages** - I did not complete this part of the deliverable.
-- [ ] **Proper HTML element usage** - I did not complete this part of the deliverable.
-- [ ] **Links** - I did not complete this part of the deliverable.
-- [ ] **Text** - I did not complete this part of the deliverable.
-- [ ] **3rd party API placeholder** - I did not complete this part of the deliverable.
-- [ ] **Images** - I did not complete this part of the deliverable.
-- [ ] **Login placeholder** - I did not complete this part of the deliverable.
-- [ ] **DB data placeholder** - I did not complete this part of the deliverable.
-- [ ] **WebSocket placeholder** - I did not complete this part of the deliverable.
+- [x] **HTML pages** - I made four separate web pages, index (login), log, profile, and history.
+- [x] **Proper HTML element usage** - I used headers, footers, main, nav, etc.
+- [x] **Links** - My pages linked to each other properly
+- [x] **Text** - I had descriptions on each page.
+- [x] **3rd party API placeholder** - I had an API connection to Garmin placeholder.
+- [x] **Images** - I created a logo for quicksets.
+- [x] **Login placeholder** - I have a login (email + password) placeholder.
+- [x] **DB data placeholder** - My app will pull data from my database for past workouts.
+- [x] **WebSocket placeholder** - I had a placeholder for when my web app will include websocket notifications.
 
 ## 🚀 CSS deliverable
 
