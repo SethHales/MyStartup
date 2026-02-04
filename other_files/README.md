@@ -66,12 +66,12 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **Visually appealing colors and layout. No overflowing elements.** - I did not complete this part of the deliverable.
-- [ ] **Use of a CSS framework** - I did not complete this part of the deliverable.
-- [ ] **All visual elements styled using CSS** - I did not complete this part of the deliverable.
-- [ ] **Responsive to window resizing using flexbox and/or grid display** - I did not complete this part of the deliverable.
-- [ ] **Use of a imported font** - I did not complete this part of the deliverable.
-- [ ] **Use of different types of selectors including element, class, ID, and pseudo selectors** - I did not complete this part of the deliverable.
+- [x] **Visually appealing colors and layout. No overflowing elements.** - Very visually appealing! It was so fun to make!
+- [x] **Use of a CSS framework** - Used a couple bootstrap buttons and a table.
+- [x] **All visual elements styled using CSS** - I'm pretty sure every single element had some css associated with it.
+- [x] **Responsive to window resizing using flexbox and/or grid display** - Very good on this one! My app is designed for a phone so I had to make it work with all screen sizes. When it is pulled up on desktop, the <main> tag doesn't fill the whole width of the screen, which honestly looks so much better.
+- [x] **Use of a imported font** - I imported quicksand!
+- [x] **Use of different types of selectors including element, class, ID, and pseudo selectors** - Yep, used all of those! I used a couple pseudo selectors on my login page and lots of element and class selectors (and some selectors that mixed the two). I used an ID selector for the nav bar at the bottom (#active I believe).
 
 ## 🚀 React part 1: Routing deliverable
 
