@@ -66,6 +66,18 @@ main {
     gap: 1rem;
 }
 
+.import-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-start;
+}
+
+.import-hint {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
 .tab-menu {
     height: clamp(46px, 10vh, 150px);
     background: #535356;

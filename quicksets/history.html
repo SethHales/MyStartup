@@ -22,7 +22,7 @@
                 now these are just placeholders). You will be able to click each one to see sets, weight, duration,
                 reps,
                 etc.</p>
-            <table>
+            <table class="table table-dark table-hover">
                 <thead>
                     <tr>
                         <th>Date</th>
@@ -51,8 +51,14 @@
                     <!-- Also, once we get to JS, I will add more functionality, allowing you to select workouts and view sets/reps/weight -->
                 </tbody>
             </table>
-            <button class="btn btn-outline-primary mt-3">Import from Garmin</button>
-            <p>I will have a button here that will allow you to import workouts from Garmin</p>
+            <div class="import-actions">
+                <button type="button" class="btn btn-outline-primary">
+                    Import from Garmin
+                </button>
+                <p class="import-hint">
+                    Import workouts directly from Garmin
+                </p>
+            </div>
             <a href="https://github.com/SethHales/MyStartup">GitHub</a>
         </section>
     </main>
