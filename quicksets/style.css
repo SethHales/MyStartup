@@ -80,7 +80,7 @@ header {
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 1rem 1.5rem;
+    padding: 0.5rem 1.5rem;
     background: #202123;
     border-bottom: 1px solid #333;
 
@@ -270,6 +270,7 @@ th {
     background: #535356;
     background: #202123;
 
+    border-top: 1px solid #333;
     display: flex;
     justify-content: center;
     align-items: center;
