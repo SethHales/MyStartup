@@ -2,21 +2,48 @@ import React from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './app.css';
 
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
 import { Profile } from './profile/profile';
 
+function Header() {
+    const location = useLocation();
+
+    let title = "";
+
+    switch (location.pathname) {
+        case "/":
+            title = "LOGIN";
+            break;
+        case "/history":
+            title = "HISTORY";
+            break;
+        case "/logger":
+            title = "LOGGER";
+            break;
+        case "/profile":
+            title = "PROFILE";
+            break;
+        default:
+            title = "QuickSets";
+    }
+
+    return (
+        <header>
+            <img src="images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
+            <h1>{title}</h1>
+            <p>Ronald Weasley</p>
+        </header>
+    );
+}
+
 export default function App() {
     return (
         <BrowserRouter>
             <div className="app">
-                <header>
-                    <img src="images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
-                    <h1>History</h1>
-                    <p>Ronald Weasley</p>
-                </header>
+                <Header />
 
                 <Routes>
                     <Route path='/' element={<Login />} exact />
@@ -28,9 +55,26 @@ export default function App() {
 
                 <footer>
                     <nav className="tab-menu">
-                        <NavLink to="/logger" className="tab">Logger</NavLink>
-                        <NavLink to="/history" className="tab" id="active">History</NavLink>
-                        <NavLink to="/profile" className="tab">Profile</NavLink>
+                        <NavLink
+                            to="/logger"
+                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
+                        >
+                            Logger
+                        </NavLink>
+
+                        <NavLink
+                            to="/history"
+                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
+                        >
+                            History
+                        </NavLink>
+
+                        <NavLink
+                            to="/profile"
+                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
+                        >
+                            Profile
+                        </NavLink>
                     </nav>
                 </footer>
             </div>
@@ -39,5 +83,5 @@ export default function App() {
 }
 
 function NotFound() {
-  return <main className="container-fluid bg-secondary text-center">404: Return to sender. Address unknown.</main>;
+    return <main className="container-fluid bg-secondary text-center">404: Return to sender. Address unknown.</main>;
 }

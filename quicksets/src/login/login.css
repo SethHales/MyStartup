@@ -9,7 +9,7 @@
 .login-page .login-card {
     width: 100%;
     max-width: 360px;
-    background: #121826;
+    background: #202123;
     padding: 2rem;
     border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.4);
@@ -22,34 +22,49 @@
     display: flex;
     flex-direction: column;
     font-size: 0.9rem;
-    color: #b8c4e0;
+    color: #ffffff;
     gap: 0.4rem;
+}
+
+.login-page input,
+textarea {
+    background-color: #17181a;
+    color: #fdfdff;
 }
 
 .login-page input {
     padding: 0.65rem 0.75rem;
     border-radius: 8px;
-    border: 1px solid #2a3558;
-    background: #0c1220;
+    border: 1px solid #333;
+    background: #0e0e0e;
     color: #ffffff;
 }
 
 .login-page input:focus {
     outline: none;
-    border-color: #88c2ff;
+    border-color: #b4b4b4;
 }
 
 .login-page button {
     padding: 0.7rem;
     border-radius: 8px;
     border: none;
-    background: #88c2ff;
+    background: #c9c9c9;
     color: #0b1020;
     font-weight: 600;
     cursor: pointer;
 }
 
 .login-page button:hover {
-    background: #b3d8ff;
+    background: #bcbcbc;
     font-weight: 700;
+}
+
+.login-page input:-webkit-autofill,
+.login-page input:-webkit-autofill:hover,
+.login-page input:-webkit-autofill:focus,
+.login-page textarea:-webkit-autofill {
+    -webkit-text-fill-color: #ffffff;
+    box-shadow: 0 0 0px 100px #0e0e0e inset;
+    transition: background-color 9999s ease-in-out 0s;
 }

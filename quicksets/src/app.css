@@ -72,18 +72,18 @@ main {
 
 .tab-menu {
     height: clamp(46px, 10vh, 150px);
-    background: #535356;
     background: #202123;
 
     border-top: 1px solid #333;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: stretch;
 }
 
 .tab {
     text-decoration: none;
-    color: #fdfdff;
+    background: #202123;
+    color: #7d7d7d;
     font-size: clamp(20px, 4vh, 30px);
     font-weight: 500;
 
@@ -92,11 +92,35 @@ main {
     justify-content: center;
     flex: 1;
     align-items: center;
+
+    transition: color 0.2s ease;
+    position: relative;
 }
 
-#active {
-    color: #88c2ff;
-    font-weight: 700;
+.tab:hover {
+    background: #242527;
+    transition: background 5s ease;
+}
+
+.active-tab {
+    color: #efefef;
+    font-weight: 00;
+}
+
+.tab::after {
+    content: "";
+    position: absolute;
+    bottom: 15%;
+    left: 30%;
+    width: 40%;
+    height: 3px;
+    background: white;
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+}
+
+.tab.active-tab::after {
+    transform: scaleX(1);
 }
 
 
