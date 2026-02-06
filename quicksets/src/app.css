@@ -99,12 +99,12 @@ main {
 
 .tab:hover {
     background: #242527;
-    transition: background 5s ease;
+    transition: background 0.2s ease;
 }
 
-.active-tab {
+.active {
     color: #efefef;
-    font-weight: 00;
+
 }
 
 .tab::after {
@@ -119,7 +119,7 @@ main {
     transition: transform 0.2s ease;
 }
 
-.tab.active-tab::after {
+.tab.active::after {
     transform: scaleX(1);
 }
 

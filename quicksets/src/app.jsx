@@ -55,24 +55,15 @@ export default function App() {
 
                 <footer>
                     <nav className="tab-menu">
-                        <NavLink
-                            to="/logger"
-                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
-                        >
+                        <NavLink to="/logger" className="tab">
                             Logger
                         </NavLink>
 
-                        <NavLink
-                            to="/history"
-                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
-                        >
+                        <NavLink to="/history" className="tab">
                             History
                         </NavLink>
 
-                        <NavLink
-                            to="/profile"
-                            className={({ isActive }) => isActive ? "tab active-tab" : "tab"}
-                        >
+                        <NavLink to="/profile" className="tab">
                             Profile
                         </NavLink>
                     </nav>
