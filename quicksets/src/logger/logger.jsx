@@ -1,9 +1,10 @@
 import React from 'react';
+import "./logger.css";
 
 export function Logger() {
   return (
     <main>
-      <div className="logger">
+      <div className="main-formatting">
         <section className="live-feed">
           <p className="feed-title">This is where websocket data will appear. I have included some placeholders for reference</p>
           <p>Joe Bob just started a workout!</p>

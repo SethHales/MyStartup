@@ -1,9 +1,10 @@
 import React from 'react';
+import "./profile.css";
 
 export function Profile() {
   return (
     <main>
-      <div className="profile">
+      <div className="main-formatting">
         <section className="user-stats">
           <h3>Your Stats</h3>
           <p>(These numbers will pull from the database. For now they are hardcoded examples.)</p>

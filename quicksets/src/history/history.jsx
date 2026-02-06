@@ -1,9 +1,10 @@
 import React from 'react';
+import "./history.css";
 
 export function History() {
   return (
     <main>
-      <section className="history">
+      <section className="main-formatting">
 
         <p>This tab will allow you to see all of your past workout entries (which would be stored in the database.
           For

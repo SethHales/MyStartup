@@ -11,7 +11,7 @@ import { Profile } from './profile/profile';
 export default function App() {
     return (
         <BrowserRouter>
-            <div className="app bg-dark text-light">
+            <div className="app">
                 <header>
                     <img src="images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
                     <h1>History</h1>
