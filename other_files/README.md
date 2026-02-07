@@ -77,9 +77,9 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **Bundled using Vite** - I did not complete this part of the deliverable.
-- [ ] **Components** - I did not complete this part of the deliverable.
-- [ ] **Router** - I did not complete this part of the deliverable.
+- [x] **Bundled using Vite** - Yep, got that working.
+- [x] **Components** - I have a component for the header (because it changes based on which tab is selected) and a component for each page.
+- [x] **Router** - Original login tab and three other tabs (Logger, History, Profile) all on one router.
 
 ## 🚀 React part 2: Reactivity deliverable
 
