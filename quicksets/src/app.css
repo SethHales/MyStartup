@@ -35,7 +35,7 @@ header {
     background: #17181a;
     color: #fdfdff;
     margin: 0;
-    height: 100dvh;
+    height: 100vh;
     display: grid;
     grid-template-rows: auto 1fr auto;
 }

@@ -3,9 +3,9 @@ import './scores.css';
 
 export function Scores() {
   return (
-    <main class="container-fluid bg-secondary text-center">
-      <table class="table table-warning table-striped-columns">
-        <thead class="table-dark">
+    <main className="container-fluid bg-secondary text-center">
+      <table className="table table-warning table-striped-columns">
+        <thead className="table-dark">
           <tr>
             <th>#</th>
             <th>Name</th>

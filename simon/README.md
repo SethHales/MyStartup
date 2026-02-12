@@ -92,3 +92,9 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 - [x] **Application elements** - I used a lot of `display:flex` to get things to align correctly.
 - [x] **Application text content** - Set all my text to Helvetica and it looks nice and clean.
 - [x] **Application images** - I left the about image as is.
+
+## 🚀 React Phase 1: Routing deliverable
+
+For this deliverable I used JavaScript and React so that the application completely works for a single user. I also added placeholders for future technology.
+
+- [x] I completed the prerequisites for this deliverable (Simon deployed, GitHub link, Git commits)
