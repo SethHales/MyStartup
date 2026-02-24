@@ -975,42 +975,91 @@ button {
 
 @media (max-width: 860px) {
   .todo-shell {
-    padding: 12px;
+    padding: 8px;
   }
 
   .todo-app {
     height: 100%;
     grid-template-columns: 1fr;
+    border-radius: 16px;
   }
 
   .group-sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+    padding: 12px;
+    gap: 10px;
   }
 
-  .group-list {
-    max-height: 220px;
+  .sidebar-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .sidebar-hint {
+    display: none;
   }
 
   .theme-group {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .task-pane {
-    padding: 18px;
-  }
-
-  .metrics {
-    grid-template-columns: 1fr;
+  .theme-chip {
+    padding: 7px 8px;
+    font-size: 0.76rem;
   }
 
   .group-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
+  }
+
+  .group-list {
+    max-height: none;
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(165px, 1fr);
+    padding: 2px 2px 8px;
+  }
+
+  .group-tab {
+    min-height: 56px;
+  }
+
+  .task-pane {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .todo-header h1 {
+    font-size: clamp(1.55rem, 7vw, 2rem);
+  }
+
+  .header-row {
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: auto;
+    margin-left: auto;
+  }
+
+  .header-sort {
+    padding: 6px 8px;
+  }
+
+  .composer {
+    margin-top: 8px;
+    padding: 10px;
   }
 
   .toolbar {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
   }
 
   .filter-wrap,
@@ -1018,22 +1067,22 @@ button {
     justify-content: space-between;
   }
 
-  .header-actions {
-    width: 100%;
-    justify-content: space-between;
+  .clear-btn {
+    width: auto;
+    white-space: nowrap;
   }
 
   .todo-item {
     grid-template-columns: 1fr;
     align-items: flex-start;
+    gap: 8px;
   }
 
   .task-meta {
     width: 100%;
   }
 
-  .delete-btn,
-  .clear-btn {
+  .delete-btn {
     width: 100%;
   }
 
@@ -1042,5 +1091,26 @@ button {
     right: 12px;
     bottom: 12px;
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 600px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .clear-btn {
+    width: 100%;
+  }
+
+  .header-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
   }
 }
