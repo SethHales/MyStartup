@@ -32,7 +32,7 @@ function Header() {
 
     return (
         <header>
-            <img src="images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
+            <img src="/images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
             <h1>{title}</h1>
             <p>Ronald Weasley</p>
         </header>
@@ -46,7 +46,7 @@ export default function App() {
                 <Header />
 
                 <Routes>
-                    <Route path='/' element={<Login />} exact />
+                    <Route path='/' element={<Login />} />
                     <Route path='/history' element={<History />} />
                     <Route path='/logger' element={<Logger />} />
                     <Route path='/profile' element={<Profile />} />

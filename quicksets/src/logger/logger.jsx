@@ -2,6 +2,22 @@ import React from 'react';
 import "./logger.css";
 
 export function Logger() {
+  const [sets, setSets] = React.useState([]);
+  const handleAddSet = () => {
+    setSets(prevSets => {
+      const nextId = prevSets.length + 1;
+
+      const newSet = {
+        id: nextId,
+        reps: "",
+        weight: "",
+        duration: "",
+      }
+      
+      return [...prevSets, newSet];
+    })
+    
+  }
   return (
     <main>
       <div className="main-formatting">

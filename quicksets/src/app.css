@@ -1,17 +1,20 @@
-@font-face {
-    font-family: 'Quicksand';
-    src: url("fonts/Quicksand-VariableFont_wght.ttf") format("truetype");
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
+main {
+    font-family: 'Quicksand', system-ui, sans-serif;
+}
+
+header {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-weight: 600;
+}
+footer {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-weight: 600;
 }
 
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
-    font-family: 'Quicksand', system-ui, sans-serif;
-
 }
 
 .logo {
@@ -27,7 +30,8 @@ header {
     background: #202123;
     border-bottom: 1px solid #333;
 
-    justify-content: space-between; /* later we can add buttons on the right */
+    justify-content: space-between;
+    /* later we can add buttons on the right */
     flex-wrap: wrap;
 }
 
@@ -60,7 +64,7 @@ main {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    
+
     overflow-y: auto;
 }
 
@@ -97,14 +101,13 @@ main {
     position: relative;
 }
 
+.active {
+    color: #f7f7f7;
+}
+
 .tab:hover {
     background: #242527;
     transition: background 0.2s ease;
-}
-
-.active {
-    color: #efefef;
-
 }
 
 .tab::after {
