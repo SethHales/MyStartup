@@ -16,8 +16,18 @@ export function Logger() {
       
       return [...prevSets, newSet];
     })
-    
   }
+
+  const handleSetChange = (id, field, value) => {
+    (setSets(prevSets =>
+      prevSets.map(set => 
+        set.id === id
+          ? {...set, [field]: value}
+          : set
+      )
+    ))
+  }
+
   return (
     <main>
       <div className="main-formatting">
@@ -48,10 +58,36 @@ export function Logger() {
                 </tr>
               </thead>
               <tbody>
+                {sets.map((set) => (
+                  <tr key={set.id}>
+                    <td>{set.id}</td>
+                    <td>
+                      <input
+                        type="number"
+                        value={set.reps}
+                        placeholder="10"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        value={set.weight}
+                        placeholder="100"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        value={set.duration}
+                        placeholder="00:30"
+                      />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
 
-            <button type="button" className="btn btn-outline-secondary btn-sm">+ Add Set</button>
+            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleAddSet}>+ Add Set</button>
           </section>
           <label>
             Notes
