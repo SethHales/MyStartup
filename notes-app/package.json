@@ -1,5 +1,5 @@
 {
-  "name": "quicksets",
+  "name": "notes-app",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -14,7 +14,6 @@
   "type": "commonjs",
   "dependencies": {
     "bootstrap": "^5.3.8",
-    "express": "^5.2.1",
     "react": "^19.2.4",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.2.4",
@@ -24,3 +23,4 @@
     "vite": "^7.3.1"
   }
 }
+
