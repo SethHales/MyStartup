@@ -1,5 +1,6 @@
 import React from 'react';
 import "./logger.css";
+const WORKOUTS_KEY = "quicksets.workouts";
 
 export function Logger() {
   const [sets, setSets] = React.useState([]);
@@ -31,7 +32,34 @@ export function Logger() {
   }
   const handleSubmit = (event) => {
     event.preventDefault()
-    
+
+    const workout = {
+      id: Date.now(),
+      date,
+      exercise,
+      notes,
+      sets
+    }
+    console.log("Saving workout:\n", workout)
+
+    try {
+      const existingRaw = localStorage.getItem(WORKOUTS_KEY)
+      const existing = existingRaw ? JSON.parse(existingRaw) : []
+
+      const updated = [...existing, workout]
+
+      localStorage.setItem(WORKOUTS_KEY, JSON.stringify(updated))
+
+      console.log("Updated workouts in local storage:", updated)
+
+    } catch (err) {
+      console.error("Failed to update workouts in local storage:", err)
+    }
+
+    setDate("")
+    setExercise("")
+    setNotes("")
+    setSets([])
   }
 
 
@@ -43,7 +71,7 @@ export function Logger() {
           <p>Joe Bob just started a workout!</p>
           <p>Harry Potter sent a connection request!</p>
         </section>
-        <form className="workout-form">
+        <form className="workout-form" onSubmit={handleSubmit}>
           <label>
             Date
             <input 

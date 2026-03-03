@@ -2,6 +2,26 @@ import React from 'react';
 import "./history.css";
 
 export function History() {
+  const [workouts, setWorkouts] = React.useState([
+    {
+      id: 1,
+      date: "07/11/2007",
+      workout: "Bench Press",
+      notes: "New Max!",
+    },
+    {
+      id: 2,
+      date: "07/11/2007",
+      workout: "Dumbbell Shoulder Press",
+      notes: "I'm weak...",
+    },
+    {
+      id: 3,
+      date: "07/11/2007",
+      workout: "Dumbbell Bicep Curls",
+      notes: "",
+    }
+  ])
   return (
     <main>
       <section className="main-formatting">
@@ -21,21 +41,13 @@ export function History() {
 
           </thead>
           <tbody>
-            <tr>
-              <td>07/11/2007</td>
-              <td>Bench Press</td>
-              <td>New Max!</td>
-            </tr>
-            <tr>
-              <td>07/11/2007</td>
-              <td>Dumbbell Shoulder Press</td>
-              <td>I'm weak...</td>
-            </tr>
-            <tr>
-              <td>07/11/2007</td>
-              <td>Dumbbell Bicep Curls</td>
-              <td></td>
-            </tr>
+            {workouts.map((workout) =>
+              <tr key={workout.id}>
+                <td>{workout.date}</td>
+                <td>{workout.workout}</td>
+                <td>{workout.notes}</td>
+              </tr>
+            )}
           </tbody>
         </table>
         <div className="import-actions">
