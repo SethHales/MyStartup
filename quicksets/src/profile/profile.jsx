@@ -2,16 +2,24 @@ import React from 'react';
 import "./profile.css";
 
 export function Profile() {
+  const [stats, setStats] = React.useState({
+    total_workouts: null,
+    total_sets: null,
+    most_used: null,
+  })
+
+  handleSetStats
+
   return (
     <main>
       <div className="main-formatting">
         <section className="user-stats">
           <h3>Your Stats</h3>
-          <p>(These numbers will pull from the database. For now they are hardcoded examples.)</p>
+          <p>(These numbers will pull from the database. For now they pull from localStorage.)</p>
           <ul>
-            <li>Total workouts: <span>10</span></li>
-            <li>Total sets logged: <span>34</span></li>
-            <li>Most used exercise: <span>Bench Press</span></li>
+            <li>Total workouts: <span>{stats.total_workouts}</span></li>
+            <li>Total sets logged: <span>{stats.total_sets}</span></li>
+            <li>Most used exercise: <span>{stats.most_used}</span></li>
           </ul>
         </section>
 

@@ -8,7 +8,7 @@ import { History } from './history/history';
 import { Logger } from './logger/logger';
 import { Profile } from './profile/profile';
 
-function Header() {
+function Header({ currentUser }) {
     const location = useLocation();
 
     let title = "";
@@ -30,23 +30,31 @@ function Header() {
             title = "QuickSets";
     }
 
+
+
     return (
         <header>
             <img src="/images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
             <h1>{title}</h1>
-            <p>Ronald Weasley</p>
+            <p>{currentUser ? `Welcome, ${currentUser.email}` : "UNKNOWN"}</p>
         </header>
     );
 }
 
 export default function App() {
+    const CURRENT_USER_KEY = "quicksets.currentUser"
+    const [currentUser, setCurrentUser] = React.useState(() => {
+        const stored = localStorage.getItem(CURRENT_USER_KEY)
+        return stored ? JSON.parse(stored) : null
+    })
+
     return (
         <BrowserRouter>
             <div className="app">
-                <Header />
+                <Header currentUser={currentUser} />
 
                 <Routes>
-                    <Route path='/' element={<Login />} />
+                    <Route path='/' element={<Login setCurrentUser={setCurrentUser} />} />
                     <Route path='/history' element={<History />} />
                     <Route path='/logger' element={<Logger />} />
                     <Route path='/profile' element={<Profile />} />

@@ -23,16 +23,28 @@ footer {
 }
 
 header {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 1rem;
     padding: 0rem 1.5rem;
     background: #202123;
     border-bottom: 1px solid #333;
 
-    justify-content: space-between;
-    /* later we can add buttons on the right */
-    flex-wrap: wrap;
+}
+
+header .logo {
+    justify-self: start;
+}
+
+header h1 {
+    justify-self: center;
+    margin: 0;
+}
+
+header p {
+    justify-self: end;
+    margin: 0;
 }
 
 .app {
