@@ -45,13 +45,19 @@
 
 /* Detail row: acts like a little panel under the row */
 .history-row-details>td {
+    background-color: transparent;
+    padding: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.history-row-details.is-open>td {
     background-color: #181a1f;
     padding: 0.75rem 1rem;
-    border-top: none;
     border-bottom: 1px solid #333;
-    /* subtle left accent to tie it to the row above */
     border-left: 3px solid #0d6efd;
-    /* bootstrap primary-ish */
 }
 
 /* Inner sets table: elevated dark panel */
@@ -119,22 +125,20 @@
 /* ANIMATION CSS */
 
 .history-details-content {
-    padding: 0.75rem 1rem;
-
-    /* animation bits */
     max-height: 0;
     opacity: 0;
     overflow: hidden;
     transform: translateY(-6px);
+    pointer-events: none;
     transition:
         max-height 0.25s ease,
         opacity 0.2s ease,
         transform 0.2s ease;
 }
 
-/* When the details row is present, we want the content expanded */
-.history-row-details .history-details-content {
+.history-details-content.is-open {
     max-height: 400px; /* just needs to be "big enough" */
     opacity: 1;
     transform: translateY(0);
+    pointer-events: auto;
 }
