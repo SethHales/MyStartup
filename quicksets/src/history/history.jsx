@@ -1,27 +1,34 @@
 import React from 'react';
 import "./history.css";
 
+const WORKOUTS_KEY = "quicksets.workouts";
+
 export function History() {
-  const [workouts, setWorkouts] = React.useState([
-    {
-      id: 1,
-      date: "07/11/2007",
-      workout: "Bench Press",
-      notes: "New Max!",
-    },
-    {
-      id: 2,
-      date: "07/11/2007",
-      workout: "Dumbbell Shoulder Press",
-      notes: "I'm weak...",
-    },
-    {
-      id: 3,
-      date: "07/11/2007",
-      workout: "Dumbbell Bicep Curls",
-      notes: "",
+  const [workouts, setWorkouts] = React.useState([])
+  const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null)
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(WORKOUTS_KEY)
+      if (!stored) {
+        return
+      }
+
+      const parsed = JSON.parse(stored)
+
+      if (Array.isArray(parsed)) {
+        setWorkouts(parsed)
+      } else {
+        console.warn("Stored workouts is not an array")
+      }
+    } catch (err) {
+      console.error("Failed to load workouts from localStorage:", err)
     }
-  ])
+  }, [])
+  const handleRowClick = (id) => {
+    setExpandedWorkoutId((current) =>
+      current === id ? null : id
+    )
+  }
   return (
     <main>
       <section className="main-formatting">
@@ -42,11 +49,45 @@ export function History() {
           </thead>
           <tbody>
             {workouts.map((workout) =>
-              <tr key={workout.id}>
-                <td>{workout.date}</td>
-                <td>{workout.workout}</td>
-                <td>{workout.notes}</td>
-              </tr>
+              <React.Fragment>
+                <tr key={workout.id} onClick={() => handleRowClick(workout.id)} className={workout.id === expandedWorkoutId ? "history-row-expanded" : "history-row"} style={{cursor: "pointer"}}>
+                  <td>{workout.date}</td>
+                  <td>{workout.exercise}</td>
+                  <td>{workout.notes}</td>
+                </tr>
+                {expandedWorkoutId === workout.id && (
+                  <tr className="history-row-details">
+                    <td colSpan={3}>
+                      {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
+                        <table className="table table-sm inner-sets-table">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Reps</th>
+                              <th>Weight</th>
+                              <th>Time</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {workout.sets.map((set, index) => (
+                              <tr key={set.id ?? index}>
+                                <td>{set.id ?? index + 1}</td>
+                                <td>{set.reps}</td>
+                                <td>{set.weight}</td>
+                                <td>{set.duration}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <p className="no-sets-message">
+                          No sets saved for this workout.
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             )}
           </tbody>
         </table>
