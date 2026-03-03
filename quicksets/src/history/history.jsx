@@ -38,7 +38,7 @@ export function History() {
           now these are just placeholders). You will be able to click each one to see sets, weight, duration,
           reps,
           etc.</p>
-        <table className="table table-dark table-hover">
+        <table className="history-table table table-dark table-hover">
           <thead>
             <tr>
               <th>Date</th>
@@ -49,8 +49,8 @@ export function History() {
           </thead>
           <tbody>
             {workouts.map((workout) =>
-              <React.Fragment>
-                <tr key={workout.id} onClick={() => handleRowClick(workout.id)} className={workout.id === expandedWorkoutId ? "history-row-expanded" : "history-row"} style={{cursor: "pointer"}}>
+              <React.Fragment key={workout.id}>
+                <tr onClick={() => handleRowClick(workout.id)} className={workout.id === expandedWorkoutId ? "history-row-expanded history-row" : "history-row"} style={{ cursor: "pointer" }}>
                   <td>{workout.date}</td>
                   <td>{workout.exercise}</td>
                   <td>{workout.notes}</td>
@@ -58,32 +58,34 @@ export function History() {
                 {expandedWorkoutId === workout.id && (
                   <tr className="history-row-details">
                     <td colSpan={3}>
-                      {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
-                        <table className="table table-sm inner-sets-table">
-                          <thead>
-                            <tr>
-                              <th>#</th>
-                              <th>Reps</th>
-                              <th>Weight</th>
-                              <th>Time</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {workout.sets.map((set, index) => (
-                              <tr key={set.id ?? index}>
-                                <td>{set.id ?? index + 1}</td>
-                                <td>{set.reps}</td>
-                                <td>{set.weight}</td>
-                                <td>{set.duration}</td>
+                      <div className="history-details-content">
+                        {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
+                          <table className="inner-sets-table">
+                            <thead>
+                              <tr>
+                                <th>#</th>
+                                <th>Reps</th>
+                                <th>Weight</th>
+                                <th>Time</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <p className="no-sets-message">
-                          No sets saved for this workout.
-                        </p>
-                      )}
+                            </thead>
+                            <tbody>
+                              {workout.sets.map((set, index) => (
+                                <tr key={set.id ?? index}>
+                                  <td>{set.id ?? index + 1}</td>
+                                  <td>{set.reps}</td>
+                                  <td>{set.weight}</td>
+                                  <td>{set.duration}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="no-sets-message">
+                            No sets saved for this workout.
+                          </p>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )}
