@@ -72,7 +72,7 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [x] **HTML pages** - Four different pages. One for each view. `index.html` (Login), `play.html`, `scores.html`, and `about.html`.
+- [x] **HTML pages** - Four different pages. One for each view.
 - [x] **Proper HTML element usage** - I spent a lot of time learning about elements. I used header, footer, main, nav, img, a, fieldset, input, button, form, and many more.
 - [x] **Links** - Links between views.
 - [x] **Text** - About page has text.
@@ -86,15 +86,24 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [x] **Header, footer, and main content body** - I used a common CSS file to style these `main.css`. The views specific things are in `about.css` and `play.css`.
+- [x] **Header, footer, and main content body** - I used a common CSS file to style these (main.css).
 - [x] **Navigation elements** - Bootstrap NavBar. What a time saver.
 - [x] **Responsive to window resizing** - Bootstrap and `display:flex' did most the work here. I'm really happy with the game rendering.
 - [x] **Application elements** - I used a lot of `display:flex` to get things to align correctly.
 - [x] **Application text content** - Set all my text to Helvetica and it looks nice and clean.
 - [x] **Application images** - I left the about image as is.
 
-## 🚀 React Phase 1: Routing deliverable
+## 🚀 React part 1: Routing deliverable
 
-For this deliverable I used JavaScript and React so that the application completely works for a single user. I also added placeholders for future technology.
+For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [x] I completed the prerequisites for this deliverable (Simon deployed, GitHub link, Git commits)
+- [x] **Bundled using Vite** - Easy to install and use Vite.
+- [x] **Components** - Easy to bring the code over from HTML and CSS, but had to rework them quite a bit.
+- [x] **Router** - Easy to creating the component routing.
+
+## 🚀 React part 2: Reactivity
+
+For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
+
+- [x] **All functionality implemented or mocked out** - Mostly using local storage to store user and scores. WebSocket notifications mocked with a timer.
+- [x] **Hooks** - Extensive use of `useEffect`. I also had to use `useRef` so that the play top level component could execute the color sequence for the user on the child button components.

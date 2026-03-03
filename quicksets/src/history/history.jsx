@@ -32,12 +32,6 @@ export function History() {
   return (
     <main>
       <section className="main-formatting">
-
-        <p>This tab will allow you to see all of your past workout entries (which would be stored in the database.
-          For
-          now these are just placeholders). You will be able to click each one to see sets, weight, duration,
-          reps,
-          etc.</p>
         <table className="history-table table table-dark table-hover">
           <thead>
             <tr>

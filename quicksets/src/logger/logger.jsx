@@ -3,8 +3,16 @@ import "./logger.css";
 const WORKOUTS_KEY = "quicksets.workouts";
 
 export function Logger() {
+  const getTodayLocal = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [sets, setSets] = React.useState([]);
-  const [date, setDate] = React.useState([]);
+  const [date, setDate] = React.useState(getTodayLocal());
   const [exercise, setExercise] = React.useState([]);
   const [notes, setNotes] = React.useState([]);
   const handleAddSet = () => {
@@ -17,19 +25,20 @@ export function Logger() {
         weight: "",
         duration: "",
       }
-      
+
       return [...prevSets, newSet];
     })
   }
   const handleSetChange = (id, field, value) => {
     (setSets(prevSets =>
-      prevSets.map(set => 
+      prevSets.map(set =>
         set.id === id
-          ? {...set, [field]: value}
+          ? { ...set, [field]: value }
           : set
       )
     ))
   }
+
   const handleSubmit = (event) => {
     event.preventDefault()
 
@@ -56,7 +65,7 @@ export function Logger() {
       console.error("Failed to update workouts in local storage:", err)
     }
 
-    setDate("")
+    setDate(getTodayLocal())
     setExercise("")
     setNotes("")
     setSets([])
@@ -74,21 +83,21 @@ export function Logger() {
         <form className="workout-form" onSubmit={handleSubmit}>
           <label>
             Date
-            <input 
+            <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              required 
+              required
             />
           </label>
 
           <label>
             Exercise
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Bench Press"
               value={exercise}
-              onChange={(e) => setExercise(e.target.value)}/>
+              onChange={(e) => setExercise(e.target.value)} />
           </label>
           <section>
             <h3>Sets</h3>
@@ -110,7 +119,7 @@ export function Logger() {
                         type="number"
                         value={set.reps}
                         placeholder="10"
-                        onChange={(e) => 
+                        onChange={(e) =>
                           handleSetChange(set.id, "reps", e.target.value)
                         }
                       />
@@ -120,17 +129,17 @@ export function Logger() {
                         type="number"
                         value={set.weight}
                         placeholder="135"
-                        onChange={(e) => 
+                        onChange={(e) =>
                           handleSetChange(set.id, "weight", e.target.value)
                         }
-                        />
+                      />
                     </td>
                     <td>
                       <input
                         type="text"
                         value={set.duration}
                         placeholder="00:30"
-                        onChange={(e) => 
+                        onChange={(e) =>
                           handleSetChange(set.id, "duration", e.target.value)
                         }
                       />
