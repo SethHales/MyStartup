@@ -43,7 +43,7 @@ export function Login({ setCurrentUser }) {
       
       console.log("Logged in:", user)
       
-      setCurrentUser(newUser)
+      setCurrentUser(user)
       navigate("/logger")
     } else if (mode === "signup") {
       const users = getUsers();

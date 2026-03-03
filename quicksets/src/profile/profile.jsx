@@ -8,7 +8,58 @@ export function Profile() {
     most_used: null,
   })
 
-  handleSetStats
+  React.useEffect(() => {
+    handleUpdateStats();
+  }, []);
+
+  const WORKOUTS_KEY = "quicksets.workouts";
+
+  const handleUpdateStats = () => {
+    const workoutsRaw = localStorage.getItem(WORKOUTS_KEY)
+    if (!workoutsRaw) {
+      return;
+    }
+
+    const workouts = JSON.parse(workoutsRaw)
+
+    const total_workouts = workouts.length;
+
+    let total_sets = 0;
+
+    workouts.forEach(workout => {
+      if (Array.isArray(workout.sets)) {
+        total_sets += workout.sets.length;
+      }
+    })
+
+    const exerciseCount = {};
+    workouts.forEach(workout => {
+      const name = workout.exercise;
+
+      if (!name) return;
+
+      if (!exerciseCount[name]) {
+        exerciseCount[name] = 1;
+      } else {
+        exerciseCount[name]++;
+      }
+    })
+
+    let most_used = null;
+    let highestCount = 0;
+
+    for (const exercise in exerciseCount) {
+      if (exerciseCount[exercise] > highestCount) {
+        highestCount = exerciseCount[exercise];
+        most_used = exercise;
+      }
+    }
+    setStats({
+      total_workouts,
+      total_sets,
+      most_used
+    })
+  }
 
   return (
     <main>

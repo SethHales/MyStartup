@@ -15,6 +15,42 @@ export function Logger() {
   const [date, setDate] = React.useState(getTodayLocal());
   const [exercise, setExercise] = React.useState([]);
   const [notes, setNotes] = React.useState([]);
+  const [messages, setMessages] = React.useState([]);
+
+  const mockMessages = [
+    { msg: "Started a workout 💪" },
+    { msg: "Hit a new PR 🔥" },
+    { msg: "Just finished leg day 🦵" },
+  ]
+
+  React.useEffect(() => {
+    let index = 0;
+
+    const interval = setInterval(() => {
+      const userName = `User-${Math.floor(Math.random() * 100)}`;
+
+      const newMessage = {
+        id: Date.now(),
+        msg: mockMessages[index % mockMessages.length].msg,
+        from: userName,
+      };
+
+      // Show message
+      setMessages((prev) => [...prev, newMessage]);
+
+      // Remove after 5 seconds
+      setTimeout(() => {
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== newMessage.id)
+        );
+      }, 10000);
+
+      index++;
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleAddSet = () => {
     setSets(prevSets => {
       const nextId = prevSets.length + 1;
@@ -76,9 +112,12 @@ export function Logger() {
     <main>
       <div className="main-formatting">
         <section className="live-feed">
-          <p className="feed-title">This is where websocket data will appear. I have included some placeholders for reference</p>
-          <p>Joe Bob just started a workout!</p>
-          <p>Harry Potter sent a connection request!</p>
+          <p className="feed-title">Live Feed</p>
+          {messages.map((message) => (
+            <p key={message.id}>
+              <strong>{message.from}</strong>: {message.msg}
+            </p>
+          ))}
         </section>
         <form className="workout-form" onSubmit={handleSubmit}>
           <label>
