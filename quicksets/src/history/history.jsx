@@ -58,32 +58,34 @@ export function History() {
                 <tr className={expandedWorkoutId === workout.id ? "history-row-details is-open" : "history-row-details"}>
                   <td colSpan={3}>
                     <div className={expandedWorkoutId === workout.id ? "history-details-content is-open" : "history-details-content"}>
-                      {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
-                        <table className="inner-sets-table">
-                          <thead>
-                            <tr>
-                              <th>#</th>
-                              <th>Reps</th>
-                              <th>Weight</th>
-                              <th>Time</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {workout.sets.map((set, index) => (
-                              <tr key={set.id ?? index}>
-                                <td>{set.id ?? index + 1}</td>
-                                <td>{set.reps}</td>
-                                <td>{set.weight}</td>
-                                <td>{set.duration}</td>
+                      <div className="history-details-panel">
+                        {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
+                          <table className="inner-sets-table">
+                            <thead>
+                              <tr>
+                                <th>#</th>
+                                <th>Reps</th>
+                                <th>Weight</th>
+                                <th>Time</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <p className="no-sets-message">
-                          No sets saved for this workout.
-                        </p>
-                      )}
+                            </thead>
+                            <tbody>
+                              {workout.sets.map((set, index) => (
+                                <tr key={set.id ?? index}>
+                                  <td>{set.id ?? index + 1}</td>
+                                  <td>{set.reps}</td>
+                                  <td>{set.weight}</td>
+                                  <td>{set.duration}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="no-sets-message">
+                            No sets saved for this workout.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>

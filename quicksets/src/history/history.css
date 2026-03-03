@@ -49,15 +49,7 @@
     padding: 0;
     border-top: none;
     border-bottom: none;
-    border-left: 3px solid transparent;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
-}
-
-.history-row-details.is-open>td {
-    background-color: #181a1f;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid #333;
-    border-left: 3px solid #0d6efd;
+    border-left: none;
 }
 
 /* Inner sets table: elevated dark panel */
@@ -125,6 +117,7 @@
 /* ANIMATION CSS */
 
 .history-details-content {
+    padding: 0;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
@@ -134,6 +127,7 @@
         max-height 0.25s ease,
         opacity 0.2s ease,
         transform 0.2s ease;
+    will-change: max-height, opacity, transform;
 }
 
 .history-details-content.is-open {
@@ -141,4 +135,11 @@
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
+}
+
+.history-details-panel {
+    background-color: #181a1f;
+    border-left: 3px solid #0d6efd;
+    border-bottom: 1px solid #333;
+    padding: 0.75rem 1rem;
 }
