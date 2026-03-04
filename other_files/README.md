@@ -85,8 +85,8 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **All functionality implemented or mocked out** - I did not complete this part of the deliverable.
-- [ ] **Hooks** - I did not complete this part of the deliverable.
+- [x] **All functionality implemented or mocked out** - Yep! All of the workouts are created from logger and stored in localStorage. As is username. Websocket data is just randomly generated for right now.
+- [x] **Hooks** - I used React.useState and React.useEffect.
 
 ## 🚀 Service deliverable
 
