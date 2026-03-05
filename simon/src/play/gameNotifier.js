@@ -21,7 +21,7 @@ class GameEventNotifier {
     setInterval(() => {
       const score = Math.floor(Math.random() * 3000);
       const date = new Date().toLocaleDateString();
-      const userName = 'Eich';
+      const userName = 'Berners-Lee';
       this.broadcastEvent(userName, GameEvent.End, { name: userName, score: score, date: date });
     }, 5000);
   }
@@ -42,8 +42,10 @@ class GameEventNotifier {
   receiveEvent(event) {
     this.events.push(event);
 
-    this.handlers.forEach((handler) => {
-      handler(event);
+    this.events.forEach((e) => {
+      this.handlers.forEach((handler) => {
+        handler(e);
+      });
     });
   }
 }

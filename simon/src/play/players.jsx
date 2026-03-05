@@ -14,16 +14,10 @@ export function Players(props) {
     return () => {
       GameNotifier.removeHandler(handleGameEvent);
     };
-  }, []);
+  });
 
   function handleGameEvent(event) {
-    setEvent((prevEvents) => {
-      let newEvents = [event, ...prevEvents];
-      if (newEvents.length > 10) {
-        newEvents = newEvents.slice(1, 10);
-      }
-      return newEvents;
-    });
+    setEvent([...events, event]);
   }
 
   function createMessageArray() {

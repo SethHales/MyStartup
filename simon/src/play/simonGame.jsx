@@ -84,37 +84,14 @@ export function SimonGame(props) {
     const date = new Date().toLocaleDateString();
     const newScore = { name: userName, score: score, date: date };
 
+    await fetch('/api/score', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(newScore),
+    });
+
     // Let other players know the game has concluded
     GameNotifier.broadcastEvent(userName, GameEvent.End, newScore);
-
-    updateScoresLocal(newScore);
-  }
-
-  function updateScoresLocal(newScore) {
-    let scores = [];
-    const scoresText = localStorage.getItem('scores');
-    if (scoresText) {
-      scores = JSON.parse(scoresText);
-    }
-
-    let found = false;
-    for (const [i, prevScore] of scores.entries()) {
-      if (newScore.score > prevScore.score) {
-        scores.splice(i, 0, newScore);
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      scores.push(newScore);
-    }
-
-    if (scores.length > 10) {
-      scores.length = 10;
-    }
-
-    localStorage.setItem('scores', JSON.stringify(scores));
   }
 
   // We use React refs so the game can drive button press events
