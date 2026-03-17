@@ -11,7 +11,7 @@ let users = [];
 let workouts = [];
 
 // The service port. In production the front-end code is statically hosted by the service on the same port.
-const port = process.argv.length > 2 ? process.argv[2] : 3000;
+const port = process.argv.length > 2 ? process.argv[2] : 4000;
 
 // JSON body parsing using built-in middleware
 app.use(express.json());
@@ -72,15 +72,25 @@ const verifyAuth = async (req, res, next) => {
   }
 };
 
-// GetScores
-apiRouter.get('/workouts', verifyAuth, (_req, res) => {
-  res.send(workouts);
+// Workouts
+apiRouter.get('/workouts', verifyAuth, (req, res) => {
+  const userWorkouts = workouts.filter((w) => w.userEmail === req.user.email);
+  res.send(userWorkouts);
 });
 
-// SubmitScore
-apiRouter.post('/score', verifyAuth, (req, res) => {
-  workouts = updateScores(req.body);
-  res.send(workouts);
+// Save a new workout
+apiRouter.post('/workouts', verifyAuth, (req, res) => {
+  const newWorkout = {
+    id: uuid.v4(),
+    userEmail: req.user.email,
+    date: req.body.date,
+    exercise: req.body.exercise,
+    notes: req.body.notes,
+    sets: req.body.sets || [],
+  };
+
+  workouts.push(newWorkout);
+  res.send(newWorkout);
 });
 
 // Default error handler
@@ -93,27 +103,6 @@ app.use((_req, res) => {
   res.sendFile('index.html', { root: 'public' });
 });
 
-// updateScores considers a new score for inclusion in the high workouts.
-function addWorkout(newScore) {
-  let found = false;
-  for (const [i, prevScore] of workouts.entries()) {
-    if (newScore.score > prevScore.score) {
-      workouts.splice(i, 0, newScore);
-      found = true;
-      break;
-    }
-  }
-
-  if (!found) {
-    workouts.push(newScore);
-  }
-
-  if (workouts.length > 10) {
-    workouts.length = 10;
-  }
-
-  return workouts;
-}
 
 async function createUser(email, password) {
   const passwordHash = await bcrypt.hash(password, 10);
