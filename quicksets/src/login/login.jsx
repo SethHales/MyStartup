@@ -5,44 +5,72 @@ import { useNavigate } from "react-router-dom";
 export function Login({ setCurrentUser }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [mode, setMode] = React.useState("login");
   const [isLoading, setIsLoading] = React.useState(false);
 
   const navigate = useNavigate();
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  // -------- LOGIN --------
+  const handleLogin = async () => {
     setIsLoading(true);
 
     try {
-      const endpoint =
-        mode === "login" ? "/api/auth/login" : "/api/auth/create";
-
-      const response = await fetch(endpoint, {
+      const response = await fetch('/api/auth/login', {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
       if (!response.ok) {
         const body = await response.json();
-        alert(body.msg || "Something went wrong");
+        alert(body.msg || "Login failed");
         return;
       }
 
       const user = await response.json();
 
-      console.log(
-        mode === "login" ? "Logged in:" : "Created user:",
-        user
-      );
+      console.log("Logged in:", user);
 
       setCurrentUser(user);
       navigate("/logger");
     } catch (err) {
-      console.error("Auth request failed:", err);
+      console.error("Login failed:", err);
+      alert("Unable to connect to server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // -------- SIGNUP --------
+  const handleSignup = async () => {
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/create', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json();
+        alert(body.msg || "Signup failed");
+        return;
+      }
+
+      const user = await response.json();
+
+      console.log("Created user:", user);
+
+      setCurrentUser(user);
+      navigate("/logger");
+    } catch (err) {
+      console.error("Signup failed:", err);
       alert("Unable to connect to server");
     } finally {
       setIsLoading(false);
@@ -51,7 +79,7 @@ export function Login({ setCurrentUser }) {
 
   return (
     <main className="login-page">
-      <form className="login-card" onSubmit={handleSubmit}>
+      <div className="login-card">
         <label>
           Email
           <input
@@ -74,30 +102,22 @@ export function Login({ setCurrentUser }) {
 
         <div className="button-options">
           <button
-            type="button"
             className="login-button"
-            onClick={() => setMode("login")}
+            onClick={handleLogin}
+            disabled={isLoading}
           >
-            Log In Mode
+            Log In
           </button>
 
           <button
-            type="button"
             className="signup-button"
-            onClick={() => setMode("signup")}
+            onClick={handleSignup}
+            disabled={isLoading}
           >
-            Sign Up Mode
+            Sign Up
           </button>
         </div>
-
-        <button type="submit" className="submit-button" disabled={isLoading}>
-          {isLoading
-            ? "Please wait..."
-            : mode === "login"
-            ? "Log In"
-            : "Sign Up"}
-        </button>
-      </form>
+      </div>
 
       <a className="github-link" href="https://github.com/SethHales/MyStartup">
         GitHub
