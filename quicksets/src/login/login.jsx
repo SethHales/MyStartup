@@ -1,91 +1,53 @@
 import React from 'react';
 import "./login.css";
-import {useNavigate} from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 export function Login({ setCurrentUser }) {
-  const [email, setEmail] = React.useState("")
-  const [password, setPassword] = React.useState("")
-  const [mode, setMode] = React.useState("login")
-
-  const USERS_KEY = "quicksets.users"
-  const CURRENT_USER_KEY = "quicksets.currentUser"
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [mode, setMode] = React.useState("login");
+  const [isLoading, setIsLoading] = React.useState(false);
 
   const navigate = useNavigate();
 
-  function getUsers() {
-    const raw = localStorage.getItem(USERS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  }
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setIsLoading(true);
 
-  function saveUsers(users) {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  }
+    try {
+      const endpoint =
+        mode === "login" ? "/api/auth/login" : "/api/auth/create";
 
-  const handleSubmit = (event) => {
-    event.preventDefault()
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const userInfo = {
-      email,
-      password
-    }
-
-    if (mode === "login") {
-      const users = getUsers()
-
-      const user = users.find(u => u.email === email && u.password === password)
-
-      if (!user) {
-        alert("Invalid email or password")
-        return
-      }
-
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user))
-      
-      console.log("Logged in:", user)
-      
-      setCurrentUser(user)
-      navigate("/logger")
-    } else if (mode === "signup") {
-      const users = getUsers();
-
-      const existingUser = users.find(u => u.email === email)
-
-      if (existingUser) {
-        alert("User already exists.")
+      if (!response.ok) {
+        const body = await response.json();
+        alert(body.msg || "Something went wrong");
         return;
       }
 
-      const newUser = {
-        id: Date.now(),
-        email,
-        password,
-      }
+      const user = await response.json();
 
-      saveUsers([...users, newUser])
+      console.log(
+        mode === "login" ? "Logged in:" : "Created user:",
+        user
+      );
 
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(newUser))
-
-      console.log("Created user:", newUser)
-     
-      setCurrentUser(newUser)
-      navigate("/logger")
+      setCurrentUser(user);
+      navigate("/logger");
+    } catch (err) {
+      console.error("Auth request failed:", err);
+      alert("Unable to connect to server");
+    } finally {
+      setIsLoading(false);
     }
-
-    // try {
-    //   const existingRaw = localStorage.getItem(WORKOUTS_KEY)
-    //   const existing = existingRaw ? JSON.parse(existingRaw) : []
-
-    //   const updated = [...existing, workout]
-
-    //   localStorage.setItem(WORKOUTS_KEY, JSON.stringify(updated))
-
-    //   console.log("Updated workouts in local storage:", updated)
-
-    // } catch (err) {
-    //   console.error("Failed to update workouts in local storage:", err)
-    // }
-
-  }
+  };
 
   return (
     <main className="login-page">
@@ -95,28 +57,51 @@ export function Login({ setCurrentUser }) {
           <input
             type="email"
             value={email}
-            onChange={(e) =>
-              setEmail(e.target.value)
-            }
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
         </label>
+
         <label>
           Password
           <input
             type="password"
             value={password}
-            onChange={(e) =>
-              setPassword(e.target.value)
-            }
-            required />
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
         </label>
+
         <div className="button-options">
-          <button onClick={() => setMode("login")} type="submit" className="login-button">Log In</button>
-          <button onClick={() => setMode("signup")} type="submit" className="signup-button">Sign Up</button>
+          <button
+            type="button"
+            className="login-button"
+            onClick={() => setMode("login")}
+          >
+            Log In Mode
+          </button>
+
+          <button
+            type="button"
+            className="signup-button"
+            onClick={() => setMode("signup")}
+          >
+            Sign Up Mode
+          </button>
         </div>
+
+        <button type="submit" className="submit-button" disabled={isLoading}>
+          {isLoading
+            ? "Please wait..."
+            : mode === "login"
+            ? "Log In"
+            : "Sign Up"}
+        </button>
       </form>
-      <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
+
+      <a className="github-link" href="https://github.com/SethHales/MyStartup">
+        GitHub
+      </a>
     </main>
   );
 }
