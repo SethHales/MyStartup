@@ -7,23 +7,27 @@ export function History() {
   const [workouts, setWorkouts] = React.useState([])
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null)
   React.useEffect(() => {
-    try {
-      const stored = localStorage.getItem(WORKOUTS_KEY)
-      if (!stored) {
-        return
-      }
+    fetch('/api/workouts', {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            return [];
+          }
+          throw new Error('Failed to fetch workouts');
+        }
+        return response.json();
+      })
+      .then((userWorkouts) => {
+        setWorkouts(userWorkouts);
+      })
+      .catch((err) => {
+        console.error('Error loading workouts:', err);
+      });
+  }, []);
 
-      const parsed = JSON.parse(stored)
-
-      if (Array.isArray(parsed)) {
-        setWorkouts(parsed)
-      } else {
-        console.warn("Stored workouts is not an array")
-      }
-    } catch (err) {
-      console.error("Failed to load workouts from localStorage:", err)
-    }
-  }, [])
   const handleRowClick = (id) => {
     setExpandedWorkoutId((current) =>
       current === id ? null : id

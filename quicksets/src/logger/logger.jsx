@@ -13,8 +13,8 @@ export function Logger() {
 
   const [sets, setSets] = React.useState([]);
   const [date, setDate] = React.useState(getTodayLocal());
-  const [exercise, setExercise] = React.useState([]);
-  const [notes, setNotes] = React.useState([]);
+  const [exercise, setExercise] = React.useState("");
+  const [notes, setNotes] = React.useState("");
   const [messages, setMessages] = React.useState([]);
 
   const mockMessages = [
@@ -75,11 +75,10 @@ export function Logger() {
     ))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     const workout = {
-      id: Date.now(),
       date,
       exercise,
       notes,
@@ -88,23 +87,32 @@ export function Logger() {
     console.log("Saving workout:\n", workout)
 
     try {
-      const existingRaw = localStorage.getItem(WORKOUTS_KEY)
-      const existing = existingRaw ? JSON.parse(existingRaw) : []
 
-      const updated = [...existing, workout]
+      const response = await fetch('/api/workouts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(workout),
+        credentials: 'include',
+      });
 
-      localStorage.setItem(WORKOUTS_KEY, JSON.stringify(updated))
+      if (!response.ok) {
+        const body = await response.json();
+        alert(body.msg || 'Failed to save workout');
+        return;
+      }
 
-      console.log("Updated workouts in local storage:", updated)
+      const savedWorkout = await response.json();
+      console.log('Saved workout:', savedWorkout);
 
+      setDate(getTodayLocal())
+      setExercise("")
+      setNotes("")
+      setSets([])
     } catch (err) {
-      console.error("Failed to update workouts in local storage:", err)
+      console.error("Failed to update workouts in service:", err)
     }
 
-    setDate(getTodayLocal())
-    setExercise("")
-    setNotes("")
-    setSets([])
+
   }
 
 

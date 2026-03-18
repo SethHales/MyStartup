@@ -66,6 +66,7 @@ apiRouter.delete('/auth/logout', async (req, res) => {
 const verifyAuth = async (req, res, next) => {
   const user = await findUser('token', req.cookies[authCookieName]);
   if (user) {
+    req.user = user;
     next();
   } else {
     res.status(401).send({ msg: 'Unauthorized' });
@@ -92,6 +93,11 @@ apiRouter.post('/workouts', verifyAuth, (req, res) => {
   workouts.push(newWorkout);
   res.send(newWorkout);
 });
+
+// Get current email
+apiRouter.get('/user/me', verifyAuth, (req, res) => {
+  res.send({email: req.user.email})
+})
 
 // Default error handler
 app.use(function (err, req, res, next) {

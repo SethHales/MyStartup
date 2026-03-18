@@ -104,7 +104,7 @@ export function Login({ setCurrentUser }) {
           <button
             className="login-button"
             onClick={handleLogin}
-            disabled={isLoading}
+            disabled={isLoading || !email || !password}
           >
             Log In
           </button>
@@ -112,7 +112,7 @@ export function Login({ setCurrentUser }) {
           <button
             className="signup-button"
             onClick={handleSignup}
-            disabled={isLoading}
+            disabled={isLoading || !email || !password}
           >
             Sign Up
           </button>

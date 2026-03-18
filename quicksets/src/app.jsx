@@ -2,11 +2,23 @@ import React from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './app.css';
 
-import { BrowserRouter, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom';
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
 import { Profile } from './profile/profile';
+
+function ProtectedRoute({ currentUser, isAuthChecked, children }) {
+    if (!isAuthChecked) {
+        return <p>Loading...</p>;
+    }
+
+    if (!currentUser) {
+        return <Navigate to="/" replace />;
+    }
+
+    return children;
+}
 
 function Header({ currentUser }) {
     const location = useLocation();
@@ -42,11 +54,32 @@ function Header({ currentUser }) {
 }
 
 export default function App() {
-    const CURRENT_USER_KEY = "quicksets.currentUser"
-    const [currentUser, setCurrentUser] = React.useState(() => {
-        const stored = localStorage.getItem(CURRENT_USER_KEY)
-        return stored ? JSON.parse(stored) : null
-    })
+    const [currentUser, setCurrentUser] = React.useState(null);
+    const [isAuthChecked, setIsAuthChecked] = React.useState(false);
+    React.useEffect(() => {
+        async function loadUser() {
+            try {
+                const response = await fetch('/api/user/me', {
+                    method: 'GET',
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    setCurrentUser(user);
+                } else {
+                    setCurrentUser(null);
+                }
+            } catch (err) {
+                console.error('Failed to load current user:', err);
+                setCurrentUser(null);
+            } finally {
+                setIsAuthChecked(true);
+            }
+        }
+
+        loadUser();
+    }, []);
 
     return (
         <BrowserRouter>
@@ -54,11 +87,43 @@ export default function App() {
                 <Header currentUser={currentUser} />
 
                 <Routes>
-                    <Route path='/' element={<Login setCurrentUser={setCurrentUser} />} />
-                    <Route path='/history' element={<History />} />
-                    <Route path='/logger' element={<Logger />} />
-                    <Route path='/profile' element={<Profile />} />
-                    <Route path='*' element={<NotFound />} />
+                    <Route
+                        path="/"
+                        element={<Login setCurrentUser={setCurrentUser} />}
+                    />
+
+                    <Route
+                        path="/logger"
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <Logger />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/history"
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <History />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/profile"
+                        element={
+                            <NotFound />
+                        }
+                    />
+                    <Route
+                        path="("
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <Profile currentUser={currentUser} />
+                            </ProtectedRoute>
+                        }
+                    />
                 </Routes>
 
                 <footer>
