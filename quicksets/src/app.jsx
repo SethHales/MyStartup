@@ -2,7 +2,7 @@ import React from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './app.css';
 
-import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
@@ -20,11 +20,26 @@ function ProtectedRoute({ currentUser, isAuthChecked, children }) {
     return children;
 }
 
-function Header({ currentUser }) {
+function Header({ currentUser, setCurrentUser }) {
     const location = useLocation();
 
-    let title = "";
+    const navigate = useNavigate();
 
+    const handleLogout = async () => {
+        try {
+            await fetch('/api/auth/logout', {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+        } catch (err) {
+            console.error("Logout failed:", err);
+        }
+
+        setCurrentUser(null);
+        navigate("/");
+    };
+    let title = "";
+    const isLoginPage = location.pathname === "/";
     switch (location.pathname) {
         case "/":
             title = "LOGIN";
@@ -48,7 +63,13 @@ function Header({ currentUser }) {
         <header>
             <img src="/images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
             <h1>{title}</h1>
-            <p>{currentUser ? `Welcome, ${currentUser.email}` : "UNKNOWN"}</p>
+
+            {currentUser && !isLoginPage && (
+                <div className="user-section">
+                    <p>Welcome, {currentUser.email}</p>
+                    <button onClick={handleLogout}>Logout</button>
+                </div>
+            )}
         </header>
     );
 }
@@ -84,7 +105,7 @@ export default function App() {
     return (
         <BrowserRouter>
             <div className="app">
-                <Header currentUser={currentUser} />
+                <Header currentUser={currentUser} setCurrentUser={setCurrentUser} />
 
                 <Routes>
                     <Route
