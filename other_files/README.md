@@ -92,12 +92,12 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **Node.js/Express HTTP service** - I did not complete this part of the deliverable.
-- [ ] **Static middleware for frontend** - I did not complete this part of the deliverable.
-- [ ] **Calls to third party endpoints** - I did not complete this part of the deliverable.
-- [ ] **Backend service endpoints** - I did not complete this part of the deliverable.
-- [ ] **Frontend calls service endpoints** - I did not complete this part of the deliverable.
-- [ ] **Supports registration, login, logout, and restricted endpoint** - I did not complete this part of the deliverable.
+- [x] **Node.js/Express HTTP service** - Yep!
+- [x] **Static middleware for frontend** - This is all working properly!
+- [x] **Calls to third party endpoints** - Calls to simon's same quote service on my profile tab. I will make so that you can also upload workouts from garmin, but I didn't have time today.
+- [x] **Backend service endpoints** - I created service endpoints that would replace localStorage workflow.
+- [x] **Frontend calls service endpoints** - Yep! All of the stuff that was handled in localStorage is now handled in the backend using those service endpoints.
+- [x] **Supports registration, login, logout, and restricted endpoint** - Yep! If you're not logged in, you can't navigate to logger, history, or profile.
 
 ## 🚀 DB deliverable
 
