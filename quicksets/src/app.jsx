@@ -109,19 +109,19 @@ export default function App() {
                             </ProtectedRoute>
                         }
                     />
-
                     <Route
                         path="/profile"
-                        element={
-                            <NotFound />
-                        }
-                    />
-                    <Route
-                        path="("
                         element={
                             <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
                                 <Profile currentUser={currentUser} />
                             </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="*"
+                        element={
+                            <NotFound />
                         }
                     />
                 </Routes>
