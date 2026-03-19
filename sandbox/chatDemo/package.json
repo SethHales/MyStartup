@@ -1,22 +1,21 @@
 {
-  "name": "login",
+  "name": "chatdemo",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "vite",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vite"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "vite": "^7.3.1"
+    "vite": "^8.0.1"
   },
   "dependencies": {
     "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.13.1"
+    "react-dom": "^19.2.4"
   }
 }
