@@ -115,6 +115,13 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 - [x] **Node.js/Express HTTP service** - Installed Express with NPM. Default port on 4000.js`.
 - [x] **Static middleware for frontend** - Simple endpoints in `service/index`.
 - [x] **Calls to third party endpoints** - About page calls `quote.cs260.click`, renders the resulting JSON with React.
-- [x] **Backend service endpoints** - Simple endpoints in `service/index` for auth and scores.
+- [x] **Backend service endpoints** - Simple endpoints in `service/index` for auth and scores. Persists to memory until I get database support.
 - [x] **Frontend calls service endpoints** - All mocked functionality removed from the frontend and replaced with calls to the service.
 - [x] **Supports registration, login, logout, and restricted endpoint** - Fully support authentication and restrict access to scores.
+
+## 🚀 DB/Login deliverable
+
+For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
+
+- [x] **Stores data in MongoDB** - Scores stored in MongoDB from `service/database.js`.
+- [x] **Stores credentials in MongoDB** - Auth stored in MongoDB from `service/database.js`.

@@ -30,11 +30,17 @@ export function About(props) {
       .catch();
   }, []);
 
+  let imgEl = '';
+
+  if (imageUrl) {
+    imgEl = <img src={imageUrl} alt='stock background' />;
+  }
+
   return (
     <main className='container-fluid bg-secondary text-center'>
       <div>
         <div id='picture' className='picture-box'>
-          <img src={imageUrl} alt='stock background' />
+          {imgEl}
         </div>
 
         <p>Simon is a repetitive memory game where you follow the demonstrated color sequence until you make a mistake. The longer the sequence you repeat, the greater your score.</p>
