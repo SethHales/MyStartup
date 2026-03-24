@@ -98,7 +98,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     sets: req.body.sets || [],
   };
 
-  await workoutColledtion.insertOne(newWorkout);
+  await workoutCollection.insertOne(newWorkout);
   res.send(newWorkout);
 });
 
