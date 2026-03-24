@@ -6,9 +6,8 @@ const app = express();
 
 const authCookieName = 'token';
 
-// The workouts and users are saved in memory and disappear whenever the service is restarted.
-let users = [];
-let workouts = [];
+// The workouts and users are saved in mongo
+const { userCollection, workoutCollection } = require('./database');
 
 // The service port. In production the front-end code is statically hosted by the service on the same port.
 const port = process.argv.length > 2 ? process.argv[2] : 4000;
@@ -44,6 +43,11 @@ apiRouter.post('/auth/login', async (req, res) => {
   if (user) {
     if (await bcrypt.compare(req.body.password, user.password)) {
       user.token = uuid.v4();
+      await userCollection.updateOne(
+        { email: user.email },
+        { $set: { token: user.token } }
+      );
+
       setAuthCookie(res, user.token);
       res.send({ email: user.email });
       return;
@@ -56,7 +60,10 @@ apiRouter.post('/auth/login', async (req, res) => {
 apiRouter.delete('/auth/logout', async (req, res) => {
   const user = await findUser('token', req.cookies[authCookieName]);
   if (user) {
-    delete user.token;
+    await userCollection.updateOne(
+      { email: user.email },
+      { $unset: { token: "" } }
+    );
   }
   res.clearCookie(authCookieName);
   res.status(204).end();
@@ -74,13 +81,14 @@ const verifyAuth = async (req, res, next) => {
 };
 
 // Workouts
-apiRouter.get('/workouts', verifyAuth, (req, res) => {
-  const userWorkouts = workouts.filter((w) => w.userEmail === req.user.email);
+apiRouter.get('/workouts', verifyAuth, async (req, res) => {
+  const cursor = workoutCollection.find({ userEmail: req.user.email });
+  const userWorkouts = await cursor.toArray();
   res.send(userWorkouts);
 });
 
 // Save a new workout
-apiRouter.post('/workouts', verifyAuth, (req, res) => {
+apiRouter.post('/workouts', verifyAuth, async (req, res) => {
   const newWorkout = {
     id: uuid.v4(),
     userEmail: req.user.email,
@@ -90,13 +98,13 @@ apiRouter.post('/workouts', verifyAuth, (req, res) => {
     sets: req.body.sets || [],
   };
 
-  workouts.push(newWorkout);
+  await workoutColledtion.insertOne(newWorkout);
   res.send(newWorkout);
 });
 
 // Get current email
 apiRouter.get('/user/me', verifyAuth, (req, res) => {
-  res.send({email: req.user.email})
+  res.send({ email: req.user.email })
 })
 
 // Default error handler
@@ -118,7 +126,7 @@ async function createUser(email, password) {
     password: passwordHash,
     token: uuid.v4(),
   };
-  users.push(user);
+  await userCollection.insertOne(user);
 
   return user;
 }
@@ -126,7 +134,7 @@ async function createUser(email, password) {
 async function findUser(field, value) {
   if (!value) return null;
 
-  return users.find((u) => u[field] === value);
+  return await userCollection.findOne({ [field]: value });
 }
 
 // setAuthCookie in the HTTP response
