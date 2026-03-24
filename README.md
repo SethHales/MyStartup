@@ -103,8 +103,8 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **Stores data in MongoDB** - I did not complete this part of the deliverable.
-- [ ] **Stores credentials in MongoDB** - I did not complete this part of the deliverable.
+- [x] **Stores data in MongoDB** - Workouts are stored in MongoDB and persist even when the service is restarted.
+- [x] **Stores credentials in MongoDB** - Also stores credentials (tokens, emails, hashed passwords) in MongoDB.
 
 ## 🚀 WebSocket deliverable
 
