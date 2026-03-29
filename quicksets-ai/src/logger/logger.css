@@ -67,13 +67,108 @@
 .section-header p,
 .template-preview-copy,
 .empty-template-note,
-.template-eyebrow {
+.template-eyebrow,
+.empty-sets-state span {
     margin: 0;
     color: rgba(253, 253, 255, 0.7);
 }
 
 .workout-form table {
     width: 100%;
+}
+
+.set-actions-header {
+    width: 64px;
+}
+
+.set-actions-cell {
+    text-align: right;
+}
+
+.set-actions-menu {
+    position: relative;
+    display: inline-flex;
+    justify-content: flex-end;
+}
+
+.set-menu-trigger {
+    border: 1px solid #3a3d42;
+    background: #202123;
+    color: #fdfdff;
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.set-menu-popover {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 140px;
+    background: #202123;
+    border: 1px solid #3a3d42;
+    border-radius: 12px;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.35);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    z-index: 2;
+}
+
+.set-menu-item {
+    border: none;
+    background: transparent;
+    color: #fdfdff;
+    text-align: left;
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+}
+
+.set-menu-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.set-menu-item.delete {
+    color: #ff8d8d;
+}
+
+.add-set-button {
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4da3ff 0%, #0d6efd 100%);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 0.95rem 1.35rem;
+    min-width: 180px;
+    box-shadow: 0 14px 32px rgba(13, 110, 253, 0.35);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.add-set-button:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+    box-shadow: 0 18px 36px rgba(13, 110, 253, 0.4);
+}
+
+.add-set-button:active {
+    transform: translateY(1px);
+}
+
+.empty-sets-state {
+    border: 1px dashed rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    padding: 1.1rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.empty-sets-state p {
+    margin: 0 0 0.3rem 0;
+    font-weight: 600;
 }
 
 .template-modal-backdrop {
@@ -98,6 +193,10 @@
     flex-direction: column;
     gap: 1.5rem;
     overflow-y: auto;
+}
+
+.set-modal {
+    width: min(760px, 100%);
 }
 
 .template-modal-header,
@@ -128,7 +227,8 @@
     gap: 1.25rem;
 }
 
-.template-field-grid {
+.template-field-grid,
+.set-modal-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 0.75rem;
@@ -164,5 +264,9 @@
 
     .template-modal-backdrop {
         padding: 1rem;
+    }
+
+    .add-set-button {
+        width: 100%;
     }
 }

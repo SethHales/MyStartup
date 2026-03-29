@@ -5,15 +5,68 @@
     align-items: flex-start;
 }
 
+.history-filter-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid #343a46;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #191b20 0%, #15171b 100%);
+}
+
+.history-filter-bar label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.88rem;
+}
+
+.history-filter-bar select {
+    background: #17181a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 0.55rem 0.65rem;
+    color: #fdfdff;
+}
+
+.history-empty-state {
+    border: 1px dashed rgba(255, 255, 255, 0.18);
+    border-radius: 12px;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.history-empty-state p {
+    margin: 0;
+    color: rgba(253, 253, 255, 0.75);
+}
+
 .import-hint {
     font-size: 0.85rem;
     opacity: 0.7;
 }
 
+.history-month-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.history-month-heading {
+    padding-top: 0.5rem;
+    border-top: 1px solid #343a46;
+}
+
+.history-month-heading h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    letter-spacing: 0.02em;
+}
+
 .history-table {
     width: 100%;
     border-collapse: collapse;
-
     --bs-table-bg: #17181a;
     --bs-table-color: #e9edf5;
     --bs-table-border-color: #343a46;
@@ -25,7 +78,7 @@
 
 .history-table th,
 .history-table td {
-    padding: 0.4rem;
+    padding: 0.55rem;
     text-align: center;
     border-bottom: 1px solid #333;
 }
@@ -43,7 +96,65 @@
     background-color: #101010;
 }
 
-/* Detail row: acts like a little panel under the row */
+.workout-actions-header {
+    width: 64px;
+}
+
+.workout-actions-cell {
+    text-align: right;
+}
+
+.workout-actions-menu {
+    position: relative;
+    display: inline-flex;
+    justify-content: flex-end;
+}
+
+.workout-menu-trigger {
+    border: 1px solid #3a3d42;
+    background: #202123;
+    color: #fdfdff;
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.workout-menu-popover {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 140px;
+    background: #202123;
+    border: 1px solid #3a3d42;
+    border-radius: 12px;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.35);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    z-index: 5;
+}
+
+.workout-menu-item {
+    border: none;
+    background: transparent;
+    color: #fdfdff;
+    text-align: left;
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+}
+
+.workout-menu-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.workout-menu-item.delete {
+    color: #ff8d8d;
+}
+
 .history-row-details>td {
     background-color: transparent;
     padding: 0;
@@ -52,7 +163,6 @@
     border-left: none;
 }
 
-/* Inner sets table: elevated dark panel */
 .inner-sets-table {
     width: 100%;
     border-collapse: separate;
@@ -63,7 +173,6 @@
     border: 1px solid #393e47;
     border-radius: 12px;
     background: linear-gradient(180deg, #1e2128 0%, #171a20 100%);
-    /* box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35); */
 }
 
 .inner-sets-table thead th {
@@ -113,9 +222,6 @@
     opacity: 0.7;
 }
 
-
-/* ANIMATION CSS */
-
 .history-details-content {
     padding: 0;
     max-height: 0;
@@ -131,7 +237,7 @@
 }
 
 .history-details-content.is-open {
-    max-height: 400px; /* just needs to be "big enough" */
+    max-height: 400px;
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
@@ -142,4 +248,130 @@
     border-left: 3px solid #0d6efd;
     border-bottom: 1px solid #333;
     padding: 0.75rem 1rem;
+}
+
+.history-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 10, 0.88);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    padding: 2rem;
+    z-index: 1000;
+}
+
+.history-modal {
+    width: min(920px, 100%);
+    background: linear-gradient(180deg, #202123 0%, #161719 100%);
+    border: 1px solid #333;
+    border-radius: 20px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+}
+
+.history-modal-header,
+.history-modal-actions,
+.history-modal-panel-header,
+.history-edit-set-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.history-modal-header h2,
+.history-modal-panel-header h3 {
+    margin: 0;
+}
+
+.history-modal-eyebrow,
+.history-empty-edit-message {
+    margin: 0;
+    color: rgba(253, 253, 255, 0.7);
+}
+
+.history-modal-eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.78rem;
+}
+
+.history-close-button,
+.history-delete-set-button {
+    border: 1px solid #444;
+    background: transparent;
+    color: #fdfdff;
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+}
+
+.history-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.history-modal-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.history-modal-form input,
+.history-modal-form textarea {
+    background: #17181a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.5rem;
+    color: #fdfdff;
+}
+
+.history-modal-panel {
+    background: #17181a;
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.history-edit-sets {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.history-edit-set-card {
+    border: 1px solid #343a46;
+    border-radius: 12px;
+    padding: 0.9rem;
+    background: rgba(255, 255, 255, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.history-edit-set-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+    .history-modal-backdrop {
+        padding: 1rem;
+    }
+
+    .history-modal-header,
+    .history-modal-actions,
+    .history-modal-panel-header,
+    .history-edit-set-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
 }

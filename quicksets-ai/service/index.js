@@ -87,6 +87,54 @@ apiRouter.get('/workouts', verifyAuth, async (req, res) => {
   res.send(userWorkouts);
 });
 
+apiRouter.put('/workouts/:id', verifyAuth, async (req, res) => {
+  const existingWorkout = await workoutCollection.findOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (!existingWorkout) {
+    res.status(404).send({ msg: 'Workout not found' });
+    return;
+  }
+
+  const date = typeof req.body.date === 'string' ? req.body.date : existingWorkout.date;
+  const notes = existingWorkout.fields?.notes && typeof req.body.notes === 'string'
+    ? req.body.notes
+    : '';
+  const sets = Array.isArray(req.body.sets)
+    ? req.body.sets.map((set, index) => sanitizeSet(set, existingWorkout.fields || {}, index))
+    : existingWorkout.sets;
+
+  const updatedWorkout = {
+    ...existingWorkout,
+    date,
+    notes,
+    sets,
+  };
+
+  await workoutCollection.updateOne(
+    { id: existingWorkout.id, userEmail: req.user.email },
+    { $set: { date, notes, sets } }
+  );
+
+  res.send(updatedWorkout);
+});
+
+apiRouter.delete('/workouts/:id', verifyAuth, async (req, res) => {
+  const result = await workoutCollection.deleteOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (result.deletedCount === 0) {
+    res.status(404).send({ msg: 'Workout not found' });
+    return;
+  }
+
+  res.status(204).end();
+});
+
 apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
   const cursor = workoutTemplateCollection.find({ userEmail: req.user.email });
   const templates = await cursor.toArray();
@@ -215,6 +263,7 @@ function sanitizeFields(fields) {
     reps: Boolean(fields?.reps),
     weight: Boolean(fields?.weight),
     duration: Boolean(fields?.duration),
+    distance: Boolean(fields?.distance),
     notes: Boolean(fields?.notes),
   };
 }
@@ -225,6 +274,7 @@ function sanitizeSet(set, fields, index) {
     ...(fields.reps ? { reps: `${set?.reps ?? ''}` } : {}),
     ...(fields.weight ? { weight: `${set?.weight ?? ''}` } : {}),
     ...(fields.duration ? { duration: `${set?.duration ?? ''}` } : {}),
+    ...(fields.distance ? { distance: `${set?.distance ?? ''}` } : {}),
   };
 }
 

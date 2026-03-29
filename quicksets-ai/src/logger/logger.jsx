@@ -13,6 +13,7 @@ const defaultTemplateFields = {
   reps: true,
   weight: true,
   duration: false,
+  distance: false,
   notes: true,
 };
 
@@ -20,6 +21,7 @@ const templateFieldOptions = [
   { key: "reps", label: "Reps", inputType: "number", placeholder: "10" },
   { key: "weight", label: "Weight", inputType: "number", placeholder: "135" },
   { key: "duration", label: "Time", inputType: "text", placeholder: "00:30" },
+  { key: "distance", label: "Distance", inputType: "number", placeholder: "1.5" },
 ];
 
 function getTodayLocal() {
@@ -36,6 +38,7 @@ function buildEmptySet(fields, nextId) {
     ...(fields.reps ? { reps: "" } : {}),
     ...(fields.weight ? { weight: "" } : {}),
     ...(fields.duration ? { duration: "" } : {}),
+    ...(fields.distance ? { distance: "" } : {}),
   };
 }
 
@@ -46,6 +49,7 @@ function normalizeTemplate(template) {
       reps: Boolean(template?.fields?.reps),
       weight: Boolean(template?.fields?.weight),
       duration: Boolean(template?.fields?.duration),
+      distance: Boolean(template?.fields?.distance),
       notes: Boolean(template?.fields?.notes),
     },
   };
@@ -53,6 +57,7 @@ function normalizeTemplate(template) {
 
 export function Logger() {
   const [templates, setTemplates] = React.useState([]);
+  const [savedWorkouts, setSavedWorkouts] = React.useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState("");
   const [selectedTemplate, setSelectedTemplate] = React.useState(null);
 
@@ -61,8 +66,12 @@ export function Logger() {
   const [notes, setNotes] = React.useState("");
   const [messages, setMessages] = React.useState([]);
   const [showTemplateModal, setShowTemplateModal] = React.useState(false);
+  const [showSetModal, setShowSetModal] = React.useState(false);
+  const [editingSetId, setEditingSetId] = React.useState(null);
+  const [openSetMenuId, setOpenSetMenuId] = React.useState(null);
   const [newTemplateName, setNewTemplateName] = React.useState("");
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
+  const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
 
   React.useEffect(() => {
     let isMounted = true;
@@ -91,11 +100,40 @@ export function Logger() {
         if (normalizedTemplates.length > 0) {
           setSelectedTemplateId(normalizedTemplates[0].id);
           setSelectedTemplate(normalizedTemplates[0]);
-          setSets(createInitialSets(normalizedTemplates[0].fields));
         }
       })
       .catch((err) => {
         console.error('Error loading workout templates:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    fetch('/api/workouts', {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            return [];
+          }
+          throw new Error('Failed to fetch workouts');
+        }
+        return response.json();
+      })
+      .then((workouts) => {
+        if (isMounted) {
+          setSavedWorkouts(workouts);
+        }
+      })
+      .catch((err) => {
+        console.error('Error loading workout history:', err);
       });
 
     return () => {
@@ -142,27 +180,71 @@ export function Logger() {
     setSelectedTemplateId(nextTemplateId);
     setSelectedTemplate(template);
     setNotes("");
-    setSets(createInitialSets(template?.fields));
+    setSets([]);
   };
 
-  const handleAddSet = () => {
+  const openAddSetModal = () => {
     if (!selectedTemplate) {
       return;
     }
 
-    setSets((prevSets) => [
-      ...prevSets,
-      buildEmptySet(selectedTemplate.fields, prevSets.length + 1),
-    ]);
+    const nextId = sets.length + 1;
+    const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts);
+    setEditingSetId(null);
+    setOpenSetMenuId(null);
+    setPendingSet({
+      id: nextId,
+      ...defaults,
+    });
+    setShowSetModal(true);
   };
 
-  const handleSetChange = (id, field, value) => {
+  const openEditSetModal = (setToEdit) => {
+    setEditingSetId(setToEdit.id);
+    setOpenSetMenuId(null);
+    setPendingSet({
+      id: setToEdit.id,
+      ...copyTrackedFields(setToEdit, selectedTemplate.fields),
+    });
+    setShowSetModal(true);
+  };
+
+  const closeSetModal = () => {
+    setShowSetModal(false);
+    setEditingSetId(null);
+    setPendingSet(buildEmptySet(selectedTemplate?.fields || defaultTemplateFields, sets.length + 1));
+  };
+
+  const handlePendingSetChange = (field, value) => {
+    setPendingSet((currentSet) => ({
+      ...currentSet,
+      [field]: value,
+    }));
+  };
+
+  const handleConfirmAddSet = (event) => {
+    event.preventDefault();
+    if (editingSetId !== null) {
+      setSets((prevSets) =>
+        prevSets.map((set) =>
+          set.id === editingSetId
+            ? { ...set, ...copyTrackedFields(pendingSet, selectedTemplate.fields) }
+            : set
+        )
+      );
+    } else {
+      setSets((prevSets) => [...prevSets, pendingSet]);
+    }
+    setShowSetModal(false);
+    setEditingSetId(null);
+  };
+
+  const handleDeleteSet = (setId) => {
+    setOpenSetMenuId(null);
     setSets((prevSets) =>
-      prevSets.map((set) =>
-        set.id === id
-          ? { ...set, [field]: value }
-          : set
-      )
+      prevSets
+        .filter((set) => set.id !== setId)
+        .map((set, index) => ({ ...set, id: index + 1 }))
     );
   };
 
@@ -199,7 +281,7 @@ export function Logger() {
       setTemplates((prevTemplates) => [...prevTemplates, createdTemplate]);
       setSelectedTemplateId(createdTemplate.id);
       setSelectedTemplate(createdTemplate);
-      setSets(createInitialSets(createdTemplate.fields));
+      setSets([]);
       setNotes("");
 
       setNewTemplateName("");
@@ -250,9 +332,10 @@ export function Logger() {
         return;
       }
 
+      setSavedWorkouts((prevWorkouts) => [...prevWorkouts, body]);
       setDate(getTodayLocal());
       setNotes("");
-      setSets(createInitialSets(selectedTemplate.fields));
+      setSets([]);
     } catch (err) {
       console.error("Failed to update workouts in service:", err);
     }
@@ -300,46 +383,83 @@ export function Logger() {
           {selectedTemplate && activeSetFields.length > 0 && (
             <section>
               <div className="section-header">
-                <h3>Sets</h3>
-                <p>{selectedTemplate.name} always tracks these fields.</p>
+                <div>
+                  <h3>Sets</h3>
+                  <p>{selectedTemplate.name} always tracks these fields.</p>
+                </div>
+                <button
+                  type="button"
+                  className="add-set-button"
+                  onClick={openAddSetModal}
+                >
+                  + Add Set
+                </button>
               </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    {activeSetFields.map((field) => (
-                      <th key={field.key}>{field.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sets.map((set) => (
-                    <tr key={set.id}>
-                      <td>{set.id}</td>
-                      {activeSetFields.map((field) => (
-                        <td key={field.key}>
-                          <input
-                            type={field.inputType}
-                            value={set[field.key] ?? ""}
-                            placeholder={field.placeholder}
-                            onChange={(event) =>
-                              handleSetChange(set.id, field.key, event.target.value)
-                            }
-                          />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
 
-              <button
-                type="button"
-                className="btn btn-outline-secondary btn-sm"
-                onClick={handleAddSet}
-              >
-                + Add Set
-              </button>
+              {sets.length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      {activeSetFields.map((field) => (
+                        <th key={field.key}>{field.label}</th>
+                      ))}
+                      <th className="set-actions-header"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sets.map((set) => (
+                      <tr key={set.id}>
+                        <td>{set.id}</td>
+                        {activeSetFields.map((field) => (
+                          <td key={field.key}>{set[field.key] ?? ""}</td>
+                        ))}
+                        <td className="set-actions-cell">
+                          <div className="set-actions-menu">
+                            <button
+                              type="button"
+                              className="set-menu-trigger"
+                              aria-label={`Manage set ${set.id}`}
+                              onClick={() =>
+                                setOpenSetMenuId((currentId) =>
+                                  currentId === set.id ? null : set.id
+                                )
+                              }
+                            >
+                              ...
+                            </button>
+                            {openSetMenuId === set.id && (
+                              <div className="set-menu-popover">
+                                <button
+                                  type="button"
+                                  className="set-menu-item"
+                                  onClick={() => openEditSetModal(set)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="set-menu-item delete"
+                                  onClick={() => handleDeleteSet(set.id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-sets-state">
+                  <p>No sets logged yet.</p>
+                  <span>
+                    The add-set modal will preload the last values you used for this workout.
+                  </span>
+                </div>
+              )}
             </section>
           )}
 
@@ -422,12 +542,7 @@ export function Logger() {
               <div className="template-preview">
                 <p className="template-preview-title">Preview</p>
                 <p className="template-preview-copy">
-                  {newTemplateName.trim() || "Your new workout"} will save
-                  {newTemplateFields.reps ? " reps" : ""}
-                  {newTemplateFields.weight ? `${newTemplateFields.reps ? "," : ""} weight` : ""}
-                  {newTemplateFields.duration ? `${newTemplateFields.reps || newTemplateFields.weight ? "," : ""} duration` : ""}
-                  {newTemplateFields.notes ? `${newTemplateFields.reps || newTemplateFields.weight || newTemplateFields.duration ? "," : ""} notes` : ""}
-                  .
+                  {formatTemplatePreview(newTemplateName, newTemplateFields)}
                 </p>
               </div>
 
@@ -443,18 +558,109 @@ export function Logger() {
           </div>
         </div>
       )}
+
+      {showSetModal && selectedTemplate && (
+        <div className="template-modal-backdrop" role="presentation">
+          <div className="template-modal set-modal" role="dialog" aria-modal="true" aria-labelledby="add-set-title">
+            <div className="template-modal-header">
+              <div>
+                <p className="template-eyebrow">New Set</p>
+                <h2 id="add-set-title">Add a set for {selectedTemplate.name}</h2>
+              </div>
+              <button type="button" className="template-close-button" onClick={closeSetModal}>
+                Close
+              </button>
+            </div>
+
+            <form className="template-modal-form" onSubmit={handleConfirmAddSet}>
+              <section className="template-fields-panel">
+                <div className="section-header">
+                  <h3>{editingSetId !== null ? `Edit Set #${pendingSet.id}` : `Set #${pendingSet.id}`}</h3>
+                  <p>Fields are prefilled from your most recent matching set when available.</p>
+                </div>
+                <div className="set-modal-grid">
+                  {activeSetFields.map((field) => (
+                    <label key={field.key}>
+                      {field.label}
+                      <input
+                        type={field.inputType}
+                        value={pendingSet[field.key] ?? ""}
+                        placeholder={field.placeholder}
+                        onChange={(event) => handlePendingSetChange(field.key, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <div className="template-modal-actions">
+                <button type="button" className="btn btn-outline-light" onClick={closeSetModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingSetId !== null ? "Save Changes" : "Save Set"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function createInitialSets(fields) {
-  if (!fields) {
-    return [];
+function getDefaultSetValues(selectedTemplate, currentSets, savedWorkouts) {
+  if (!selectedTemplate) {
+    return {};
   }
 
-  if (!fields.reps && !fields.weight && !fields.duration) {
-    return [];
+  if (currentSets.length > 0) {
+    const lastCurrentSet = currentSets[currentSets.length - 1];
+    return copyTrackedFields(lastCurrentSet, selectedTemplate.fields);
   }
 
-  return [buildEmptySet(fields, 1)];
+  const previousSet = findLastSavedSet(savedWorkouts, selectedTemplate);
+  if (previousSet) {
+    return copyTrackedFields(previousSet, selectedTemplate.fields);
+  }
+
+  return buildEmptySet(selectedTemplate.fields, 1);
+}
+
+function findLastSavedSet(savedWorkouts, selectedTemplate) {
+  for (let index = savedWorkouts.length - 1; index >= 0; index -= 1) {
+    const workout = savedWorkouts[index];
+    const isMatchingWorkout = workout.templateId === selectedTemplate.id
+      || workout.templateName === selectedTemplate.name
+      || workout.exercise === selectedTemplate.name;
+
+    if (!isMatchingWorkout || !Array.isArray(workout.sets) || workout.sets.length === 0) {
+      continue;
+    }
+
+    return workout.sets[workout.sets.length - 1];
+  }
+
+  return null;
+}
+
+function copyTrackedFields(sourceSet, fields) {
+  return {
+    ...(fields.reps ? { reps: sourceSet?.reps ?? "" } : {}),
+    ...(fields.weight ? { weight: sourceSet?.weight ?? "" } : {}),
+    ...(fields.duration ? { duration: sourceSet?.duration ?? "" } : {}),
+    ...(fields.distance ? { distance: sourceSet?.distance ?? "" } : {}),
+  };
+}
+
+function formatTemplatePreview(name, fields) {
+  const selectedFields = [
+    fields.reps && "reps",
+    fields.weight && "weight",
+    fields.duration && "duration",
+    fields.distance && "distance",
+    fields.notes && "notes",
+  ].filter(Boolean);
+
+  return `${name.trim() || "Your new workout"} will save ${selectedFields.join(", ")}.`;
 }
