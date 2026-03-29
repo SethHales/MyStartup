@@ -1,0 +1,172 @@
+import React from 'react';
+import 'bootstrap/dist/css/bootstrap.min.css';
+import './app.css';
+
+import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Login } from './login/login';
+import { History } from './history/history';
+import { Logger } from './logger/logger';
+import { Profile } from './profile/profile';
+
+function ProtectedRoute({ currentUser, isAuthChecked, children }) {
+    if (!isAuthChecked) {
+        return <p>Loading...</p>;
+    }
+
+    if (!currentUser) {
+        return <Navigate to="/" replace />;
+    }
+
+    return children;
+}
+
+function Header({ currentUser, setCurrentUser }) {
+    const location = useLocation();
+
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        try {
+            await fetch('/api/auth/logout', {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+        } catch (err) {
+            console.error("Logout failed:", err);
+        }
+
+        setCurrentUser(null);
+        navigate("/");
+    };
+    let title = "";
+    const isLoginPage = location.pathname === "/";
+    switch (location.pathname) {
+        case "/":
+            title = "LOGIN";
+            break;
+        case "/history":
+            title = "HISTORY";
+            break;
+        case "/logger":
+            title = "LOGGER";
+            break;
+        case "/profile":
+            title = "PROFILE";
+            break;
+        default:
+            title = "QuickSets";
+    }
+
+
+
+    return (
+        <header>
+            <img src="/images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
+            <h1>{title}</h1>
+
+            {currentUser && !isLoginPage && (
+                <div className="user-section">
+                    <p>Welcome, {currentUser.email}</p>
+                    <button onClick={handleLogout}>Logout</button>
+                </div>
+            )}
+        </header>
+    );
+}
+
+export default function App() {
+    const [currentUser, setCurrentUser] = React.useState(null);
+    const [isAuthChecked, setIsAuthChecked] = React.useState(false);
+    React.useEffect(() => {
+        async function loadUser() {
+            try {
+                const response = await fetch('/api/user/me', {
+                    method: 'GET',
+                    credentials: 'include',
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    setCurrentUser(user);
+                } else {
+                    setCurrentUser(null);
+                }
+            } catch (err) {
+                console.error('Failed to load current user:', err);
+                setCurrentUser(null);
+            } finally {
+                setIsAuthChecked(true);
+            }
+        }
+
+        loadUser();
+    }, []);
+
+    return (
+        <BrowserRouter>
+            <div className="app">
+                <Header currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+                <Routes>
+                    <Route
+                        path="/"
+                        element={<Login setCurrentUser={setCurrentUser} />}
+                    />
+
+                    <Route
+                        path="/logger"
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <Logger />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="/history"
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <History />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/profile"
+                        element={
+                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                                <Profile currentUser={currentUser} />
+                            </ProtectedRoute>
+                        }
+                    />
+
+                    <Route
+                        path="*"
+                        element={
+                            <NotFound />
+                        }
+                    />
+                </Routes>
+
+                <footer>
+                    <nav className="tab-menu">
+                        <NavLink to="/logger" className="tab">
+                            Logger
+                        </NavLink>
+
+                        <NavLink to="/history" className="tab">
+                            History
+                        </NavLink>
+
+                        <NavLink to="/profile" className="tab">
+                            Profile
+                        </NavLink>
+                    </nav>
+                </footer>
+            </div>
+        </BrowserRouter>
+    );
+}
+
+function NotFound() {
+    return <main className="container-fluid bg-secondary text-center">404: Return to sender. Address unknown.</main>;
+}

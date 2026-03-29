@@ -1,0 +1,145 @@
+.import-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-start;
+}
+
+.import-hint {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+
+    --bs-table-bg: #17181a;
+    --bs-table-color: #e9edf5;
+    --bs-table-border-color: #343a46;
+    --bs-table-striped-bg: #222733;
+    --bs-table-hover-bg: #1d1e20;
+    --bs-table-striped-color: #eef2fa;
+    --bs-table-hover-color: #ffffff;
+}
+
+.history-table th,
+.history-table td {
+    padding: 0.4rem;
+    text-align: center;
+    border-bottom: 1px solid #333;
+}
+
+.history-table th {
+    font-weight: 600;
+    opacity: 0.8;
+}
+
+.history-row>td {
+    transition: background-color 0.15s ease, transform 0.08s ease;
+}
+
+.history-row-expanded>td {
+    background-color: #101010;
+}
+
+/* Detail row: acts like a little panel under the row */
+.history-row-details>td {
+    background-color: transparent;
+    padding: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+}
+
+/* Inner sets table: elevated dark panel */
+.inner-sets-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid #393e47;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #1e2128 0%, #171a20 100%);
+    /* box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35); */
+}
+
+.inner-sets-table thead th {
+    background-color: #2b3039;
+    color: #f4f6fa;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-bottom: 1px solid #393e47;
+}
+
+.inner-sets-table th,
+.inner-sets-table td {
+    border: none;
+    padding: 0.45rem 0.65rem;
+    text-align: center;
+}
+
+.inner-sets-table tbody td {
+    color: #d7dbe4;
+}
+
+.inner-sets-table tbody tr:nth-child(even) td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.inner-sets-table tbody tr:nth-child(odd) td {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.inner-sets-table tbody tr:hover td {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.inner-sets-table tbody tr+tr td {
+    border-top: 1px solid #2d323a;
+}
+
+.inner-sets-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.no-sets-message {
+    margin: 0;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+
+/* ANIMATION CSS */
+
+.history-details-content {
+    padding: 0;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition:
+        max-height 0.25s ease,
+        opacity 0.2s ease,
+        transform 0.2s ease;
+    will-change: max-height, opacity, transform;
+}
+
+.history-details-content.is-open {
+    max-height: 400px; /* just needs to be "big enough" */
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.history-details-panel {
+    background-color: #181a1f;
+    border-left: 3px solid #0d6efd;
+    border-bottom: 1px solid #333;
+    padding: 0.75rem 1rem;
+}
