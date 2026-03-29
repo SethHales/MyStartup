@@ -1,25 +1,317 @@
-section {
-    background: #17181a;
-    border-radius: 8px;
-    padding: 1rem;
+.profile-layout {
+    gap: 1rem;
+}
+
+.profile-hero,
+.profile-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+    padding: 0.95rem;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.8rem;
 }
 
-h3 {
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+.profile-hero {
+    background:
+        radial-gradient(circle at top right, rgba(77, 163, 255, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(27, 31, 40, 0.98) 0%, rgba(19, 21, 27, 0.98) 100%);
 }
 
-ul {
-    list-style: none;
+.profile-kicker,
+.panel-kicker {
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.76rem;
+    color: var(--text-soft);
+}
+
+.profile-hero h2,
+.panel-header h3,
+.trend-card-header h4 {
+    margin: 0;
+}
+
+.profile-subcopy,
+.panel-muted,
+.trend-card-header p,
+.panel-empty,
+.chart-empty {
+    margin: 0;
+    color: var(--text-muted);
+}
+
+.profile-meta-grid,
+.metric-grid,
+.trend-grid,
+.consistency-layout {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.profile-meta-grid,
+.metric-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.trend-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.consistency-layout {
+    grid-template-columns: 1.4fr 1fr;
+}
+
+.profile-meta-card,
+.metric-card,
+.trend-card {
+    background: var(--bg-panel-strong);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 0.8rem;
+}
+
+.profile-meta-card,
+.metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.profile-meta-card span,
+.metric-card span {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+}
+
+.profile-meta-card strong,
+.metric-card strong {
+    font-size: 0.98rem;
+    color: var(--text-main);
+}
+
+.metric-card-accent {
+    background: linear-gradient(180deg, rgba(77, 163, 255, 0.16) 0%, rgba(29, 33, 41, 0.96) 100%);
+    border-color: rgba(77, 163, 255, 0.32);
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.workout-select {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    min-width: 180px;
+    font-size: 0.84rem;
 }
 
-ul li span {
-    font-weight: 500;
-    color: #88c2ff;
+.workout-select select {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 0.55rem 0.65rem;
+    color: var(--text-main);
+}
+
+.workout-select select:focus {
+    outline: none;
+    border-color: rgba(77, 163, 255, 0.5);
+    box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.12);
+}
+
+.trend-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.trend-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.line-chart-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.line-chart {
+    width: 100%;
+    height: 132px;
+}
+
+.line-chart-path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 10px rgba(77, 163, 255, 0.18));
+}
+
+.chart-axis-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-soft);
+}
+
+.bar-chart {
+    display: flex;
+    align-items: end;
+    gap: 0.45rem;
+    min-height: 156px;
+}
+
+.bar-chart-column {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.bar-chart-value {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.bar-chart-track {
+    width: 100%;
+    height: 108px;
+    display: flex;
+    align-items: end;
+}
+
+.bar-chart-fill {
+    width: 100%;
+    border-radius: 10px 10px 4px 4px;
+    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+    min-height: 6px;
+}
+
+.bar-chart-label {
+    font-size: 0.7rem;
+    text-align: center;
+    color: var(--text-soft);
+}
+
+.heatmap {
+    display: flex;
+    gap: 0.6rem;
+    overflow-x: auto;
+}
+
+.heatmap-days,
+.heatmap-week {
+    display: grid;
+    grid-template-rows: repeat(7, 16px);
+    gap: 4px;
+}
+
+.heatmap-days span {
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    display: flex;
+    align-items: center;
+}
+
+.heatmap-weeks {
+    display: flex;
+    gap: 4px;
+}
+
+.heatmap-cell {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background: #24272d;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.heatmap-cell.intensity-1 {
+    background: rgba(77, 163, 255, 0.35);
+}
+
+.heatmap-cell.intensity-2 {
+    background: rgba(77, 163, 255, 0.62);
+}
+
+.heatmap-cell.intensity-3 {
+    background: var(--accent);
+}
+
+@media (max-width: 800px) {
+    .consistency-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .profile-hero,
+    .profile-panel {
+        padding: 0.8rem;
+        gap: 0.7rem;
+    }
+
+    .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .workout-select {
+        min-width: 0;
+    }
+
+    .profile-meta-grid,
+    .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .trend-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-subcopy,
+    .panel-muted,
+    .trend-card-header p,
+    .chart-empty {
+        font-size: 0.78rem;
+    }
+
+    .line-chart {
+        height: 118px;
+    }
+
+    .bar-chart {
+        min-height: 144px;
+    }
+
+    .bar-chart-track {
+        height: 96px;
+    }
+
+    .heatmap {
+        gap: 0.45rem;
+    }
+
+    .heatmap-days,
+    .heatmap-week {
+        grid-template-rows: repeat(7, 14px);
+    }
+
+    .heatmap-cell {
+        width: 14px;
+        height: 14px;
+    }
 }

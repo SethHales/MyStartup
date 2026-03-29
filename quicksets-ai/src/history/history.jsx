@@ -177,6 +177,11 @@ export function History() {
     <main>
       <section className="main-formatting">
         <section className="history-filter-bar">
+          <div className="history-filter-copy">
+            <p className="history-kicker">History</p>
+            <h2>{filteredWorkouts.length} workout{filteredWorkouts.length === 1 ? "" : "s"}</h2>
+            <p className="history-summary">{groupedWorkouts.length} month{groupedWorkouts.length === 1 ? "" : "s"}</p>
+          </div>
           <label>
             Workout
             <select value={workoutFilter} onChange={(event) => setWorkoutFilter(event.target.value)}>
@@ -208,7 +213,7 @@ export function History() {
 
         {groupedWorkouts.length === 0 && (
           <section className="history-empty-state">
-            <p>No workouts match the current filters.</p>
+            <p>No matches.</p>
           </section>
         )}
 
@@ -302,7 +307,7 @@ export function History() {
                               </table>
                             ) : (
                               <p className="no-sets-message">
-                                No sets saved for this workout.
+                                No sets saved.
                               </p>
                             )}
                           </div>
@@ -392,7 +397,7 @@ export function History() {
                   </div>
                 ) : (
                   <p className="history-empty-edit-message">
-                    No sets saved yet for this workout.
+                    No sets yet.
                   </p>
                 )}
               </section>

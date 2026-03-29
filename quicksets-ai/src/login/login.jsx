@@ -79,6 +79,11 @@ export function Login({ setCurrentUser }) {
 
   return (
     <main className="login-page">
+      <section className="login-hero">
+        <p className="login-kicker">QuickSets</p>
+        <h2>Train with clarity.</h2>
+      </section>
+
       <div className="login-card">
         <label>
           Email
@@ -117,6 +122,8 @@ export function Login({ setCurrentUser }) {
             Sign Up
           </button>
         </div>
+
+        <p className="login-hint">Demo: <strong>blah@blah.com</strong> / <strong>blah</strong></p>
       </div>
 
       <a className="github-link" href="https://github.com/SethHales/MyStartup">

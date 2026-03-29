@@ -66,7 +66,7 @@ function Header({ currentUser, setCurrentUser }) {
 
             {currentUser && !isLoginPage && (
                 <div className="user-section">
-                    <p>Welcome, {currentUser.email}</p>
+                    <p>{currentUser.email}</p>
                     <button onClick={handleLogout}>Logout</button>
                 </div>
             )}

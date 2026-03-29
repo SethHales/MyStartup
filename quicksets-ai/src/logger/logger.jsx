@@ -344,6 +344,13 @@ export function Logger() {
   return (
     <main>
       <div className="main-formatting">
+        <section className="logger-hero">
+          <div>
+            <p className="logger-kicker">Logger</p>
+            <h2>Log today&apos;s workout.</h2>
+          </div>
+        </section>
+
         <section className="live-feed">
           <p className="feed-title">Live Feed</p>
           {messages.map((message) => (
@@ -385,7 +392,7 @@ export function Logger() {
               <div className="section-header">
                 <div>
                   <h3>Sets</h3>
-                  <p>{selectedTemplate.name} always tracks these fields.</p>
+                  <p>{selectedTemplate.name}</p>
                 </div>
                 <button
                   type="button"
@@ -455,9 +462,7 @@ export function Logger() {
               ) : (
                 <div className="empty-sets-state">
                   <p>No sets logged yet.</p>
-                  <span>
-                    The add-set modal will preload the last values you used for this workout.
-                  </span>
+                  <span>New sets reuse your last numbers.</span>
                 </div>
               )}
             </section>
@@ -515,7 +520,7 @@ export function Logger() {
               <section className="template-fields-panel">
                 <div className="section-header">
                   <h3>Choose the fields you want every time</h3>
-                  <p>You can mix set fields and workout-level notes.</p>
+                  <p>Pick what this workout tracks.</p>
                 </div>
                 <div className="template-field-grid">
                   {templateFieldOptions.map((field) => (
@@ -576,7 +581,7 @@ export function Logger() {
               <section className="template-fields-panel">
                 <div className="section-header">
                   <h3>{editingSetId !== null ? `Edit Set #${pendingSet.id}` : `Set #${pendingSet.id}`}</h3>
-                  <p>Fields are prefilled from your most recent matching set when available.</p>
+                  <p>Prefilled from your latest matching set.</p>
                 </div>
                 <div className="set-modal-grid">
                   {activeSetFields.map((field) => (
