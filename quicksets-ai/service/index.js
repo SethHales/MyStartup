@@ -144,6 +144,7 @@ apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
 apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const fields = sanitizeFields(req.body.fields);
+  const measurements = sanitizeMeasurements(req.body.measurements);
 
   if (!name) {
     res.status(400).send({ msg: 'Workout name is required' });
@@ -152,6 +153,11 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
 
   if (!Object.values(fields).some(Boolean)) {
     res.status(400).send({ msg: 'Select at least one field for this workout' });
+    return;
+  }
+
+  if (!fields.reps && !fields.weight && !fields.duration && !fields.distance) {
+    res.status(400).send({ msg: 'Select at least one set field for this workout' });
     return;
   }
 
@@ -171,10 +177,75 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
     name,
     normalizedName: name.toLowerCase(),
     fields,
+    measurements,
   };
 
   await workoutTemplateCollection.insertOne(template);
   res.send(template);
+});
+
+apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
+  const existingTemplate = await workoutTemplateCollection.findOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (!existingTemplate) {
+    res.status(404).send({ msg: 'Workout template not found' });
+    return;
+  }
+
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  const fields = sanitizeFields(req.body.fields);
+  const measurements = sanitizeMeasurements(req.body.measurements);
+
+  if (!name) {
+    res.status(400).send({ msg: 'Workout name is required' });
+    return;
+  }
+
+  if (!fields.reps && !fields.weight && !fields.duration && !fields.distance) {
+    res.status(400).send({ msg: 'Select at least one set field for this workout' });
+    return;
+  }
+
+  const conflictingTemplate = await workoutTemplateCollection.findOne({
+    userEmail: req.user.email,
+    normalizedName: name.toLowerCase(),
+    id: { $ne: existingTemplate.id },
+  });
+
+  if (conflictingTemplate) {
+    res.status(409).send({ msg: 'A workout with that name already exists' });
+    return;
+  }
+
+  const updatedTemplate = {
+    ...existingTemplate,
+    name,
+    normalizedName: name.toLowerCase(),
+    fields,
+    measurements,
+  };
+
+  await workoutTemplateCollection.updateOne(
+    { id: existingTemplate.id, userEmail: req.user.email },
+    { $set: { name, normalizedName: name.toLowerCase(), fields, measurements } }
+  );
+
+  await workoutCollection.updateMany(
+    { templateId: existingTemplate.id, userEmail: req.user.email },
+    {
+      $set: {
+        templateName: name,
+        exercise: name,
+        fields,
+        measurements,
+      },
+    }
+  );
+
+  res.send(updatedTemplate);
 });
 
 // Save a new workout
@@ -184,6 +255,11 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     id: templateId,
     userEmail: req.user.email,
   });
+
+  if (typeof req.body.date !== 'string' || !req.body.date) {
+    res.status(400).send({ msg: 'Pick a date before saving' });
+    return;
+  }
 
   if (!template) {
     res.status(400).send({ msg: 'Select a registered workout before saving' });
@@ -197,6 +273,11 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     ? req.body.sets.map((set, index) => sanitizeSet(set, template.fields, index))
     : [];
 
+  if (sets.length === 0) {
+    res.status(400).send({ msg: 'Add at least one set before saving' });
+    return;
+  }
+
   const newWorkout = {
     id: uuid.v4(),
     userEmail: req.user.email,
@@ -205,6 +286,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     templateName: template.name,
     exercise: template.name,
     fields: template.fields,
+    measurements: sanitizeMeasurements(template.measurements),
     notes,
     sets,
   };
@@ -265,6 +347,18 @@ function sanitizeFields(fields) {
     duration: Boolean(fields?.duration),
     distance: Boolean(fields?.distance),
     notes: Boolean(fields?.notes),
+  };
+}
+
+function sanitizeMeasurements(measurements) {
+  return {
+    reps: 'default',
+    weight: measurements?.weight === 'kgs' ? 'kgs' : 'lbs',
+    duration: 'hh:mm:ss',
+    distance: ['miles', 'kms', 'meters', 'feet'].includes(measurements?.distance)
+      ? measurements.distance
+      : 'miles',
+    notes: 'default',
   };
 }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import "./history.css";
+import { Dropdown } from "../components/dropdown";
 
 const setFieldColumns = [
   { key: 'reps', label: 'Reps', inputType: 'number', placeholder: '10' },
@@ -184,30 +185,39 @@ export function History() {
           </div>
           <label>
             Workout
-            <select value={workoutFilter} onChange={(event) => setWorkoutFilter(event.target.value)}>
-              <option value="all">All workouts</option>
-              {workoutOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <Dropdown
+              value={workoutFilter}
+              onChange={setWorkoutFilter}
+              options={[
+                { value: 'all', label: 'All workouts' },
+                ...workoutOptions.map((option) => ({ value: option, label: option })),
+              ]}
+              ariaLabel="Workout filter"
+            />
           </label>
           <label>
             Month
-            <select value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)}>
-              <option value="all">All months</option>
-              {monthNames.map((month, index) => (
-                <option key={month} value={String(index)}>{month}</option>
-              ))}
-            </select>
+            <Dropdown
+              value={monthFilter}
+              onChange={setMonthFilter}
+              options={[
+                { value: 'all', label: 'All months' },
+                ...monthNames.map((month, index) => ({ value: String(index), label: month })),
+              ]}
+              ariaLabel="Month filter"
+            />
           </label>
           <label>
             Year
-            <select value={yearFilter} onChange={(event) => setYearFilter(event.target.value)}>
-              <option value="all">All years</option>
-              {yearOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <Dropdown
+              value={yearFilter}
+              onChange={setYearFilter}
+              options={[
+                { value: 'all', label: 'All years' },
+                ...yearOptions.map((option) => ({ value: option, label: option })),
+              ]}
+              ariaLabel="Year filter"
+            />
           </label>
         </section>
 
@@ -225,97 +235,102 @@ export function History() {
             <table className="history-table table table-dark table-hover">
               <thead>
                 <tr>
-                  <th>Date</th>
                   <th>Workout</th>
                   <th>Notes</th>
                   <th className="workout-actions-header"></th>
                 </tr>
               </thead>
               <tbody>
-                {group.workouts.map((workout) =>
-                  <React.Fragment key={workout.id}>
-                    <tr
-                      onClick={() => handleRowClick(workout.id)}
-                      className={workout.id === expandedWorkoutId ? "history-row-expanded history-row" : "history-row"}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <td>{formatWorkoutDate(workout.date)}</td>
-                      <td>{workout.templateName || workout.exercise}</td>
-                      <td>{workout.notes}</td>
-                      <td
-                        className="workout-actions-cell"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <div className="workout-actions-menu">
-                          <button
-                            type="button"
-                            className="workout-menu-trigger"
-                            aria-label={`Manage workout ${workout.templateName || workout.exercise}`}
-                            onClick={() =>
-                              setOpenWorkoutMenuId((currentId) =>
-                                currentId === workout.id ? null : workout.id
-                              )
-                            }
-                          >
-                            ...
-                          </button>
-                          {openWorkoutMenuId === workout.id && (
-                            <div className="workout-menu-popover">
-                              <button
-                                type="button"
-                                className="workout-menu-item"
-                                onClick={() => openEditModal(workout)}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="workout-menu-item delete"
-                                onClick={() => handleDeleteWorkout(workout.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </td>
+                {group.days.map((dayGroup) => (
+                  <React.Fragment key={dayGroup.key}>
+                    <tr className="history-day-row">
+                      <td colSpan={3}>{dayGroup.label}</td>
                     </tr>
-                    <tr className={expandedWorkoutId === workout.id ? "history-row-details is-open" : "history-row-details"}>
-                      <td colSpan={4}>
-                        <div className={expandedWorkoutId === workout.id ? "history-details-content is-open" : "history-details-content"}>
-                          <div className="history-details-panel">
-                            {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
-                              <table className="inner-sets-table">
-                                <thead>
-                                  <tr>
-                                    <th>#</th>
-                                    {getVisibleFields(workout).map((field) => (
-                                      <th key={field.key}>{field.label}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {workout.sets.map((set, index) => (
-                                    <tr key={set.id ?? index}>
-                                      <td>{set.id ?? index + 1}</td>
+                    {dayGroup.workouts.map((workout) => (
+                      <React.Fragment key={workout.id}>
+                        <tr
+                          onClick={() => handleRowClick(workout.id)}
+                          className={workout.id === expandedWorkoutId ? "history-row-expanded history-row" : "history-row"}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <td>{workout.templateName || workout.exercise}</td>
+                          <td>{workout.notes}</td>
+                          <td
+                            className="workout-actions-cell"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <div className="workout-actions-menu">
+                              <button
+                                type="button"
+                                className="workout-menu-trigger"
+                                aria-label={`Manage workout ${workout.templateName || workout.exercise}`}
+                                onClick={() =>
+                                  setOpenWorkoutMenuId((currentId) =>
+                                    currentId === workout.id ? null : workout.id
+                                  )
+                                }
+                              >
+                                ...
+                              </button>
+                              {openWorkoutMenuId === workout.id && (
+                                <div className="workout-menu-popover">
+                                  <button
+                                    type="button"
+                                    className="workout-menu-item"
+                                    onClick={() => openEditModal(workout)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="workout-menu-item delete"
+                                    onClick={() => handleDeleteWorkout(workout.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        <tr className={expandedWorkoutId === workout.id ? "history-row-details is-open" : "history-row-details"}>
+                          <td colSpan={3}>
+                            <div className={expandedWorkoutId === workout.id ? "history-details-content is-open" : "history-details-content"}>
+                              <div className="history-details-panel">
+                                {Array.isArray(workout.sets) && workout.sets.length > 0 ? (
+                                  <table className="inner-sets-table">
+                                    <thead>
+                                    <tr>
+                                      <th>#</th>
                                       {getVisibleFields(workout).map((field) => (
-                                        <td key={field.key}>{set[field.key]}</td>
+                                        <th key={field.key}>{getFieldLabel(field, workout.measurements)}</th>
                                       ))}
                                     </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            ) : (
-                              <p className="no-sets-message">
-                                No sets saved.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+                                    </thead>
+                                    <tbody>
+                                      {workout.sets.map((set, index) => (
+                                        <tr key={set.id ?? index}>
+                                          <td>{set.id ?? index + 1}</td>
+                                          {getVisibleFields(workout).map((field) => (
+                                            <td key={field.key}>{set[field.key]}</td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                ) : (
+                                  <p className="no-sets-message">
+                                    No sets saved.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      </React.Fragment>
+                    ))}
                   </React.Fragment>
-                )}
+                ))}
               </tbody>
             </table>
           </section>
@@ -382,13 +397,20 @@ export function History() {
                         <div className="history-edit-set-grid">
                           {getVisibleFields(draftWorkout).map((field) => (
                             <label key={field.key}>
-                              {field.label}
-                              <input
-                                type={field.inputType || 'text'}
-                                value={set[field.key] ?? ''}
-                                placeholder={field.placeholder || ''}
-                                onChange={(event) => handleDraftSetChange(set.id, field.key, event.target.value)}
-                              />
+                              {getFieldLabel(field, draftWorkout.measurements)}
+                              <div className="input-with-unit">
+                                <input
+                                  type={field.inputType || 'text'}
+                                  value={set[field.key] ?? ''}
+                                  placeholder={field.placeholder || ''}
+                                  onChange={(event) => handleDraftSetChange(set.id, field.key, event.target.value)}
+                                />
+                                {getFieldUnitSuffix(field, draftWorkout.measurements) && (
+                                  <span className="input-unit">
+                                    {getFieldUnitSuffix(field, draftWorkout.measurements)}
+                                  </span>
+                                )}
+                              </div>
                             </label>
                           ))}
                         </div>
@@ -479,15 +501,28 @@ function groupWorkoutsByMonth(workouts) {
 
     if (!groupMap.has(key)) {
       const label = year === currentYear ? month : `${month} ${year}`;
-      const group = { key, label, workouts: [] };
+      const group = { key, label, days: [], dayMap: new Map() };
       groupMap.set(key, group);
       groups.push(group);
     }
 
-    groupMap.get(key).workouts.push(workout);
+    const monthGroup = groupMap.get(key);
+    const dayKey = workout.date;
+
+    if (!monthGroup.dayMap.has(dayKey)) {
+      const dayGroup = {
+        key: dayKey,
+        label: formatWorkoutDate(workout.date),
+        workouts: [],
+      };
+      monthGroup.dayMap.set(dayKey, dayGroup);
+      monthGroup.days.push(dayGroup);
+    }
+
+    monthGroup.dayMap.get(dayKey).workouts.push(workout);
   });
 
-  return groups;
+  return groups.map(({ dayMap, ...group }) => group);
 }
 
 function formatWorkoutDate(dateValue) {
@@ -537,4 +572,51 @@ function buildDraftSet(fields, id) {
     ...(fields?.duration ? { duration: '' } : {}),
     ...(fields?.distance ? { distance: '' } : {}),
   };
+}
+
+function getFieldLabel(field, measurements) {
+  if (field.key === 'weight') {
+    return `Weight (${formatMeasurementLabel(measurements?.weight, 'LBs')})`;
+  }
+
+  if (field.key === 'distance') {
+    return `Distance (${formatMeasurementLabel(measurements?.distance, 'Miles')})`;
+  }
+
+  if (field.key === 'duration') {
+    return 'Time (HH:MM:SS)';
+  }
+
+  return field.label;
+}
+
+function formatMeasurementLabel(value, fallback) {
+  switch (value) {
+    case 'kgs':
+      return 'kg';
+    case 'kms':
+      return 'km';
+    case 'meters':
+      return 'm';
+    case 'feet':
+      return 'ft';
+    case 'miles':
+      return 'mi';
+    case 'lbs':
+      return 'lbs';
+    default:
+      return fallback;
+  }
+}
+
+function getFieldUnitSuffix(field, measurements) {
+  if (field.key === 'weight') {
+    return formatMeasurementLabel(measurements?.weight, 'lbs');
+  }
+
+  if (field.key === 'distance') {
+    return formatMeasurementLabel(measurements?.distance, 'mi');
+  }
+
+  return '';
 }

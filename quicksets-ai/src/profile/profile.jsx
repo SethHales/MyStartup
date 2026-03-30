@@ -1,5 +1,6 @@
 import React from 'react';
 import "./profile.css";
+import { Dropdown } from "../components/dropdown";
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -107,14 +108,12 @@ export function Profile({ currentUser }) {
             </div>
             <label className="workout-select">
               Workout
-              <select
+              <Dropdown
                 value={selectedWorkoutName}
-                onChange={(event) => setSelectedWorkoutName(event.target.value)}
-              >
-                {workoutNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
+                onChange={setSelectedWorkoutName}
+                options={workoutNames.map((name) => ({ value: name, label: name }))}
+                ariaLabel="Profile workout selector"
+              />
             </label>
           </div>
 
@@ -379,12 +378,13 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
 
   const representativeWorkout = selectedWorkouts[selectedWorkouts.length - 1];
   const fields = representativeWorkout.fields || {};
+  const measurements = normalizeMeasurements(representativeWorkout.measurements);
   const sessionsLogged = selectedWorkouts.length;
   const averageSetsPerSession = (
     selectedWorkouts.reduce((sum, workout) => sum + (workout.sets?.length || 0), 0) / sessionsLogged
   ).toFixed(1);
   const lastPerformed = formatReadableDate(selectedWorkouts[selectedWorkouts.length - 1].date);
-  const bestMetric = getBestMetric(selectedWorkouts, fields);
+  const bestMetric = getBestMetric(selectedWorkouts, fields, measurements);
 
   return {
     sessionsLogged,
@@ -392,7 +392,7 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
     lastPerformed,
     bestMetricLabel: bestMetric.label,
     bestMetricValue: bestMetric.value,
-    performanceTrend: buildPerformanceTrend(selectedWorkouts, fields),
+    performanceTrend: buildPerformanceTrend(selectedWorkouts, fields, measurements),
     setVolumeTrend: selectedWorkouts.slice(-12).map((workout, index) => ({
       label: `S${index + 1}`,
       value: workout.sets?.length || 0,
@@ -401,10 +401,10 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
   };
 }
 
-function getBestMetric(workouts, fields) {
+function getBestMetric(workouts, fields, measurements) {
   if (fields.weight) {
     const bestWeight = Math.max(...workouts.flatMap((workout) => (workout.sets || []).map((set) => Number(set.weight) || 0)));
-    return { label: "Best Weight", value: `${bestWeight || 0} lb` };
+    return { label: "Best Weight", value: `${bestWeight || 0} ${formatMeasurementUnit(measurements.weight, "LBs")}` };
   }
 
   if (fields.distance && fields.duration) {
@@ -417,12 +417,12 @@ function getBestMetric(workouts, fields) {
       return durationSeconds / distance;
     }).filter(Boolean));
     const bestPace = paceValues.length > 0 ? Math.min(...paceValues) : 0;
-    return { label: "Best Pace", value: formatPace(bestPace) };
+    return { label: "Best Pace", value: formatPace(bestPace, measurements.distance) };
   }
 
   if (fields.distance) {
     const bestDistance = Math.max(...workouts.flatMap((workout) => (workout.sets || []).map((set) => Number(set.distance) || 0)));
-    return { label: "Best Distance", value: `${bestDistance.toFixed(1)} mi` };
+    return { label: "Best Distance", value: `${bestDistance.toFixed(1)} ${formatMeasurementUnit(measurements.distance, "Miles")}` };
   }
 
   if (fields.duration) {
@@ -433,7 +433,7 @@ function getBestMetric(workouts, fields) {
   return { label: "Sessions", value: String(workouts.length) };
 }
 
-function buildPerformanceTrend(workouts, fields) {
+function buildPerformanceTrend(workouts, fields, measurements) {
   const recentWorkouts = workouts.slice(-12);
 
   if (fields.weight) {
@@ -451,7 +451,7 @@ function buildPerformanceTrend(workouts, fields) {
   if (fields.distance && fields.duration) {
     return {
       title: "Pace Trend",
-      subtitle: "Lower is better",
+      subtitle: `Lower ${formatMeasurementUnit(measurements.distance, "Miles")} pace is better`,
       shortSubtitle: "Lower is better",
       points: recentWorkouts.map((workout) => ({
         label: shortDateLabel(workout.date),
@@ -729,18 +729,44 @@ function parseDurationToSeconds(duration) {
   return 0;
 }
 
-function formatPace(secondsPerUnit) {
+function formatPace(secondsPerUnit, distanceMeasurement = 'miles') {
   if (!secondsPerUnit || !Number.isFinite(secondsPerUnit)) {
     return "N/A";
   }
 
   const minutes = Math.floor(secondsPerUnit / 60);
   const seconds = Math.round(secondsPerUnit % 60);
-  return `${minutes}:${String(seconds).padStart(2, "0")} / mi`;
+  return `${minutes}:${String(seconds).padStart(2, "0")} / ${formatMeasurementUnit(distanceMeasurement, "Miles")}`;
 }
 
 function formatSeconds(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function normalizeMeasurements(measurements) {
+  return {
+    weight: measurements?.weight || 'lbs',
+    distance: measurements?.distance || 'miles',
+  };
+}
+
+function formatMeasurementUnit(value, fallback) {
+  switch (value) {
+    case 'kgs':
+      return 'kg';
+    case 'kms':
+      return 'km';
+    case 'meters':
+      return 'm';
+    case 'feet':
+      return 'ft';
+    case 'miles':
+      return 'mi';
+    case 'lbs':
+      return 'lbs';
+    default:
+      return fallback;
+  }
 }

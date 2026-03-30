@@ -1,7 +1,8 @@
 import React from 'react';
 import "./logger.css";
+import { Dropdown } from "../components/dropdown";
 
-const CREATE_NEW_TEMPLATE = "__create_new_template__";
+const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
 
 const mockMessages = [
   { msg: "Started a workout 💪" },
@@ -17,11 +18,39 @@ const defaultTemplateFields = {
   notes: true,
 };
 
+const defaultTemplateMeasurements = {
+  reps: "default",
+  weight: "lbs",
+  duration: "hh:mm:ss",
+  distance: "miles",
+  notes: "default",
+};
+
 const templateFieldOptions = [
   { key: "reps", label: "Reps", inputType: "number", placeholder: "10" },
-  { key: "weight", label: "Weight", inputType: "number", placeholder: "135" },
+  {
+    key: "weight",
+    label: "Weight",
+    inputType: "number",
+    placeholder: "135",
+    measurementOptions: [
+      { value: "lbs", label: "Pounds" },
+      { value: "kgs", label: "Kilograms" },
+    ],
+  },
   { key: "duration", label: "Time", inputType: "text", placeholder: "00:30" },
-  { key: "distance", label: "Distance", inputType: "number", placeholder: "1.5" },
+  {
+    key: "distance",
+    label: "Distance",
+    inputType: "number",
+    placeholder: "1.5",
+    measurementOptions: [
+      { value: "miles", label: "Miles" },
+      { value: "kms", label: "Kilometers" },
+      { value: "meters", label: "Meters" },
+      { value: "feet", label: "Feet" },
+    ],
+  },
 ];
 
 function getTodayLocal() {
@@ -42,6 +71,30 @@ function buildEmptySet(fields, nextId) {
   };
 }
 
+function readLoggerDraft() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawDraft = window.localStorage.getItem(LOGGER_DRAFT_KEY);
+    if (!rawDraft) {
+      return null;
+    }
+
+    const draft = JSON.parse(rawDraft);
+    return {
+      selectedTemplateId: typeof draft?.selectedTemplateId === "string" ? draft.selectedTemplateId : "",
+      date: typeof draft?.date === "string" ? draft.date : getTodayLocal(),
+      notes: typeof draft?.notes === "string" ? draft.notes : "",
+      sets: Array.isArray(draft?.sets) ? draft.sets : [],
+    };
+  } catch (err) {
+    console.error("Failed to restore logger draft:", err);
+    return null;
+  }
+}
+
 function normalizeTemplate(template) {
   return {
     ...template,
@@ -52,26 +105,44 @@ function normalizeTemplate(template) {
       distance: Boolean(template?.fields?.distance),
       notes: Boolean(template?.fields?.notes),
     },
+    measurements: normalizeTemplateMeasurements(template?.measurements),
+  };
+}
+
+function normalizeTemplateMeasurements(measurements) {
+  return {
+    reps: defaultTemplateMeasurements.reps,
+    weight: measurements?.weight === "kgs" ? "kgs" : defaultTemplateMeasurements.weight,
+    duration: defaultTemplateMeasurements.duration,
+    distance: ["miles", "kms", "meters", "feet"].includes(measurements?.distance)
+      ? measurements.distance
+      : defaultTemplateMeasurements.distance,
+    notes: defaultTemplateMeasurements.notes,
   };
 }
 
 export function Logger() {
+  const storedDraft = React.useMemo(() => readLoggerDraft(), []);
   const [templates, setTemplates] = React.useState([]);
   const [savedWorkouts, setSavedWorkouts] = React.useState([]);
-  const [selectedTemplateId, setSelectedTemplateId] = React.useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState(storedDraft?.selectedTemplateId || "");
   const [selectedTemplate, setSelectedTemplate] = React.useState(null);
 
-  const [sets, setSets] = React.useState([]);
-  const [date, setDate] = React.useState(getTodayLocal());
-  const [notes, setNotes] = React.useState("");
+  const [sets, setSets] = React.useState(storedDraft?.sets || []);
+  const [date, setDate] = React.useState(storedDraft?.date || getTodayLocal());
+  const [notes, setNotes] = React.useState(storedDraft?.notes || "");
   const [messages, setMessages] = React.useState([]);
   const [showTemplateModal, setShowTemplateModal] = React.useState(false);
+  const [isEditingTemplate, setIsEditingTemplate] = React.useState(false);
   const [showSetModal, setShowSetModal] = React.useState(false);
+  const [showTemplateActions, setShowTemplateActions] = React.useState(false);
   const [editingSetId, setEditingSetId] = React.useState(null);
   const [openSetMenuId, setOpenSetMenuId] = React.useState(null);
   const [newTemplateName, setNewTemplateName] = React.useState("");
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
+  const [newTemplateMeasurements, setNewTemplateMeasurements] = React.useState(defaultTemplateMeasurements);
   const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
+  const templateActionsRef = React.useRef(null);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -97,9 +168,8 @@ export function Logger() {
         const normalizedTemplates = savedTemplates.map(normalizeTemplate);
         setTemplates(normalizedTemplates);
 
-        if (normalizedTemplates.length > 0) {
+        if (normalizedTemplates.length > 0 && !selectedTemplateId) {
           setSelectedTemplateId(normalizedTemplates[0].id);
-          setSelectedTemplate(normalizedTemplates[0]);
         }
       })
       .catch((err) => {
@@ -109,7 +179,12 @@ export function Logger() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedTemplateId]);
+
+  React.useEffect(() => {
+    const template = templates.find((item) => item.id === selectedTemplateId) ?? null;
+    setSelectedTemplate(template);
+  }, [templates, selectedTemplateId]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -164,23 +239,89 @@ export function Logger() {
     return () => clearInterval(interval);
   }, []);
 
+  React.useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!templateActionsRef.current?.contains(event.target)) {
+        setShowTemplateActions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const normalizedSets = Array.isArray(sets)
+      ? sets.map((set, index) => ({ ...set, id: index + 1 }))
+      : [];
+    const hasDraftContent = Boolean(
+      selectedTemplateId
+      || notes.trim()
+      || normalizedSets.length > 0
+      || date !== getTodayLocal()
+    );
+
+    if (!hasDraftContent) {
+      window.localStorage.removeItem(LOGGER_DRAFT_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      LOGGER_DRAFT_KEY,
+      JSON.stringify({
+        selectedTemplateId,
+        date,
+        notes,
+        sets: normalizedSets,
+      })
+    );
+  }, [selectedTemplateId, date, notes, sets]);
+
   const activeSetFields = templateFieldOptions.filter(
     (field) => selectedTemplate?.fields?.[field.key]
   );
+  const canSubmitWorkout = Boolean(selectedTemplate && date && sets.length > 0);
 
   const handleTemplateSelection = (event) => {
     const nextTemplateId = event.target.value;
 
-    if (nextTemplateId === CREATE_NEW_TEMPLATE) {
-      setShowTemplateModal(true);
+    const template = templates.find((item) => item.id === nextTemplateId) ?? null;
+    setSelectedTemplateId(nextTemplateId);
+    setNotes("");
+    setSets([]);
+    if (!template) {
+      setDate(getTodayLocal());
+    }
+  };
+
+  const openCreateTemplateModal = () => {
+    setShowTemplateActions(false);
+    setIsEditingTemplate(false);
+    setNewTemplateName("");
+    setNewTemplateFields(defaultTemplateFields);
+    setNewTemplateMeasurements(defaultTemplateMeasurements);
+    setShowTemplateModal(true);
+  };
+
+  const openEditTemplateModal = () => {
+    if (!selectedTemplate) {
       return;
     }
 
-    const template = templates.find((item) => item.id === nextTemplateId) ?? null;
-    setSelectedTemplateId(nextTemplateId);
-    setSelectedTemplate(template);
-    setNotes("");
-    setSets([]);
+    setShowTemplateActions(false);
+    setIsEditingTemplate(true);
+    setNewTemplateName(selectedTemplate.name);
+    setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
+    setNewTemplateMeasurements({
+      ...defaultTemplateMeasurements,
+      ...selectedTemplate.measurements,
+    });
+    setShowTemplateModal(true);
   };
 
   const openAddSetModal = () => {
@@ -255,47 +396,71 @@ export function Logger() {
     }));
   };
 
-  const handleCreateTemplate = async (event) => {
+  const handleTemplateMeasurementChange = (fieldKey, value) => {
+    setNewTemplateMeasurements((currentMeasurements) => ({
+      ...currentMeasurements,
+      [fieldKey]: value,
+    }));
+  };
+
+  const handleSaveTemplate = async (event) => {
     event.preventDefault();
 
+    if (!newTemplateFields.reps && !newTemplateFields.weight && !newTemplateFields.duration && !newTemplateFields.distance) {
+      alert('Choose at least one set field for this workout.');
+      return;
+    }
+
     try {
-      const response = await fetch('/api/workout-templates', {
-        method: 'POST',
+      const response = await fetch(
+        isEditingTemplate ? `/api/workout-templates/${selectedTemplate.id}` : '/api/workout-templates',
+        {
+          method: isEditingTemplate ? 'PUT' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: newTemplateName,
           fields: newTemplateFields,
+          measurements: newTemplateMeasurements,
         }),
         credentials: 'include',
-      });
+        }
+      );
 
       const body = await response.json();
 
       if (!response.ok) {
-        alert(body.msg || 'Failed to create workout');
+        alert(body.msg || `Failed to ${isEditingTemplate ? 'update' : 'create'} workout`);
         return;
       }
 
-      const createdTemplate = normalizeTemplate(body);
+      const savedTemplate = normalizeTemplate(body);
 
-      setTemplates((prevTemplates) => [...prevTemplates, createdTemplate]);
-      setSelectedTemplateId(createdTemplate.id);
-      setSelectedTemplate(createdTemplate);
+      setTemplates((prevTemplates) =>
+        isEditingTemplate
+          ? prevTemplates.map((template) => (template.id === savedTemplate.id ? savedTemplate : template))
+          : [...prevTemplates, savedTemplate]
+      );
+      setSelectedTemplateId(savedTemplate.id);
+      setSelectedTemplate(savedTemplate);
       setSets([]);
       setNotes("");
 
       setNewTemplateName("");
       setNewTemplateFields(defaultTemplateFields);
+      setNewTemplateMeasurements(defaultTemplateMeasurements);
       setShowTemplateModal(false);
+      setIsEditingTemplate(false);
     } catch (err) {
-      console.error('Failed to create workout template:', err);
+      console.error(`Failed to ${isEditingTemplate ? 'update' : 'create'} workout template:`, err);
     }
   };
 
   const closeTemplateModal = () => {
     setShowTemplateModal(false);
+    setIsEditingTemplate(false);
     setNewTemplateName("");
     setNewTemplateFields(defaultTemplateFields);
+    setNewTemplateMeasurements(defaultTemplateMeasurements);
 
     if (!selectedTemplateId) {
       setSelectedTemplateId("");
@@ -305,8 +470,8 @@ export function Logger() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!selectedTemplate) {
-      alert('Choose a workout from the dropdown first.');
+    if (!selectedTemplate || !date || sets.length === 0) {
+      alert('Choose a workout, pick a date, and add at least one set before saving.');
       return;
     }
 
@@ -336,6 +501,7 @@ export function Logger() {
       setDate(getTodayLocal());
       setNotes("");
       setSets([]);
+      window.localStorage.removeItem(LOGGER_DRAFT_KEY);
     } catch (err) {
       console.error("Failed to update workouts in service:", err);
     }
@@ -372,19 +538,47 @@ export function Logger() {
 
           <label>
             Workout
-            <select
-              value={selectedTemplateId}
-              onChange={handleTemplateSelection}
-              required
-            >
-              <option value="" disabled>Select a workout</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-              <option value={CREATE_NEW_TEMPLATE}>Create new workout</option>
-            </select>
+            <div className="template-picker-row">
+              <Dropdown
+                value={selectedTemplateId}
+                onChange={(nextValue) => handleTemplateSelection({ target: { value: nextValue } })}
+                placeholder="Select a workout"
+                options={[
+                  { value: "", label: "Select a workout", disabled: true },
+                  ...templates.map((template) => ({ value: template.id, label: template.name })),
+                ]}
+                ariaLabel="Workout"
+              />
+              <div className="template-actions-menu" ref={templateActionsRef}>
+                <button
+                  type="button"
+                  className="template-actions-trigger"
+                  aria-label="Workout template actions"
+                  onClick={() => setShowTemplateActions((current) => !current)}
+                >
+                  ...
+                </button>
+                {showTemplateActions && (
+                  <div className="template-actions-popover">
+                    <button
+                      type="button"
+                      className="template-actions-item"
+                      onClick={openCreateTemplateModal}
+                    >
+                      Create new workout
+                    </button>
+                    <button
+                      type="button"
+                      className="template-actions-item"
+                      onClick={openEditTemplateModal}
+                      disabled={!selectedTemplate}
+                    >
+                      Edit selected workout
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </label>
 
           {selectedTemplate && activeSetFields.length > 0 && (
@@ -409,7 +603,7 @@ export function Logger() {
                     <tr>
                       <th>#</th>
                       {activeSetFields.map((field) => (
-                        <th key={field.key}>{field.label}</th>
+                        <th key={field.key}>{getFieldLabel(field, selectedTemplate.measurements)}</th>
                       ))}
                       <th className="set-actions-header"></th>
                     </tr>
@@ -487,7 +681,7 @@ export function Logger() {
             </section>
           )}
 
-          <button type="submit" className="btn btn-primary">Save Workout</button>
+          <button type="submit" className="btn btn-primary" disabled={!canSubmitWorkout}>Save Workout</button>
         </form>
         <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
       </div>
@@ -505,7 +699,7 @@ export function Logger() {
               </button>
             </div>
 
-            <form className="template-modal-form" onSubmit={handleCreateTemplate}>
+            <form className="template-modal-form" onSubmit={handleSaveTemplate}>
               <label>
                 Workout name
                 <input
@@ -530,7 +724,20 @@ export function Logger() {
                         checked={newTemplateFields[field.key]}
                         onChange={() => handleTemplateFieldToggle(field.key)}
                       />
-                      <span>{field.label}</span>
+                      <div className="template-field-content">
+                        <span>{field.label}</span>
+                        {field.measurementOptions && newTemplateFields[field.key] && (
+                          <Dropdown
+                            value={newTemplateMeasurements[field.key]}
+                            onChange={(nextValue) => handleTemplateMeasurementChange(field.key, nextValue)}
+                            options={field.measurementOptions}
+                            ariaLabel={`${field.label} units`}
+                          />
+                        )}
+                        {field.lockedMeasurement && (
+                          <small>{field.lockedMeasurement}</small>
+                        )}
+                      </div>
                     </label>
                   ))}
                   <label className="template-field-card">
@@ -539,7 +746,9 @@ export function Logger() {
                       checked={newTemplateFields.notes}
                       onChange={() => handleTemplateFieldToggle("notes")}
                     />
-                    <span>Notes</span>
+                    <div className="template-field-content">
+                      <span>Notes</span>
+                    </div>
                   </label>
                 </div>
               </section>
@@ -547,7 +756,7 @@ export function Logger() {
               <div className="template-preview">
                 <p className="template-preview-title">Preview</p>
                 <p className="template-preview-copy">
-                  {formatTemplatePreview(newTemplateName, newTemplateFields)}
+                  {formatTemplatePreview(newTemplateName, newTemplateFields, newTemplateMeasurements)}
                 </p>
               </div>
 
@@ -556,7 +765,7 @@ export function Logger() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Create workout
+                  {isEditingTemplate ? "Save workout" : "Create workout"}
                 </button>
               </div>
             </form>
@@ -586,13 +795,20 @@ export function Logger() {
                 <div className="set-modal-grid">
                   {activeSetFields.map((field) => (
                     <label key={field.key}>
-                      {field.label}
-                      <input
-                        type={field.inputType}
-                        value={pendingSet[field.key] ?? ""}
-                        placeholder={field.placeholder}
-                        onChange={(event) => handlePendingSetChange(field.key, event.target.value)}
-                      />
+                      {getFieldLabel(field, selectedTemplate.measurements)}
+                      <div className="input-with-unit">
+                        <input
+                          type={field.inputType}
+                          value={pendingSet[field.key] ?? ""}
+                          placeholder={field.placeholder}
+                          onChange={(event) => handlePendingSetChange(field.key, event.target.value)}
+                        />
+                        {getFieldUnitSuffix(field, selectedTemplate.measurements) && (
+                          <span className="input-unit">
+                            {getFieldUnitSuffix(field, selectedTemplate.measurements)}
+                          </span>
+                        )}
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -658,14 +874,61 @@ function copyTrackedFields(sourceSet, fields) {
   };
 }
 
-function formatTemplatePreview(name, fields) {
+function formatTemplatePreview(name, fields, measurements = defaultTemplateMeasurements) {
   const selectedFields = [
     fields.reps && "reps",
-    fields.weight && "weight",
-    fields.duration && "duration",
-    fields.distance && "distance",
+    fields.weight && `weight (${formatMeasurementLabel(measurements.weight)})`,
+    fields.duration && "duration (hh:mm:ss)",
+    fields.distance && `distance (${formatMeasurementLabel(measurements.distance)})`,
     fields.notes && "notes",
   ].filter(Boolean);
 
   return `${name.trim() || "Your new workout"} will save ${selectedFields.join(", ")}.`;
+}
+
+function getFieldLabel(field, measurements = defaultTemplateMeasurements) {
+  if (field.key === "weight") {
+    return `Weight (${formatMeasurementLabel(measurements?.weight)})`;
+  }
+
+  if (field.key === "distance") {
+    return `Distance (${formatMeasurementLabel(measurements?.distance)})`;
+  }
+
+  if (field.key === "duration") {
+    return "Time (HH:MM:SS)";
+  }
+
+  return field.label;
+}
+
+function formatMeasurementLabel(value) {
+  switch (value) {
+    case "lbs":
+      return "lbs";
+    case "kgs":
+      return "kg";
+    case "kms":
+      return "km";
+    case "meters":
+      return "m";
+    case "feet":
+      return "ft";
+    case "miles":
+      return "mi";
+    default:
+      return value || "default";
+  }
+}
+
+function getFieldUnitSuffix(field, measurements = defaultTemplateMeasurements) {
+  if (field.key === "weight") {
+    return formatMeasurementLabel(measurements?.weight);
+  }
+
+  if (field.key === "distance") {
+    return formatMeasurementLabel(measurements?.distance);
+  }
+
+  return "";
 }

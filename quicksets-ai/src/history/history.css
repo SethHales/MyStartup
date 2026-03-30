@@ -69,12 +69,33 @@
     color: var(--text-main);
 }
 
+.history-filter-bar select {
+    appearance: none;
+    background-image:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        var(--select-chevron);
+    background-repeat: no-repeat, no-repeat;
+    background-position: 0 0, right 0.8rem center;
+    background-size: auto, 0.95rem;
+    padding-right: 2.55rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 .history-filter-bar select:focus,
 .history-modal-form input:focus,
 .history-modal-form textarea:focus {
     outline: none;
     border-color: rgba(77, 163, 255, 0.5);
     box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.12);
+}
+
+.history-filter-bar select:focus,
+.history-filter-bar select:focus-visible {
+    outline: none;
+    border-color: rgba(77, 163, 255, 0.42);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 0 0 1px rgba(77, 163, 255, 0.18);
 }
 
 .history-empty-state {
@@ -128,6 +149,17 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-soft);
+}
+
+.history-day-row td {
+    padding: 0.7rem 0.75rem;
+    text-align: left;
+    font-size: 0.84rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text-main);
+    background: linear-gradient(90deg, rgba(77, 163, 255, 0.18), rgba(77, 163, 255, 0.06));
+    border-bottom: 1px solid rgba(77, 163, 255, 0.18);
 }
 
 .history-row>td {
@@ -363,6 +395,23 @@
     gap: 0.75rem;
 }
 
+.input-with-unit {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.input-with-unit input {
+    flex: 1;
+}
+
+.input-unit {
+    flex-shrink: 0;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-transform: lowercase;
+}
+
 .import-actions {
     align-items: flex-start;
     justify-content: flex-start;
@@ -389,6 +438,11 @@
     .inner-sets-table th,
     .inner-sets-table td {
         padding: 0.5rem 0.35rem;
+    }
+
+    .history-day-row td {
+        padding: 0.55rem 0.6rem;
+        font-size: 0.78rem;
     }
 
     .history-month-group {
