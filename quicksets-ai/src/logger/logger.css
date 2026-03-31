@@ -52,6 +52,11 @@
     font-size: 0.85rem;
 }
 
+.live-feed-empty {
+    margin: 0;
+    color: var(--text-muted);
+}
+
 .workout-form {
     display: flex;
     flex-direction: column;
@@ -110,6 +115,10 @@
     background: rgba(255, 255, 255, 0.06);
 }
 
+.template-actions-item.delete {
+    color: var(--danger-soft);
+}
+
 .template-actions-item:disabled {
     color: var(--text-soft);
     opacity: 0.55;
@@ -121,6 +130,21 @@
     flex-direction: column;
     gap: 0.35rem;
     font-size: 0.86rem;
+}
+
+.starred-toggle {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.6rem !important;
+    color: #f3d27a;
+    font-weight: 600;
+}
+
+.starred-toggle input {
+    width: 18px;
+    height: 18px;
+    accent-color: #d6a62a;
 }
 
 .workout-form input,
@@ -412,6 +436,25 @@
     text-transform: lowercase;
 }
 
+.mobile-duration-picker {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
+}
+
+.mobile-wheel-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    align-items: stretch;
+}
+
+.mobile-wheel-field .input-unit {
+    text-align: center;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+}
+
 @media (max-width: 700px) {
     .logger-hero,
     .live-feed,
@@ -471,5 +514,9 @@
     .set-menu-trigger {
         width: 36px;
         height: 36px;
+    }
+
+    .mobile-duration-picker {
+        gap: 0.55rem;
     }
 }

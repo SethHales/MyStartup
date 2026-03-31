@@ -61,9 +61,51 @@ footer {
 }
 
 .logo {
-    width: clamp(104px, 14%, 156px);
-    height: auto;
     filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.25));
+}
+
+.brand-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.72rem;
+    min-width: 0;
+}
+
+.brand-badge {
+    width: 46px;
+    height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 16px 28px rgba(0, 0, 0, 0.22);
+}
+
+.brand-badge img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.brand-wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.08rem;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: clamp(1rem, 1.4vw, 1.22rem);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.brand-wordmark-quick {
+    color: rgba(246, 247, 251, 0.9);
+    font-weight: 500;
+}
+
+.brand-wordmark-sets {
+    color: #ffffff;
+    font-weight: 800;
 }
 
 header {
@@ -91,9 +133,9 @@ header::after {
     background: linear-gradient(90deg, transparent, rgba(77, 163, 255, 0.35), transparent);
 }
 
-header .logo {
-    justify-self: start;
-}
+    header .logo {
+        justify-self: start;
+    }
 
 header h1 {
     justify-self: center;
@@ -102,14 +144,36 @@ header h1 {
     letter-spacing: 0.08em;
 }
 
+.header-brand-title {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.08rem;
+    letter-spacing: 0.02em;
+    width: 100%;
+    text-align: center;
+}
+
+.header-brand-title-quick {
+    color: rgba(246, 247, 251, 0.9);
+    font-weight: 500;
+}
+
+.header-brand-title-sets {
+    color: #ffffff;
+    font-weight: 800;
+}
+
 .user-section {
     justify-self: end;
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    position: relative;
 }
 
-.user-section p {
+.user-email,
+.account-menu-popover p {
     margin: 0;
     font-size: 0.82rem;
     color: var(--text-muted);
@@ -119,7 +183,8 @@ header h1 {
     white-space: nowrap;
 }
 
-.user-section button {
+.user-section button,
+.account-menu-trigger {
     background: rgba(77, 163, 255, 0.08);
     border: 1px solid rgba(77, 163, 255, 0.35);
     color: var(--text-main);
@@ -130,14 +195,57 @@ header h1 {
     transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 
-.user-section button:hover {
+.user-section button:hover,
+.account-menu-trigger:hover {
     transform: translateY(-1px);
     background: rgba(77, 163, 255, 0.16);
     border-color: rgba(77, 163, 255, 0.55);
 }
 
-.user-section button:active {
+.user-section button:active,
+.account-menu-trigger:active {
     transform: translateY(1px);
+}
+
+.account-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0.95rem;
+    letter-spacing: 0.12em;
+}
+
+.account-menu-popover {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    min-width: 190px;
+    padding: 0.45rem;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background:
+        radial-gradient(circle at top right, rgba(77, 163, 255, 0.14), transparent 35%),
+        linear-gradient(180deg, rgba(29, 33, 41, 0.98), rgba(18, 20, 26, 0.98));
+    box-shadow: var(--shadow-panel);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    z-index: 30;
+}
+
+.account-menu-popover p {
+    max-width: none;
+    padding: 0.3rem 0.4rem 0.1rem;
+}
+
+.account-menu-popover button {
+    width: 100%;
+    text-align: left;
 }
 
 .app {
@@ -343,20 +451,47 @@ button:active {
     }
 
     header {
-        grid-template-columns: 1fr;
-        justify-items: center;
-        gap: 0.45rem;
+        grid-template-columns: auto 1fr auto;
+        justify-items: stretch;
+        gap: 0.7rem;
         padding: 0.55rem 0.85rem 0.65rem;
     }
 
     header .logo,
     .user-section,
     header h1 {
-        justify-self: center;
+        justify-self: auto;
     }
 
-    .user-section p {
-        max-width: 100%;
+    .brand-mark {
+        gap: 0.55rem;
+    }
+
+    .brand-badge {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+    }
+
+    .brand-wordmark {
+        font-size: 1rem;
+    }
+
+    .brand-wordmark {
+        display: none;
+    }
+
+    .user-section {
+        justify-self: end;
+        gap: 0;
+    }
+
+    .user-email {
+        display: none;
+    }
+
+    .account-menu-popover {
+        min-width: 170px;
     }
 
     main {

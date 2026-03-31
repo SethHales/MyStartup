@@ -7,6 +7,8 @@ import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
 import { Profile } from './profile/profile';
+import { BrandMark } from './components/brandMark';
+import { useIsMobile } from './hooks/useIsMobile';
 
 function ProtectedRoute({ currentUser, isAuthChecked, children }) {
     if (!isAuthChecked) {
@@ -22,8 +24,30 @@ function ProtectedRoute({ currentUser, isAuthChecked, children }) {
 
 function Header({ currentUser, setCurrentUser }) {
     const location = useLocation();
-
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
+    const [showAccountMenu, setShowAccountMenu] = React.useState(false);
+    const accountMenuRef = React.useRef(null);
+
+    React.useEffect(() => {
+        setShowAccountMenu(false);
+    }, [location.pathname]);
+
+    React.useEffect(() => {
+        const handlePointerDown = (event) => {
+            if (!accountMenuRef.current?.contains(event.target)) {
+                setShowAccountMenu(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        document.addEventListener("touchstart", handlePointerDown);
+
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("touchstart", handlePointerDown);
+        };
+    }, []);
 
     const handleLogout = async () => {
         try {
@@ -36,7 +60,13 @@ function Header({ currentUser, setCurrentUser }) {
         }
 
         setCurrentUser(null);
+        setShowAccountMenu(false);
         navigate("/");
+    };
+
+    const handleChangePassword = () => {
+        setShowAccountMenu(false);
+        navigate("/profile?modal=change-password");
     };
     let title = "";
     const isLoginPage = location.pathname === "/";
@@ -57,20 +87,119 @@ function Header({ currentUser, setCurrentUser }) {
             title = "QuickSets";
     }
 
+    const showBrandTitle = isMobile && !isLoginPage;
+
 
 
     return (
         <header>
-            <img src="/images/quicksets_logo.png" alt="QuickSets Logo" className="logo" />
-            <h1>{title}</h1>
+            <BrandMark className="logo" />
+            <h1 className={showBrandTitle ? "header-brand-title" : ""}>
+                {showBrandTitle ? (
+                    <>
+                        <span className="header-brand-title-quick">Quick</span>
+                        <span className="header-brand-title-sets">Sets</span>
+                    </>
+                ) : (
+                    title
+                )}
+            </h1>
 
             {currentUser && !isLoginPage && (
-                <div className="user-section">
-                    <p>{currentUser.email}</p>
-                    <button onClick={handleLogout}>Logout</button>
+                <div className="user-section" ref={accountMenuRef}>
+                    <p className="user-email">{currentUser.email}</p>
+                    <button
+                        type="button"
+                        className="account-menu-trigger"
+                        aria-label="Account menu"
+                        aria-expanded={showAccountMenu}
+                        onClick={() => setShowAccountMenu((current) => !current)}
+                    >
+                        <span aria-hidden="true">•••</span>
+                    </button>
+                    {showAccountMenu && (
+                        <div className="account-menu-popover">
+                            <p>{currentUser.email}</p>
+                            <button type="button" onClick={handleLogout}>Logout</button>
+                            <button type="button" onClick={handleChangePassword}>Change password</button>
+                        </div>
+                    )}
                 </div>
             )}
         </header>
+    );
+}
+
+function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
+    const location = useLocation();
+    const showFooterNav = Boolean(currentUser) && location.pathname !== "/";
+
+    return (
+        <div className="app">
+            <Header currentUser={currentUser} setCurrentUser={setCurrentUser} />
+
+            <Routes>
+                <Route
+                    path="/"
+                    element={
+                        isAuthChecked && currentUser
+                            ? <Navigate to="/logger" replace />
+                            : <Login setCurrentUser={setCurrentUser} />
+                    }
+                />
+
+                <Route
+                    path="/logger"
+                    element={
+                        <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                            <Logger />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/history"
+                    element={
+                        <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                            <History />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/profile"
+                    element={
+                        <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                            <Profile currentUser={currentUser} />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="*"
+                    element={
+                        <NotFound />
+                    }
+                />
+            </Routes>
+
+            {showFooterNav && (
+                <footer>
+                    <nav className="tab-menu">
+                        <NavLink to="/logger" className="tab">
+                            Logger
+                        </NavLink>
+
+                        <NavLink to="/history" className="tab">
+                            History
+                        </NavLink>
+
+                        <NavLink to="/profile" className="tab">
+                            Profile
+                        </NavLink>
+                    </nav>
+                </footer>
+            )}
+        </div>
     );
 }
 
@@ -104,65 +233,7 @@ export default function App() {
 
     return (
         <BrowserRouter>
-            <div className="app">
-                <Header currentUser={currentUser} setCurrentUser={setCurrentUser} />
-
-                <Routes>
-                    <Route
-                        path="/"
-                        element={<Login setCurrentUser={setCurrentUser} />}
-                    />
-
-                    <Route
-                        path="/logger"
-                        element={
-                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                                <Logger />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="/history"
-                        element={
-                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                                <History />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/profile"
-                        element={
-                            <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                                <Profile currentUser={currentUser} />
-                            </ProtectedRoute>
-                        }
-                    />
-
-                    <Route
-                        path="*"
-                        element={
-                            <NotFound />
-                        }
-                    />
-                </Routes>
-
-                <footer>
-                    <nav className="tab-menu">
-                        <NavLink to="/logger" className="tab">
-                            Logger
-                        </NavLink>
-
-                        <NavLink to="/history" className="tab">
-                            History
-                        </NavLink>
-
-                        <NavLink to="/profile" className="tab">
-                            Profile
-                        </NavLink>
-                    </nav>
-                </footer>
-            </div>
+            <AppShell currentUser={currentUser} setCurrentUser={setCurrentUser} isAuthChecked={isAuthChecked} />
         </BrowserRouter>
     );
 }

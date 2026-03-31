@@ -1,12 +1,20 @@
 import React from 'react';
 import "./profile.css";
 import { Dropdown } from "../components/dropdown";
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
 export function Profile({ currentUser }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [workouts, setWorkouts] = React.useState([]);
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
+  const [currentPassword, setCurrentPassword] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [passwordStatus, setPasswordStatus] = React.useState({ type: "", message: "" });
+  const [isSavingPassword, setIsSavingPassword] = React.useState(false);
 
   React.useEffect(() => {
     fetch('/api/workouts', {
@@ -36,6 +44,37 @@ export function Profile({ currentUser }) {
       });
   }, []);
 
+  const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isPasswordModalOpen = searchParams.get("modal") === "change-password";
+
+  const openPasswordModal = () => {
+    const nextSearchParams = new URLSearchParams(location.search);
+    nextSearchParams.set("modal", "change-password");
+    navigate(`${location.pathname}?${nextSearchParams.toString()}`);
+  };
+
+  const closePasswordModal = React.useCallback(() => {
+    const nextSearchParams = new URLSearchParams(location.search);
+    nextSearchParams.delete("modal");
+    const nextSearch = nextSearchParams.toString();
+    navigate(nextSearch ? `${location.pathname}?${nextSearch}` : location.pathname, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  React.useEffect(() => {
+    if (!isPasswordModalOpen) {
+      return;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        closePasswordModal();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [closePasswordModal, isPasswordModalOpen]);
+
   const workoutNames = React.useMemo(() => getWorkoutNames(workouts), [workouts]);
   const uniqueWorkoutDays = React.useMemo(() => getUniqueWorkoutDays(workouts), [workouts]);
   const dayCountMap = React.useMemo(() => getWorkoutDayCountMap(workouts), [workouts]);
@@ -59,6 +98,57 @@ export function Profile({ currentUser }) {
     () => buildSelectedWorkoutStats(workouts, selectedWorkoutName),
     [workouts, selectedWorkoutName]
   );
+
+  const handlePasswordSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordStatus({ type: "error", message: "Fill out all password fields." });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus({ type: "error", message: "New passwords do not match." });
+      return;
+    }
+
+    setIsSavingPassword(true);
+    setPasswordStatus({ type: "", message: "" });
+
+    try {
+      const response = await fetch('/api/auth/password', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      if (!response.ok) {
+        let body = {};
+        try {
+          body = await response.json();
+        } catch (_err) {
+          body = {};
+        }
+
+        setPasswordStatus({ type: "error", message: body.msg || "Couldn't update password." });
+        return;
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordStatus({ type: "success", message: "Password updated." });
+    } catch (err) {
+      console.error('Error updating password:', err);
+      setPasswordStatus({ type: "error", message: "Couldn't update password." });
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
 
   return (
     <main>
@@ -178,8 +268,86 @@ export function Profile({ currentUser }) {
           </div>
         </section>
 
+        <section className="profile-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Security</p>
+              <h3>Password</h3>
+            </div>
+            <button type="button" className="btn btn-outline-light" onClick={openPasswordModal}>
+              Change Password
+            </button>
+          </div>
+          <p className="panel-muted">Open a quick modal to update your password.</p>
+        </section>
+
         <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
       </div>
+
+      {isPasswordModalOpen && (
+        <div className="password-modal-backdrop" role="presentation" onClick={closePasswordModal}>
+          <div
+            className="password-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-password-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="password-modal-header">
+              <div>
+                <p className="panel-kicker">Security</p>
+                <h3 id="change-password-title">Change Password</h3>
+              </div>
+              <button type="button" className="password-modal-close" onClick={closePasswordModal}>
+                Close
+              </button>
+            </div>
+
+            <form className="password-form" onSubmit={handlePasswordSubmit}>
+              <label className="password-field">
+                Current password
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </label>
+              <label className="password-field">
+                New password
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="password-field">
+                Confirm new password
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              {passwordStatus.message && (
+                <p className={passwordStatus.type === "success" ? "password-status success" : "password-status error"}>
+                  {passwordStatus.message}
+                </p>
+              )}
+              <div className="password-form-actions">
+                <button type="button" className="btn btn-outline-light" onClick={closePasswordModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={isSavingPassword}>
+                  {isSavingPassword ? "Saving..." : "Update Password"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -266,8 +434,8 @@ function CalendarHeatmap({ weeks }) {
   return (
     <div className="heatmap">
       <div className="heatmap-days">
-        {weekdayLabels.map((label) => (
-          <span key={label}>{label}</span>
+        {weekdayLabels.map((label, index) => (
+          <span key={`${label}-${index}`}>{label}</span>
         ))}
       </div>
       <div className="heatmap-weeks">

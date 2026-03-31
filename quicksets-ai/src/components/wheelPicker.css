@@ -1,0 +1,83 @@
+.wheel-picker {
+    position: relative;
+    height: 164px;
+    border-radius: 18px;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wheel-picker::before,
+.wheel-picker::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 56px;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.wheel-picker::before {
+    top: 0;
+    background: linear-gradient(180deg, rgba(18, 20, 26, 0.96), rgba(18, 20, 26, 0));
+}
+
+.wheel-picker::after {
+    bottom: 0;
+    background: linear-gradient(0deg, rgba(18, 20, 26, 0.96), rgba(18, 20, 26, 0));
+}
+
+.wheel-picker-highlight {
+    position: absolute;
+    left: 0.45rem;
+    right: 0.45rem;
+    top: 50%;
+    height: 44px;
+    transform: translateY(-50%);
+    border-radius: 14px;
+    border: 1px solid rgba(77, 163, 255, 0.24);
+    background: rgba(77, 163, 255, 0.1);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.wheel-picker-scroll {
+    height: 100%;
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    position: relative;
+    z-index: 0;
+}
+
+.wheel-picker-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.wheel-picker-spacer {
+    height: 60px;
+    flex-shrink: 0;
+}
+
+.wheel-picker-option {
+    height: 44px;
+    scroll-snap-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    transition: color 0.16s ease, transform 0.16s ease;
+    user-select: none;
+}
+
+.wheel-picker-option.is-selected {
+    color: var(--text-main);
+    transform: scale(1.02);
+}

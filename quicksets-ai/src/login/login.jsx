@@ -10,7 +10,8 @@ export function Login({ setCurrentUser }) {
   const navigate = useNavigate();
 
   // -------- LOGIN --------
-  const handleLogin = async () => {
+  const handleLogin = async (event) => {
+    event?.preventDefault();
     setIsLoading(true);
 
     try {
@@ -84,7 +85,7 @@ export function Login({ setCurrentUser }) {
         <h2>Train with clarity.</h2>
       </section>
 
-      <div className="login-card">
+      <form className="login-card" onSubmit={handleLogin}>
         <label>
           Email
           <input
@@ -108,7 +109,7 @@ export function Login({ setCurrentUser }) {
         <div className="button-options">
           <button
             className="login-button"
-            onClick={handleLogin}
+            type="submit"
             disabled={isLoading || !email || !password}
           >
             Log In
@@ -116,15 +117,14 @@ export function Login({ setCurrentUser }) {
 
           <button
             className="signup-button"
+            type="button"
             onClick={handleSignup}
             disabled={isLoading || !email || !password}
           >
             Sign Up
           </button>
         </div>
-
-        <p className="login-hint">Demo: <strong>blah@blah.com</strong> / <strong>blah</strong></p>
-      </div>
+      </form>
 
       <a className="github-link" href="https://github.com/SethHales/MyStartup">
         GitHub

@@ -69,8 +69,41 @@ apiRouter.delete('/auth/logout', async (req, res) => {
   res.status(204).end();
 });
 
+apiRouter.put('/auth/password', verifyAuth, async (req, res) => {
+  const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).send({ msg: 'Enter your current and new password' });
+    return;
+  }
+
+  if (!(await bcrypt.compare(currentPassword, req.user.password))) {
+    res.status(401).send({ msg: 'Current password is incorrect' });
+    return;
+  }
+
+  if (newPassword.length < 4) {
+    res.status(400).send({ msg: 'New password must be at least 4 characters' });
+    return;
+  }
+
+  if (currentPassword === newPassword) {
+    res.status(400).send({ msg: 'Choose a new password that is different from your current one' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await userCollection.updateOne(
+    { email: req.user.email },
+    { $set: { password: passwordHash } }
+  );
+
+  res.status(204).end();
+});
+
 // Middleware to verify that the user is authorized to call an endpoint
-const verifyAuth = async (req, res, next) => {
+async function verifyAuth(req, res, next) {
   const user = await findUser('token', req.cookies[authCookieName]);
   if (user) {
     req.user = user;
@@ -78,7 +111,7 @@ const verifyAuth = async (req, res, next) => {
   } else {
     res.status(401).send({ msg: 'Unauthorized' });
   }
-};
+}
 
 // Workouts
 apiRouter.get('/workouts', verifyAuth, async (req, res) => {
@@ -99,9 +132,10 @@ apiRouter.put('/workouts/:id', verifyAuth, async (req, res) => {
   }
 
   const date = typeof req.body.date === 'string' ? req.body.date : existingWorkout.date;
-  const notes = existingWorkout.fields?.notes && typeof req.body.notes === 'string'
+  const notes = typeof req.body.notes === 'string'
     ? req.body.notes
     : '';
+  const starred = Boolean(req.body.starred);
   const sets = Array.isArray(req.body.sets)
     ? req.body.sets.map((set, index) => sanitizeSet(set, existingWorkout.fields || {}, index))
     : existingWorkout.sets;
@@ -110,12 +144,13 @@ apiRouter.put('/workouts/:id', verifyAuth, async (req, res) => {
     ...existingWorkout,
     date,
     notes,
+    starred,
     sets,
   };
 
   await workoutCollection.updateOne(
     { id: existingWorkout.id, userEmail: req.user.email },
-    { $set: { date, notes, sets } }
+    { $set: { date, notes, starred, sets } }
   );
 
   res.send(updatedWorkout);
@@ -148,11 +183,6 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
 
   if (!name) {
     res.status(400).send({ msg: 'Workout name is required' });
-    return;
-  }
-
-  if (!Object.values(fields).some(Boolean)) {
-    res.status(400).send({ msg: 'Select at least one field for this workout' });
     return;
   }
 
@@ -248,6 +278,20 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   res.send(updatedTemplate);
 });
 
+apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
+  const result = await workoutTemplateCollection.deleteOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (result.deletedCount === 0) {
+    res.status(404).send({ msg: 'Workout template not found' });
+    return;
+  }
+
+  res.status(204).end();
+});
+
 // Save a new workout
 apiRouter.post('/workouts', verifyAuth, async (req, res) => {
   const templateId = typeof req.body.templateId === 'string' ? req.body.templateId : '';
@@ -266,9 +310,10 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     return;
   }
 
-  const notes = template.fields.notes && typeof req.body.notes === 'string'
+  const notes = typeof req.body.notes === 'string'
     ? req.body.notes
     : '';
+  const starred = Boolean(req.body.starred);
   const sets = Array.isArray(req.body.sets)
     ? req.body.sets.map((set, index) => sanitizeSet(set, template.fields, index))
     : [];
@@ -288,6 +333,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     fields: template.fields,
     measurements: sanitizeMeasurements(template.measurements),
     notes,
+    starred,
     sets,
   };
 
@@ -346,7 +392,7 @@ function sanitizeFields(fields) {
     weight: Boolean(fields?.weight),
     duration: Boolean(fields?.duration),
     distance: Boolean(fields?.distance),
-    notes: Boolean(fields?.notes),
+    notes: true,
   };
 }
 
@@ -365,11 +411,16 @@ function sanitizeMeasurements(measurements) {
 function sanitizeSet(set, fields, index) {
   return {
     id: index + 1,
+    setType: sanitizeSetType(set?.setType),
     ...(fields.reps ? { reps: `${set?.reps ?? ''}` } : {}),
     ...(fields.weight ? { weight: `${set?.weight ?? ''}` } : {}),
     ...(fields.duration ? { duration: `${set?.duration ?? ''}` } : {}),
     ...(fields.distance ? { distance: `${set?.distance ?? ''}` } : {}),
   };
+}
+
+function sanitizeSetType(value) {
+  return ['regular', 'warmup', 'max'].includes(value) ? value : 'regular';
 }
 
 app.listen(port, () => {
