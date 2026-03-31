@@ -374,6 +374,7 @@ export function Logger() {
     setPendingSet({
       id: nextId,
       ...defaults,
+      setType: "regular",
     });
     setShowSetModal(true);
   };
@@ -632,15 +633,6 @@ export function Logger() {
             </div>
           </label>
 
-          <label className="starred-toggle">
-            <input
-              type="checkbox"
-              checked={starred}
-              onChange={(event) => setStarred(event.target.checked)}
-            />
-            <span>Star this workout</span>
-          </label>
-
           {selectedTemplate && activeSetFields.length > 0 && (
             <section>
               <div className="section-header">
@@ -716,7 +708,6 @@ export function Logger() {
               ) : (
                 <div className="empty-sets-state">
                   <p>No sets logged yet.</p>
-                  <span>New sets reuse your last numbers.</span>
                 </div>
               )}
             </section>

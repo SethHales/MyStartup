@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Dropdown } from '../components/dropdown';
 import { MultiSelectDropdown } from '../components/multiSelectDropdown';
 import "./history.css";
@@ -27,6 +28,7 @@ const monthNames = [
 
 export function History() {
   const [workouts, setWorkouts] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
   const [editingWorkout, setEditingWorkout] = React.useState(null);
   const [draftWorkout, setDraftWorkout] = React.useState(null);
@@ -80,27 +82,30 @@ export function History() {
     }),
     [workouts, workoutFilters, monthFilters, yearFilters, starredOnly]
   );
-  const groupedWorkouts = groupWorkoutsByMonth(filteredWorkouts);
+  const groupedWorkouts = React.useMemo(
+    () => groupWorkoutsByMonth(filteredWorkouts),
+    [filteredWorkouts]
+  );
   const activeFilterCount = workoutFilters.length + monthFilters.length + yearFilters.length + (starredOnly ? 1 : 0);
 
-  const handleRowClick = (id) => {
+  const handleRowClick = React.useCallback((id) => {
     setExpandedWorkoutId((current) =>
       current === id ? null : id
     );
-  };
+  }, []);
 
-  const openEditModal = (workout) => {
+  const openEditModal = React.useCallback((workout) => {
     setEditingWorkout(workout);
     setDraftWorkout(cloneWorkoutForEdit(workout));
     setOpenWorkoutMenuId(null);
-  };
+  }, []);
 
-  const closeEditModal = () => {
+  const closeEditModal = React.useCallback(() => {
     setEditingWorkout(null);
     setDraftWorkout(null);
-  };
+  }, []);
 
-  const handleDeleteWorkout = async (workoutId) => {
+  const handleDeleteWorkout = React.useCallback(async (workoutId) => {
     setOpenWorkoutMenuId(null);
 
     try {
@@ -122,10 +127,21 @@ export function History() {
     } catch (err) {
       console.error('Error deleting workout:', err);
     }
-  };
+  }, []);
 
-  const handleToggleStarred = async (workout) => {
+  const handleToggleStarred = React.useCallback(async (workout) => {
     setOpenWorkoutMenuId(null);
+    const nextStarred = !workout.starred;
+
+    setWorkouts((currentWorkouts) =>
+      sortWorkouts(
+        currentWorkouts.map((currentWorkout) =>
+          currentWorkout.id === workout.id
+            ? { ...currentWorkout, starred: nextStarred }
+            : currentWorkout
+        )
+      )
+    );
 
     try {
       const response = await fetch(`/api/workouts/${workout.id}`, {
@@ -135,7 +151,7 @@ export function History() {
         body: JSON.stringify({
           date: workout.date,
           notes: workout.notes,
-          starred: !workout.starred,
+          starred: nextStarred,
           sets: workout.sets,
         }),
       });
@@ -143,6 +159,15 @@ export function History() {
       const body = await response.json();
 
       if (!response.ok) {
+        setWorkouts((currentWorkouts) =>
+          sortWorkouts(
+            currentWorkouts.map((currentWorkout) =>
+              currentWorkout.id === workout.id
+                ? { ...currentWorkout, starred: workout.starred }
+                : currentWorkout
+            )
+          )
+        );
         alert(body.msg || 'Failed to update starred workout');
         return;
       }
@@ -155,9 +180,24 @@ export function History() {
         )
       );
     } catch (err) {
+      setWorkouts((currentWorkouts) =>
+        sortWorkouts(
+          currentWorkouts.map((currentWorkout) =>
+            currentWorkout.id === workout.id
+              ? { ...currentWorkout, starred: workout.starred }
+              : currentWorkout
+          )
+        )
+      );
       console.error('Error updating starred workout:', err);
     }
-  };
+  }, []);
+
+  const toggleWorkoutMenu = React.useCallback((workoutId) => {
+    setOpenWorkoutMenuId((currentId) =>
+      currentId === workoutId ? null : workoutId
+    );
+  }, []);
 
   const handleDraftFieldChange = (field, value) => {
     setDraftWorkout((currentWorkout) => ({
@@ -327,117 +367,40 @@ export function History() {
           </div>
         </section>
 
-        {groupedWorkouts.length === 0 && (
+        {isLoading && (
+          <section className="history-loading-state" aria-live="polite">
+            <div className="history-loading-copy">
+              <p className="history-kicker">History</p>
+              <h2>Loading workouts...</h2>
+              <p className="history-summary">Pulling your training log together.</p>
+            </div>
+            <div className="history-loading-list">
+              <div className="history-loading-card" />
+              <div className="history-loading-card" />
+              <div className="history-loading-card" />
+            </div>
+          </section>
+        )}
+
+        {!isLoading && groupedWorkouts.length === 0 && (
           <section className="history-empty-state">
             <p>No matches.</p>
           </section>
         )}
 
-        {groupedWorkouts.map((group) => {
-          const hasOpenMenu = group.days.some((dayGroup) =>
-            dayGroup.workouts.some((workout) => workout.id === openWorkoutMenuId)
-          );
-
-          return (
-          <section
+        {!isLoading && groupedWorkouts.map((group) => (
+          <HistoryMonthSection
             key={group.key}
-            className={hasOpenMenu ? "history-month-group history-month-group-menu-open" : "history-month-group"}
-          >
-            <div className="history-month-heading">
-              <h2>{group.label}</h2>
-            </div>
-            <table className="history-table table table-dark table-hover">
-              <tbody>
-                {group.days.map((dayGroup) => (
-                  <React.Fragment key={dayGroup.key}>
-                    <tr className="history-day-row">
-                      <td colSpan={3}>{dayGroup.label}</td>
-                    </tr>
-                    {dayGroup.workouts.map((workout) => (
-                      <React.Fragment key={workout.id}>
-                        <tr
-                          onClick={() => handleRowClick(workout.id)}
-                          className={[
-                            workout.id === expandedWorkoutId ? "history-row-expanded history-row" : "history-row",
-                            workout.starred ? "history-row-starred" : "",
-                          ].filter(Boolean).join(" ")}
-                          style={{ cursor: "pointer" }}
-                        >
-                          <td className="history-workout-cell">
-                            <span className="history-workout-leading">
-                              <button
-                                type="button"
-                                className={workout.starred ? "history-star-button is-starred" : "history-star-button"}
-                                aria-label={workout.starred ? `Unstar ${workout.templateName || workout.exercise}` : `Star ${workout.templateName || workout.exercise}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleToggleStarred(workout);
-                                }}
-                              >
-                                <span className="history-star-glyph" aria-hidden="true">★</span>
-                              </button>
-                            </span>
-                            <span className="history-workout-name">{workout.templateName || workout.exercise}</span>
-                          </td>
-                          <td>{workout.notes}</td>
-                          <td
-                            className="workout-actions-cell"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <div className="workout-actions-menu">
-                              <button
-                                type="button"
-                                className="workout-menu-trigger"
-                                aria-label={`Manage workout ${workout.templateName || workout.exercise}`}
-                                onClick={() =>
-                                  setOpenWorkoutMenuId((currentId) =>
-                                    currentId === workout.id ? null : workout.id
-                                  )
-                                }
-                              >
-                                ...
-                              </button>
-                              {openWorkoutMenuId === workout.id && (
-                                <div className="workout-menu-popover">
-                                  <button
-                                    type="button"
-                                    className="workout-menu-item"
-                                    onClick={() => openEditModal(workout)}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="workout-menu-item delete"
-                                    onClick={() => handleDeleteWorkout(workout.id)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {expandedWorkoutId === workout.id && (
-                          <tr className="history-row-details is-open">
-                            <td colSpan={3}>
-                              <div className="history-details-content is-open">
-                                <div className="history-details-panel">
-                                  {renderWorkoutDetails(workout)}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </section>
-          );
-        })}
+            group={group}
+            expandedWorkoutId={expandedWorkoutId}
+            openWorkoutMenuId={openWorkoutMenuId}
+            onRowClick={handleRowClick}
+            onToggleStarred={handleToggleStarred}
+            onToggleWorkoutMenu={toggleWorkoutMenu}
+            onOpenEditModal={openEditModal}
+            onDeleteWorkout={handleDeleteWorkout}
+          />
+        ))}
       </section>
 
       {editingWorkout && draftWorkout && (
@@ -581,6 +544,9 @@ export function History() {
       })
       .catch((err) => {
         console.error('Error loading workouts:', err);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   }
 }
@@ -596,6 +562,217 @@ function getVisibleFields(workout) {
     Array.isArray(workout?.sets) && workout.sets.some((set) => set[field.key] !== undefined && set[field.key] !== "")
   );
 }
+
+const HistoryMonthSection = React.memo(function HistoryMonthSection({
+  group,
+  expandedWorkoutId,
+  openWorkoutMenuId,
+  onRowClick,
+  onToggleStarred,
+  onToggleWorkoutMenu,
+  onOpenEditModal,
+  onDeleteWorkout,
+}) {
+  const hasOpenMenu = group.days.some((dayGroup) =>
+    dayGroup.workouts.some((workout) => workout.id === openWorkoutMenuId)
+  );
+
+  return (
+    <section className={hasOpenMenu ? "history-month-group history-month-group-menu-open" : "history-month-group"}>
+      <div className="history-month-heading">
+        <h2>{group.label}</h2>
+      </div>
+      <table className="history-table table table-dark table-hover">
+        <tbody>
+          {group.days.map((dayGroup) => (
+            <React.Fragment key={dayGroup.key}>
+              <tr className="history-day-row">
+                <td colSpan={3}>{dayGroup.label}</td>
+              </tr>
+              {dayGroup.workouts.map((workout) => (
+                <HistoryWorkoutRow
+                  key={workout.id}
+                  workout={workout}
+                  isExpanded={expandedWorkoutId === workout.id}
+                  isMenuOpen={openWorkoutMenuId === workout.id}
+                  onRowClick={onRowClick}
+                  onToggleStarred={onToggleStarred}
+                  onToggleWorkoutMenu={onToggleWorkoutMenu}
+                  onOpenEditModal={onOpenEditModal}
+                  onDeleteWorkout={onDeleteWorkout}
+                />
+              ))}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+});
+
+const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
+  workout,
+  isExpanded,
+  isMenuOpen,
+  onRowClick,
+  onToggleStarred,
+  onToggleWorkoutMenu,
+  onOpenEditModal,
+  onDeleteWorkout,
+}) {
+  const workoutName = workout.templateName || workout.exercise;
+  const [shouldRenderDetails, setShouldRenderDetails] = React.useState(isExpanded);
+  const [detailsState, setDetailsState] = React.useState(isExpanded ? 'open' : 'closed');
+  const menuTriggerRef = React.useRef(null);
+  const [menuPosition, setMenuPosition] = React.useState(null);
+
+  React.useEffect(() => {
+    if (isExpanded) {
+      setShouldRenderDetails(true);
+      setDetailsState('open');
+      return undefined;
+    }
+
+    if (!shouldRenderDetails) {
+      setDetailsState('closed');
+      return undefined;
+    }
+
+    setDetailsState('closing');
+    const timeoutId = window.setTimeout(() => {
+      setShouldRenderDetails(false);
+      setDetailsState('closed');
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isExpanded, shouldRenderDetails]);
+
+  React.useEffect(() => {
+    if (!isMenuOpen) {
+      setMenuPosition(null);
+      return undefined;
+    }
+
+    const updateMenuPosition = () => {
+      const trigger = menuTriggerRef.current;
+
+      if (!trigger) {
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 160;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const desiredLeft = rect.right - menuWidth;
+      const left = Math.min(
+        Math.max(12, desiredLeft),
+        Math.max(12, viewportWidth - menuWidth - 12)
+      );
+      const openUpward = rect.bottom + 156 > viewportHeight - 12;
+
+      setMenuPosition({
+        left,
+        top: openUpward ? rect.top - 8 : rect.bottom + 8,
+        openUpward,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [isMenuOpen]);
+
+  return (
+    <>
+      <tr
+        onClick={() => onRowClick(workout.id)}
+        className={[
+          isExpanded ? "history-row-expanded history-row" : "history-row",
+          workout.starred ? "history-row-starred" : "",
+        ].filter(Boolean).join(" ")}
+        style={{ cursor: "pointer" }}
+      >
+        <td className="history-workout-cell">
+          <span className="history-workout-leading">
+            <button
+              type="button"
+              className={workout.starred ? "history-star-button is-starred" : "history-star-button"}
+              aria-label={workout.starred ? `Unstar ${workoutName}` : `Star ${workoutName}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleStarred(workout);
+              }}
+            >
+              <span className="history-star-glyph" aria-hidden="true" />
+            </button>
+          </span>
+          <span className="history-workout-name">{workoutName}</span>
+        </td>
+        <td>{workout.notes}</td>
+        <td
+          className="workout-actions-cell"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="workout-actions-menu">
+            <button
+              ref={menuTriggerRef}
+              type="button"
+              className="workout-menu-trigger"
+              aria-label={`Manage workout ${workoutName}`}
+              onClick={() => onToggleWorkoutMenu(workout.id)}
+            >
+              ...
+            </button>
+          </div>
+        </td>
+      </tr>
+      {shouldRenderDetails && (
+        <tr className={detailsState === 'open' ? "history-row-details is-open" : "history-row-details is-closing"}>
+          <td colSpan={3}>
+            <div className={detailsState === 'open' ? "history-details-content is-open" : "history-details-content is-closing"}>
+              <div className={detailsState === 'open' ? "history-details-panel is-open" : "history-details-panel is-closing"}>
+                {renderWorkoutDetails(workout)}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+      {isMenuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          className={menuPosition.openUpward ? "workout-menu-popover workout-menu-popover-overlay is-open-upward" : "workout-menu-popover workout-menu-popover-overlay"}
+          style={{
+            position: 'fixed',
+            left: `${menuPosition.left}px`,
+            top: menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`,
+            bottom: menuPosition.openUpward ? `${window.innerHeight - menuPosition.top}px` : 'auto',
+          }}
+        >
+          <button
+            type="button"
+            className="workout-menu-item"
+            onClick={() => onOpenEditModal(workout)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="workout-menu-item delete"
+            onClick={() => onDeleteWorkout(workout.id)}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+});
 
 function renderWorkoutDetails(workout) {
   const visibleFields = getVisibleFields(workout);
@@ -641,8 +818,32 @@ function sortWorkouts(workouts) {
       return rightDate - leftDate;
     }
 
-    return (right.id || '').localeCompare(left.id || '');
+    const leftChronology = getWorkoutChronologyValue(left);
+    const rightChronology = getWorkoutChronologyValue(right);
+
+    if (leftChronology !== rightChronology) {
+      return leftChronology - rightChronology;
+    }
+
+    return (left.id || '').localeCompare(right.id || '');
   });
+}
+
+function getWorkoutChronologyValue(workout) {
+  const createdAtTime = Date.parse(workout?.createdAt || '');
+  if (!Number.isNaN(createdAtTime)) {
+    return createdAtTime;
+  }
+
+  const objectIdValue = typeof workout?._id === 'string'
+    ? workout._id
+    : workout?._id?.toString?.();
+
+  if (objectIdValue && /^[a-f0-9]{24}$/i.test(objectIdValue)) {
+    return parseInt(objectIdValue.slice(0, 8), 16) * 1000;
+  }
+
+  return 0;
 }
 
 function groupWorkoutsByMonth(workouts) {

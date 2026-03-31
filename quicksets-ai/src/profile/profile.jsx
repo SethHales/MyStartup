@@ -5,16 +5,22 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
-export function Profile({ currentUser }) {
+export function Profile({ currentUser, setCurrentUser }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [workouts, setWorkouts] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
+  const [displayNameInput, setDisplayNameInput] = React.useState(currentUser?.name || "");
   const [currentPassword, setCurrentPassword] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [passwordStatus, setPasswordStatus] = React.useState({ type: "", message: "" });
   const [isSavingPassword, setIsSavingPassword] = React.useState(false);
+
+  React.useEffect(() => {
+    setDisplayNameInput(currentUser?.name || "");
+  }, [currentUser?.name]);
 
   React.useEffect(() => {
     fetch('/api/workouts', {
@@ -41,15 +47,18 @@ export function Profile({ currentUser }) {
       })
       .catch((err) => {
         console.error('Error loading workouts:', err);
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   }, []);
 
   const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const isPasswordModalOpen = searchParams.get("modal") === "change-password";
+  const isPasswordModalOpen = searchParams.get("modal") === "account-settings";
 
   const openPasswordModal = () => {
     const nextSearchParams = new URLSearchParams(location.search);
-    nextSearchParams.set("modal", "change-password");
+    nextSearchParams.set("modal", "account-settings");
     navigate(`${location.pathname}?${nextSearchParams.toString()}`);
   };
 
@@ -102,49 +111,85 @@ export function Profile({ currentUser }) {
   const handlePasswordSubmit = async (event) => {
     event.preventDefault();
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordStatus({ type: "error", message: "Fill out all password fields." });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordStatus({ type: "error", message: "New passwords do not match." });
-      return;
-    }
-
     setIsSavingPassword(true);
     setPasswordStatus({ type: "", message: "" });
 
     try {
-      const response = await fetch('/api/auth/password', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-      });
+      const trimmedName = displayNameInput.trim();
+      const shouldUpdateName = trimmedName && trimmedName !== (currentUser?.name || "");
+      const shouldUpdatePassword = Boolean(currentPassword || newPassword || confirmPassword);
 
-      if (!response.ok) {
-        let body = {};
+      if (!shouldUpdateName && !shouldUpdatePassword) {
+        setPasswordStatus({ type: "error", message: "Make a change before saving." });
+        return;
+      }
+
+      if (shouldUpdateName) {
+        const nameResponse = await fetch('/api/user/me', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: trimmedName,
+          }),
+        });
+
+        let nameBody = {};
         try {
-          body = await response.json();
+          nameBody = await nameResponse.json();
         } catch (_err) {
-          body = {};
+          nameBody = {};
         }
 
-        setPasswordStatus({ type: "error", message: body.msg || "Couldn't update password." });
-        return;
+        if (!nameResponse.ok) {
+          setPasswordStatus({ type: "error", message: nameBody.msg || "Couldn't update name." });
+          return;
+        }
+
+        setCurrentUser((current) => current ? { ...current, name: nameBody.name || trimmedName } : current);
+      }
+
+      if (shouldUpdatePassword) {
+        if (!currentPassword || !newPassword || !confirmPassword) {
+          setPasswordStatus({ type: "error", message: "Fill out all password fields to change your password." });
+          return;
+        }
+
+        if (newPassword !== confirmPassword) {
+          setPasswordStatus({ type: "error", message: "New passwords do not match." });
+          return;
+        }
+
+        const response = await fetch('/api/auth/password', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+          }),
+        });
+
+        if (!response.ok) {
+          let body = {};
+          try {
+            body = await response.json();
+          } catch (_err) {
+            body = {};
+          }
+
+          setPasswordStatus({ type: "error", message: body.msg || "Couldn't update password." });
+          return;
+        }
       }
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setPasswordStatus({ type: "success", message: "Password updated." });
+      setPasswordStatus({ type: "success", message: shouldUpdatePassword ? "Account settings updated." : "Name updated." });
     } catch (err) {
       console.error('Error updating password:', err);
-      setPasswordStatus({ type: "error", message: "Couldn't update password." });
+      setPasswordStatus({ type: "error", message: "Couldn't update account settings." });
     } finally {
       setIsSavingPassword(false);
     }
@@ -153,6 +198,22 @@ export function Profile({ currentUser }) {
   return (
     <main>
       <div className="main-formatting profile-layout">
+        {isLoading ? (
+          <section className="profile-loading-state" aria-live="polite">
+            <div className="profile-loading-hero">
+              <p className="profile-kicker">Profile</p>
+              <h2>Loading your dashboard...</h2>
+              <p className="panel-muted">Crunching your training trends.</p>
+            </div>
+            <div className="profile-loading-grid">
+              <div className="profile-loading-card profile-loading-card-wide" />
+              <div className="profile-loading-card" />
+              <div className="profile-loading-card" />
+              <div className="profile-loading-card" />
+            </div>
+          </section>
+        ) : (
+          <>
         <section className="profile-hero">
           <div>
             <p className="profile-kicker">Profile</p>
@@ -271,17 +332,19 @@ export function Profile({ currentUser }) {
         <section className="profile-panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Security</p>
-              <h3>Password</h3>
+              <p className="panel-kicker">Account</p>
+              <h3>Settings</h3>
             </div>
             <button type="button" className="btn btn-outline-light" onClick={openPasswordModal}>
-              Change Password
+              Edit account
             </button>
           </div>
-          <p className="panel-muted">Open a quick modal to update your password.</p>
+          <p className="panel-muted">Update your display name or password in one place.</p>
         </section>
 
         <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
+          </>
+        )}
       </div>
 
       {isPasswordModalOpen && (
@@ -295,8 +358,8 @@ export function Profile({ currentUser }) {
           >
             <div className="password-modal-header">
               <div>
-                <p className="panel-kicker">Security</p>
-                <h3 id="change-password-title">Change Password</h3>
+                <p className="panel-kicker">Account</p>
+                <h3 id="change-password-title">Account Settings</h3>
               </div>
               <button type="button" className="password-modal-close" onClick={closePasswordModal}>
                 Close
@@ -304,6 +367,16 @@ export function Profile({ currentUser }) {
             </div>
 
             <form className="password-form" onSubmit={handlePasswordSubmit}>
+              <label className="password-field">
+                Display name
+                <input
+                  type="text"
+                  value={displayNameInput}
+                  onChange={(event) => setDisplayNameInput(event.target.value)}
+                  autoComplete="name"
+                />
+              </label>
+              <div className="password-section-label">Change password</div>
               <label className="password-field">
                 Current password
                 <input
@@ -341,7 +414,7 @@ export function Profile({ currentUser }) {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={isSavingPassword}>
-                  {isSavingPassword ? "Saving..." : "Update Password"}
+                  {isSavingPassword ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
@@ -459,7 +532,7 @@ function buildProfileIdentity(workouts, currentUser) {
   const favoriteWorkout = getMostUsedWorkoutName(workouts);
   const firstWorkout = workouts[0];
   const lastWorkout = workouts[workouts.length - 1];
-  const displayName = currentUser?.email || "QuickSets Athlete";
+  const displayName = currentUser?.name || currentUser?.email || "QuickSets Athlete";
 
   return {
     displayName,

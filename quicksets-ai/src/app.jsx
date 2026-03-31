@@ -66,13 +66,17 @@ function Header({ currentUser, setCurrentUser }) {
 
     const handleChangePassword = () => {
         setShowAccountMenu(false);
-        navigate("/profile?modal=change-password");
+        navigate("/profile?modal=account-settings");
     };
+    const displayName = currentUser?.name || currentUser?.email || "";
     let title = "";
-    const isLoginPage = location.pathname === "/";
+    const isAuthPage = location.pathname === "/" || location.pathname === "/signup";
     switch (location.pathname) {
         case "/":
             title = "LOGIN";
+            break;
+        case "/signup":
+            title = "SIGN UP";
             break;
         case "/history":
             title = "HISTORY";
@@ -87,7 +91,7 @@ function Header({ currentUser, setCurrentUser }) {
             title = "QuickSets";
     }
 
-    const showBrandTitle = isMobile && !isLoginPage;
+    const showBrandTitle = isMobile && !isAuthPage;
 
 
 
@@ -105,9 +109,9 @@ function Header({ currentUser, setCurrentUser }) {
                 )}
             </h1>
 
-            {currentUser && !isLoginPage && (
+            {currentUser && !isAuthPage && (
                 <div className="user-section" ref={accountMenuRef}>
-                    <p className="user-email">{currentUser.email}</p>
+                    <p className="user-email">{displayName}</p>
                     <button
                         type="button"
                         className="account-menu-trigger"
@@ -119,9 +123,9 @@ function Header({ currentUser, setCurrentUser }) {
                     </button>
                     {showAccountMenu && (
                         <div className="account-menu-popover">
-                            <p>{currentUser.email}</p>
+                            <p>{displayName}</p>
                             <button type="button" onClick={handleLogout}>Logout</button>
-                            <button type="button" onClick={handleChangePassword}>Change password</button>
+                            <button type="button" onClick={handleChangePassword}>Account settings</button>
                         </div>
                     )}
                 </div>
@@ -132,7 +136,7 @@ function Header({ currentUser, setCurrentUser }) {
 
 function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
     const location = useLocation();
-    const showFooterNav = Boolean(currentUser) && location.pathname !== "/";
+    const showFooterNav = Boolean(currentUser) && location.pathname !== "/" && location.pathname !== "/signup";
 
     return (
         <div className="app">
@@ -144,7 +148,16 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
                     element={
                         isAuthChecked && currentUser
                             ? <Navigate to="/logger" replace />
-                            : <Login setCurrentUser={setCurrentUser} />
+                            : <Login setCurrentUser={setCurrentUser} mode="login" />
+                    }
+                />
+
+                <Route
+                    path="/signup"
+                    element={
+                        isAuthChecked && currentUser
+                            ? <Navigate to="/logger" replace />
+                            : <Login setCurrentUser={setCurrentUser} mode="signup" />
                     }
                 />
 
@@ -169,7 +182,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
                     path="/profile"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <Profile currentUser={currentUser} />
+                            <Profile currentUser={currentUser} setCurrentUser={setCurrentUser} />
                         </ProtectedRoute>
                     }
                 />

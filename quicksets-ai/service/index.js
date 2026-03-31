@@ -10,7 +10,7 @@ const authCookieName = 'token';
 const { userCollection, workoutCollection, workoutTemplateCollection } = require('./database');
 
 // The service port. In production the front-end code is statically hosted by the service on the same port.
-const port = process.argv.length > 2 ? process.argv[2] : 4000;
+const port = process.argv.length > 2 ? process.argv[2] : 4001;
 
 // JSON body parsing using built-in middleware
 app.use(express.json());
@@ -30,10 +30,17 @@ apiRouter.post('/auth/create', async (req, res) => {
   if (await findUser('email', req.body.email)) {
     res.status(409).send({ msg: 'Existing user' });
   } else {
-    const user = await createUser(req.body.email, req.body.password);
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+
+    if (!name) {
+      res.status(400).send({ msg: 'Name is required' });
+      return;
+    }
+
+    const user = await createUser(name, req.body.email, req.body.password);
 
     setAuthCookie(res, user.token);
-    res.send({ email: user.email });
+    res.send({ email: user.email, name: user.name });
   }
 });
 
@@ -49,7 +56,7 @@ apiRouter.post('/auth/login', async (req, res) => {
       );
 
       setAuthCookie(res, user.token);
-      res.send({ email: user.email });
+      res.send({ email: user.email, name: user.name || '' });
       return;
     }
   }
@@ -100,6 +107,22 @@ apiRouter.put('/auth/password', verifyAuth, async (req, res) => {
   );
 
   res.status(204).end();
+});
+
+apiRouter.put('/user/me', verifyAuth, async (req, res) => {
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+
+  if (!name) {
+    res.status(400).send({ msg: 'Name is required' });
+    return;
+  }
+
+  await userCollection.updateOne(
+    { email: req.user.email },
+    { $set: { name } }
+  );
+
+  res.send({ email: req.user.email, name });
 });
 
 // Middleware to verify that the user is authorized to call an endpoint
@@ -289,6 +312,28 @@ apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
     return;
   }
 
+  await workoutCollection.deleteMany({
+    userEmail: req.user.email,
+    templateId: req.params.id,
+  });
+
+  const remainingTemplates = await workoutTemplateCollection
+    .find({ userEmail: req.user.email }, { projection: { id: 1 } })
+    .toArray();
+  const remainingTemplateIds = remainingTemplates
+    .map((template) => template.id)
+    .filter(Boolean);
+
+  await workoutCollection.deleteMany({
+    userEmail: req.user.email,
+    $or: [
+      { templateId: { $exists: false } },
+      { templateId: null },
+      { templateId: '' },
+      ...(remainingTemplateIds.length > 0 ? [{ templateId: { $nin: remainingTemplateIds } }] : [{}]),
+    ],
+  });
+
   res.status(204).end();
 });
 
@@ -325,6 +370,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
 
   const newWorkout = {
     id: uuid.v4(),
+    createdAt: new Date().toISOString(),
     userEmail: req.user.email,
     date: req.body.date,
     templateId: template.id,
@@ -343,7 +389,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
 
 // Get current email
 apiRouter.get('/user/me', verifyAuth, (req, res) => {
-  res.send({ email: req.user.email })
+  res.send({ email: req.user.email, name: req.user.name || '' })
 })
 
 // Default error handler
@@ -357,10 +403,11 @@ app.use((_req, res) => {
 });
 
 
-async function createUser(email, password) {
+async function createUser(name, email, password) {
   const passwordHash = await bcrypt.hash(password, 10);
 
   const user = {
+    name,
     email: email,
     password: passwordHash,
     token: uuid.v4(),

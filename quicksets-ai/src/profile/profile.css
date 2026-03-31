@@ -97,6 +97,53 @@
     border-color: rgba(77, 163, 255, 0.32);
 }
 
+.profile-loading-state,
+.profile-loading-hero,
+.profile-loading-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-card);
+}
+
+.profile-loading-state {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.profile-loading-hero {
+    padding: 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    background:
+        radial-gradient(circle at top right, rgba(77, 163, 255, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(27, 31, 40, 0.98) 0%, rgba(19, 21, 27, 0.98) 100%);
+}
+
+.profile-loading-hero h2 {
+    margin: 0;
+}
+
+.profile-loading-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.profile-loading-card {
+    min-height: 148px;
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+    background-size: 220% 100%;
+    animation: profileShimmer 1.2s linear infinite;
+}
+
+.profile-loading-card-wide {
+    grid-column: 1 / -1;
+    min-height: 184px;
+}
+
 .panel-header {
     display: flex;
     justify-content: space-between;
@@ -125,6 +172,15 @@
 .password-field {
     gap: 0.3rem;
     font-size: 0.84rem;
+}
+
+.password-section-label {
+    margin: 0.1rem 0 0;
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-soft);
 }
 
 .password-field input {
@@ -396,6 +452,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .profile-loading-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-loading-card-wide {
+        grid-column: auto;
+    }
+
     .trend-grid {
         grid-template-columns: 1fr;
     }
@@ -431,5 +495,15 @@
     .heatmap-cell {
         width: 14px;
         height: 14px;
+    }
+}
+
+@keyframes profileShimmer {
+    from {
+        background-position: 200% 0;
+    }
+
+    to {
+        background-position: -20% 0;
     }
 }

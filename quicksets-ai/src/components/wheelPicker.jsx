@@ -2,11 +2,15 @@ import React from "react";
 import "./wheelPicker.css";
 
 const ITEM_HEIGHT = 44;
+const RELEASE_SNAP_DELAY_MS = 120;
+const DRAG_THRESHOLD_PX = 14;
 
 export function WheelPicker({ value, options, onChange, ariaLabel }) {
   const scrollRef = React.useRef(null);
   const scrollTimeoutRef = React.useRef(null);
   const isAdjustingScrollRef = React.useRef(false);
+  const isPointerDownRef = React.useRef(false);
+  const pointerStartScrollTopRef = React.useRef(0);
 
   const selectedIndex = React.useMemo(() => {
     const foundIndex = options.findIndex((option) => option.value === value);
@@ -53,6 +57,13 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     }
   }, []);
 
+  const clearSnapTimeout = React.useCallback(() => {
+    if (scrollTimeoutRef.current) {
+      window.clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
+    }
+  }, []);
+
   const snapToIndex = React.useCallback((index) => {
     const nextIndex = normalizeIndex(index);
     const nextOption = options[nextIndex];
@@ -74,6 +85,48 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     }, 120);
   }, [getCenteredScrollTop, normalizeIndex, onChange, options, value]);
 
+  const snapToNearest = React.useCallback(() => {
+    if (!scrollRef.current || !options.length) {
+      return;
+    }
+
+    const rawIndex = Math.round(scrollRef.current.scrollTop / ITEM_HEIGHT);
+    snapToIndex(rawIndex);
+  }, [options.length, snapToIndex]);
+
+  const scheduleSnapToNearest = React.useCallback(() => {
+    clearSnapTimeout();
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      snapToNearest();
+    }, RELEASE_SNAP_DELAY_MS);
+  }, [clearSnapTimeout, snapToNearest]);
+
+  const handlePointerDown = React.useCallback(() => {
+    if (!scrollRef.current) {
+      return;
+    }
+
+    isPointerDownRef.current = true;
+    pointerStartScrollTopRef.current = scrollRef.current.scrollTop;
+    clearSnapTimeout();
+  }, [clearSnapTimeout]);
+
+  const handlePointerRelease = React.useCallback(() => {
+    if (!scrollRef.current || !options.length) {
+      return;
+    }
+
+    const totalMovement = Math.abs(scrollRef.current.scrollTop - pointerStartScrollTopRef.current);
+    isPointerDownRef.current = false;
+
+    if (totalMovement < DRAG_THRESHOLD_PX) {
+      snapToIndex(selectedIndex);
+      return;
+    }
+
+    scheduleSnapToNearest();
+  }, [options.length, scheduleSnapToNearest, selectedIndex, snapToIndex]);
+
   const handleScroll = React.useCallback(() => {
     if (!scrollRef.current || !options.length || isAdjustingScrollRef.current) {
       return;
@@ -92,14 +145,12 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
       isAdjustingScrollRef.current = false;
     }
 
-    if (scrollTimeoutRef.current) {
-      window.clearTimeout(scrollTimeoutRef.current);
+    if (isPointerDownRef.current) {
+      return;
     }
 
-    scrollTimeoutRef.current = window.setTimeout(() => {
-      snapToIndex(normalizedIndex);
-    }, 80);
-  }, [getCenteredScrollTop, normalizeIndex, options.length, snapToIndex]);
+    scheduleSnapToNearest();
+  }, [getCenteredScrollTop, normalizeIndex, options.length, scheduleSnapToNearest]);
 
   return (
     <div className="wheel-picker" aria-label={ariaLabel}>
@@ -108,6 +159,9 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
         ref={scrollRef}
         className="wheel-picker-scroll"
         onScroll={handleScroll}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerRelease}
+        onPointerCancel={handlePointerRelease}
       >
         <div className="wheel-picker-spacer" aria-hidden="true" />
         {repeatedOptions.map((option, index) => (
