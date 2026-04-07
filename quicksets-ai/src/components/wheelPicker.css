@@ -4,9 +4,17 @@
     border-radius: 18px;
     overflow: hidden;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-        rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 4%, transparent), color-mix(in srgb, var(--text-on-accent) 1%, transparent)),
+        var(--bg-row-soft);
+    border: 1px solid var(--border-subtle);
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+    outline: none;
+}
+
+.wheel-picker.is-dragging {
+    cursor: grabbing;
 }
 
 .wheel-picker::before,
@@ -22,12 +30,12 @@
 
 .wheel-picker::before {
     top: 0;
-    background: linear-gradient(180deg, rgba(18, 20, 26, 0.96), rgba(18, 20, 26, 0));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), color-mix(in srgb, var(--bg-surface) 0%, transparent));
 }
 
 .wheel-picker::after {
     bottom: 0;
-    background: linear-gradient(0deg, rgba(18, 20, 26, 0.96), rgba(18, 20, 26, 0));
+    background: linear-gradient(0deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), color-mix(in srgb, var(--bg-surface) 0%, transparent));
 }
 
 .wheel-picker-highlight {
@@ -38,33 +46,24 @@
     height: 44px;
     transform: translateY(-50%);
     border-radius: 14px;
-    border: 1px solid rgba(77, 163, 255, 0.24);
-    background: rgba(77, 163, 255, 0.1);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    box-shadow: var(--shadow-inner-strong);
     pointer-events: none;
     z-index: 1;
 }
 
-.wheel-picker-scroll {
-    height: 100%;
-    overflow-y: auto;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+.wheel-picker-viewport {
     position: relative;
-    touch-action: pan-y;
+    height: 100%;
+    position: relative;
     z-index: 0;
 }
 
-.wheel-picker-scroll::-webkit-scrollbar {
-    display: none;
-}
-
-.wheel-picker-spacer {
-    height: 60px;
-    flex-shrink: 0;
-}
-
 .wheel-picker-option {
+    position: absolute;
+    left: 0;
+    right: 0;
     height: 44px;
     display: flex;
     align-items: center;
@@ -72,8 +71,8 @@
     font-size: 1.05rem;
     font-weight: 600;
     color: var(--text-soft);
-    transition: color 0.16s ease, transform 0.16s ease;
-    user-select: none;
+    pointer-events: none;
+    will-change: top, transform, opacity;
 }
 
 .wheel-picker-option.is-selected {

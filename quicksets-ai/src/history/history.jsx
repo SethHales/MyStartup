@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Dropdown } from '../components/dropdown';
 import { MultiSelectDropdown } from '../components/multiSelectDropdown';
 import "./history.css";
+import { getWorkoutColor } from "../utils/workoutColors";
 
 const setFieldColumns = [
   { key: 'reps', label: 'Reps', inputType: 'number', placeholder: '10' },
@@ -207,6 +208,30 @@ export function History() {
   };
 
   const handleDraftSetChange = (setId, field, value) => {
+    if (field === 'templateId' && draftWorkout?.isMixed) {
+      const nextTemplate = workouts
+        .flatMap((workout) => Array.isArray(workout.sets) ? workout.sets : [])
+        .find((set) => set.templateId === value);
+
+      setDraftWorkout((currentWorkout) => ({
+        ...currentWorkout,
+        sets: currentWorkout.sets.map((set) =>
+          set.id === setId
+            ? {
+              id: set.id,
+              setType: 'regular',
+              templateId: nextTemplate?.templateId || value,
+              templateName: nextTemplate?.templateName || set.templateName || '',
+              fields: nextTemplate?.fields || set.fields || {},
+              measurements: nextTemplate?.measurements || set.measurements || {},
+              ...copyHistorySetFields(nextTemplate || set, nextTemplate?.fields || set.fields || {}),
+            }
+            : set
+        ),
+      }));
+      return;
+    }
+
     setDraftWorkout((currentWorkout) => ({
       ...currentWorkout,
       sets: currentWorkout.sets.map((set) =>
@@ -218,11 +243,12 @@ export function History() {
   };
 
   const handleDraftAddSet = () => {
+    const nextSetId = draftWorkout.sets.length + 1;
     setDraftWorkout((currentWorkout) => ({
       ...currentWorkout,
       sets: [
         ...currentWorkout.sets,
-        buildDraftSet(currentWorkout.fields, currentWorkout.sets.length + 1),
+        buildDraftSet(currentWorkout, workouts, nextSetId),
       ],
     }));
   };
@@ -468,6 +494,17 @@ export function History() {
                           </button>
                         </div>
                         <div className="history-edit-set-grid">
+                          {draftWorkout.isMixed && (
+                            <label>
+                              Workout
+                              <Dropdown
+                                value={set.templateId || ''}
+                                onChange={(nextValue) => handleDraftSetChange(set.id, 'templateId', nextValue)}
+                                options={getMixedWorkoutTemplateOptions(workouts)}
+                                ariaLabel={`Set ${set.id} workout`}
+                              />
+                            </label>
+                          )}
                           <label>
                             Set type
                             <Dropdown
@@ -481,9 +518,9 @@ export function History() {
                               ariaLabel={`Set ${set.id} type`}
                             />
                           </label>
-                          {getVisibleFields(draftWorkout).map((field) => (
+                          {getVisibleFields(draftWorkout, set).map((field) => (
                             <label key={field.key}>
-                              {getFieldLabel(field, draftWorkout.measurements)}
+                              {getFieldLabel(field, getWorkoutMeasurements(draftWorkout, set))}
                               <div className="input-with-unit">
                                 <input
                                   type={field.inputType || 'text'}
@@ -491,9 +528,9 @@ export function History() {
                                   placeholder={field.placeholder || ''}
                                   onChange={(event) => handleDraftSetChange(set.id, field.key, event.target.value)}
                                 />
-                                {getFieldUnitSuffix(field, draftWorkout.measurements) && (
+                                {getFieldUnitSuffix(field, getWorkoutMeasurements(draftWorkout, set)) && (
                                   <span className="input-unit">
-                                    {getFieldUnitSuffix(field, draftWorkout.measurements)}
+                                    {getFieldUnitSuffix(field, getWorkoutMeasurements(draftWorkout, set))}
                                   </span>
                                 )}
                               </div>
@@ -551,8 +588,8 @@ export function History() {
   }
 }
 
-function getVisibleFields(workout) {
-  const savedFieldConfig = workout?.fields;
+function getVisibleFields(workout, setOverride = null) {
+  const savedFieldConfig = setOverride?.fields || workout?.fields;
 
   if (savedFieldConfig) {
     return setFieldColumns.filter((field) => savedFieldConfig[field.key]);
@@ -712,7 +749,12 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
               <span className="history-star-glyph" aria-hidden="true" />
             </button>
           </span>
-          <span className="history-workout-name">{workoutName}</span>
+          <span
+            className={workout.isMixed ? "history-workout-name is-mixed" : "history-workout-name"}
+            style={workout.isMixed ? undefined : { color: getWorkoutColor(workout) }}
+          >
+            {workoutName}
+          </span>
         </td>
         <td>{workout.notes}</td>
         <td
@@ -790,8 +832,9 @@ function renderWorkoutDetails(workout) {
       <thead>
       <tr>
         <th>Set</th>
+        {workout.isMixed && <th>Workout</th>}
         {visibleFields.map((field) => (
-          <th key={field.key}>{getFieldLabel(field, workout.measurements)}</th>
+          <th key={field.key}>{getFieldLabel(field, getWorkoutMeasurements(workout))}</th>
         ))}
       </tr>
       </thead>
@@ -799,6 +842,16 @@ function renderWorkoutDetails(workout) {
         {workout.sets.map((set, index) => (
           <tr key={set.id ?? index}>
             <td>{getSetDisplayLabel(set, workout.sets, index)}</td>
+            {workout.isMixed && (
+              <td>
+                <span
+                  className="history-inline-workout"
+                  style={{ color: getWorkoutColor(set) }}
+                >
+                  {set.templateName || 'Mixed set'}
+                </span>
+              </td>
+            )}
             {visibleFields.map((field) => (
               <td key={field.key}>{set[field.key]}</td>
             ))}
@@ -822,7 +875,7 @@ function sortWorkouts(workouts) {
     const rightChronology = getWorkoutChronologyValue(right);
 
     if (leftChronology !== rightChronology) {
-      return leftChronology - rightChronology;
+      return rightChronology - leftChronology;
     }
 
     return (left.id || '').localeCompare(right.id || '');
@@ -913,18 +966,37 @@ function getOrdinalSuffix(day) {
 }
 
 function cloneWorkoutForEdit(workout) {
+  const inferredFields = inferWorkoutFields(workout?.sets || []);
+
   return {
     ...workout,
     notes: workout.notes || '',
     starred: Boolean(workout.starred),
-    fields: workout.fields || {},
+    fields: hasTrackedWorkoutFields(workout.fields) ? workout.fields : inferredFields,
     sets: Array.isArray(workout.sets)
       ? workout.sets.map((set, index) => ({ ...set, id: set.id ?? index + 1, setType: normalizeSetType(set.setType) }))
       : [],
   };
 }
 
-function buildDraftSet(fields, id) {
+function buildDraftSet(workout, workouts, id) {
+  const fields = workout?.fields || {};
+  if (workout?.isMixed) {
+    const firstTemplateSet = workouts
+      .flatMap((currentWorkout) => Array.isArray(currentWorkout.sets) ? currentWorkout.sets : [])
+      .find((set) => set.templateId);
+
+    return {
+      id,
+      setType: 'regular',
+      templateId: firstTemplateSet?.templateId || '',
+      templateName: firstTemplateSet?.templateName || '',
+      fields: firstTemplateSet?.fields || {},
+      measurements: firstTemplateSet?.measurements || {},
+      ...copyHistorySetFields(firstTemplateSet || {}, firstTemplateSet?.fields || {}),
+    };
+  }
+
   return {
     id,
     setType: 'regular',
@@ -933,6 +1005,55 @@ function buildDraftSet(fields, id) {
     ...(fields?.duration ? { duration: '' } : {}),
     ...(fields?.distance ? { distance: '' } : {}),
   };
+}
+
+function copyHistorySetFields(sourceSet, fields) {
+  return {
+    ...(fields?.reps ? { reps: sourceSet?.reps ?? '' } : {}),
+    ...(fields?.weight ? { weight: sourceSet?.weight ?? '' } : {}),
+    ...(fields?.duration ? { duration: sourceSet?.duration ?? '' } : {}),
+    ...(fields?.distance ? { distance: sourceSet?.distance ?? '' } : {}),
+  };
+}
+
+function inferWorkoutFields(sets) {
+  return {
+    reps: sets.some((set) => hasWorkoutValue(set?.reps)),
+    weight: sets.some((set) => hasWorkoutValue(set?.weight)),
+    duration: sets.some((set) => hasWorkoutValue(set?.duration)),
+    distance: sets.some((set) => hasWorkoutValue(set?.distance)),
+    notes: true,
+  };
+}
+
+function hasTrackedWorkoutFields(fields) {
+  return Boolean(fields?.reps || fields?.weight || fields?.duration || fields?.distance);
+}
+
+function hasWorkoutValue(value) {
+  return value !== undefined && value !== null && `${value}` !== '';
+}
+
+function getWorkoutMeasurements(workout, setOverride = null) {
+  if (workout?.isMixed) {
+    return setOverride?.measurements || workout?.measurements || {};
+  }
+
+  return workout?.measurements || {};
+}
+
+function getMixedWorkoutTemplateOptions(workouts) {
+  const templateMap = new Map();
+
+  workouts.forEach((workout) => {
+    (workout.sets || []).forEach((set) => {
+      if (set.templateId && set.templateName && !templateMap.has(set.templateId)) {
+        templateMap.set(set.templateId, { value: set.templateId, label: set.templateName, color: getWorkoutColor(set) });
+      }
+    });
+  });
+
+  return Array.from(templateMap.values()).sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function normalizeSetType(value) {

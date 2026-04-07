@@ -2,28 +2,26 @@ import React from "react";
 import "./wheelPicker.css";
 
 const ITEM_HEIGHT = 44;
-const RELEASE_SNAP_DELAY_MS = 120;
+const VISIBLE_RADIUS = 3;
 const DRAG_THRESHOLD_PX = 14;
+const FLICK_VELOCITY_THRESHOLD = 0.22;
+const MAX_MOMENTUM_STEPS = 16;
 
 export function WheelPicker({ value, options, onChange, ariaLabel }) {
-  const scrollRef = React.useRef(null);
-  const scrollTimeoutRef = React.useRef(null);
-  const isAdjustingScrollRef = React.useRef(false);
-  const isPointerDownRef = React.useRef(false);
-  const pointerStartScrollTopRef = React.useRef(0);
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [dragOffset, setDragOffset] = React.useState(0);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const [isSettling, setIsSettling] = React.useState(false);
+  const pointerStartYRef = React.useRef(0);
+  const startIndexRef = React.useRef(0);
+  const lastMoveRef = React.useRef({ y: 0, time: 0, velocity: 0 });
+  const settleFrameRef = React.useRef(null);
+  const interruptedSettleRef = React.useRef(false);
 
   const selectedIndex = React.useMemo(() => {
     const foundIndex = options.findIndex((option) => option.value === value);
     return foundIndex >= 0 ? foundIndex : 0;
   }, [options, value]);
-
-  const repeatedOptions = React.useMemo(() => {
-    if (!options.length) {
-      return [];
-    }
-
-    return [...options, ...options, ...options];
-  }, [options]);
 
   const normalizeIndex = React.useCallback((index) => {
     if (!options.length) {
@@ -31,148 +29,237 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     }
 
     return ((index % options.length) + options.length) % options.length;
-  }, [options]);
-
-  const getCenteredScrollTop = React.useCallback((index) => {
-    return (options.length + index) * ITEM_HEIGHT;
   }, [options.length]);
 
   React.useEffect(() => {
-    const scrollElement = scrollRef.current;
-    if (!scrollElement || !options.length) {
-      return;
+    if (!isDragging && !isSettling) {
+      setCurrentIndex(selectedIndex);
+      setDragOffset(0);
     }
-
-    isAdjustingScrollRef.current = true;
-    scrollElement.scrollTo({
-      top: getCenteredScrollTop(selectedIndex),
-      behavior: "auto",
-    });
-    isAdjustingScrollRef.current = false;
-  }, [getCenteredScrollTop, options.length, selectedIndex]);
+  }, [isDragging, isSettling, selectedIndex]);
 
   React.useEffect(() => () => {
-    if (scrollTimeoutRef.current) {
-      window.clearTimeout(scrollTimeoutRef.current);
+    if (settleFrameRef.current) {
+      window.cancelAnimationFrame(settleFrameRef.current);
     }
   }, []);
 
-  const clearSnapTimeout = React.useCallback(() => {
-    if (scrollTimeoutRef.current) {
-      window.clearTimeout(scrollTimeoutRef.current);
-      scrollTimeoutRef.current = null;
+  const animateSettle = React.useCallback((fromOffset, toOffset, finalIndex, finalValue, settleDuration) => {
+    if (settleFrameRef.current) {
+      window.cancelAnimationFrame(settleFrameRef.current);
     }
-  }, []);
 
-  const snapToIndex = React.useCallback((index) => {
-    const nextIndex = normalizeIndex(index);
-    const nextOption = options[nextIndex];
-    if (!nextOption) {
+    setIsSettling(true);
+    const startTime = performance.now();
+
+    const step = (now) => {
+      const progress = Math.min((now - startTime) / settleDuration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const nextOffset = fromOffset + (toOffset - fromOffset) * eased;
+
+      setDragOffset(nextOffset);
+
+      if (progress < 1) {
+        settleFrameRef.current = window.requestAnimationFrame(step);
+        return;
+      }
+
+      setCurrentIndex(finalIndex);
+      setDragOffset(0);
+      setIsSettling(false);
+      if (finalValue !== value) {
+        onChange(finalValue);
+      }
+    };
+
+    settleFrameRef.current = window.requestAnimationFrame(step);
+  }, [onChange, value]);
+
+  const stopSettleAtCurrentPosition = React.useCallback(() => {
+    if (!isSettling || !options.length) {
+      return currentIndex;
+    }
+
+    if (settleFrameRef.current) {
+      window.cancelAnimationFrame(settleFrameRef.current);
+      settleFrameRef.current = null;
+    }
+
+    const previewStepShift = Math.round(dragOffset / ITEM_HEIGHT);
+    const visibleCenterIndex = normalizeIndex(currentIndex - previewStepShift);
+    const nextValue = options[visibleCenterIndex]?.value ?? value;
+
+    setCurrentIndex(visibleCenterIndex);
+    setDragOffset(0);
+    setIsSettling(false);
+    interruptedSettleRef.current = true;
+
+    if (nextValue !== value) {
+      onChange(nextValue);
+    }
+
+    return visibleCenterIndex;
+  }, [currentIndex, dragOffset, isSettling, normalizeIndex, onChange, options, value]);
+
+  const handlePointerDown = React.useCallback((event) => {
+    if (!options.length) {
       return;
     }
 
-    if (nextOption.value !== value) {
-      onChange(nextOption.value);
+    if (interruptedSettleRef.current) {
+      interruptedSettleRef.current = false;
     }
 
-    isAdjustingScrollRef.current = true;
-    scrollRef.current?.scrollTo({
-      top: getCenteredScrollTop(nextIndex),
-      behavior: "smooth",
+    let startingIndex = currentIndex;
+
+    if (isSettling) {
+      event.preventDefault();
+      startingIndex = stopSettleAtCurrentPosition();
+      interruptedSettleRef.current = false;
+    }
+
+    if (settleFrameRef.current) {
+      window.cancelAnimationFrame(settleFrameRef.current);
+      settleFrameRef.current = null;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    pointerStartYRef.current = event.clientY;
+    startIndexRef.current = startingIndex;
+    lastMoveRef.current = {
+      y: event.clientY,
+      time: performance.now(),
+      velocity: 0,
+    };
+    setIsDragging(true);
+    setIsSettling(false);
+    setDragOffset(0);
+  }, [currentIndex, isSettling, options.length, stopSettleAtCurrentPosition]);
+
+  const handlePointerMove = React.useCallback((event) => {
+    if (!isDragging) {
+      return;
+    }
+
+    const nextOffset = event.clientY - pointerStartYRef.current;
+    const now = performance.now();
+    const deltaY = event.clientY - lastMoveRef.current.y;
+    const deltaTime = Math.max(now - lastMoveRef.current.time, 1);
+
+    lastMoveRef.current = {
+      y: event.clientY,
+      time: now,
+      velocity: deltaY / deltaTime,
+    };
+
+    setDragOffset(nextOffset);
+  }, [isDragging]);
+
+  const finishDrag = React.useCallback((event) => {
+    if (interruptedSettleRef.current) {
+      interruptedSettleRef.current = false;
+      return;
+    }
+
+    if (!isDragging || !options.length) {
+      return;
+    }
+
+    event?.currentTarget?.releasePointerCapture?.(event.pointerId);
+
+    const totalMovement = dragOffset;
+    const baseShift = Math.abs(totalMovement) < DRAG_THRESHOLD_PX
+      ? 0
+      : Math.round(totalMovement / ITEM_HEIGHT);
+    const flickVelocity = lastMoveRef.current.velocity;
+    const momentumSteps = Math.abs(flickVelocity) >= FLICK_VELOCITY_THRESHOLD
+      ? Math.sign(flickVelocity) * Math.min(
+        MAX_MOMENTUM_STEPS,
+        Math.max(1, Math.round(Math.abs(flickVelocity) * 12))
+      )
+      : 0;
+    const totalShift = baseShift + momentumSteps;
+    const targetOffset = totalShift * ITEM_HEIGHT;
+    const finalIndex = normalizeIndex(startIndexRef.current - totalShift);
+    const finalValue = options[finalIndex]?.value ?? value;
+    const settleDuration = Math.min(1100, 180 + Math.abs(totalShift) * 38);
+
+    setIsDragging(false);
+    animateSettle(totalMovement, targetOffset, finalIndex, finalValue, settleDuration);
+  }, [animateSettle, dragOffset, isDragging, normalizeIndex, options, value]);
+
+  const handleKeyDown = React.useCallback((event) => {
+    if (!options.length || isDragging) {
+      return;
+    }
+
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+      return;
+    }
+
+    event.preventDefault();
+    const delta = event.key === "ArrowUp" ? -1 : 1;
+    const nextIndex = normalizeIndex(currentIndex + delta);
+    const nextValue = options[nextIndex]?.value ?? value;
+
+    animateSettle(delta * ITEM_HEIGHT * -0.35, delta * ITEM_HEIGHT, nextIndex, nextValue, 190);
+  }, [animateSettle, currentIndex, isDragging, normalizeIndex, options, value]);
+
+  const visibleOptions = React.useMemo(() => {
+    if (!options.length) {
+      return [];
+    }
+
+    const previewStepShift = Math.round(dragOffset / ITEM_HEIGHT);
+    const visibleCenterIndex = normalizeIndex(currentIndex - previewStepShift);
+    const visualOffset = dragOffset - previewStepShift * ITEM_HEIGHT;
+
+    return Array.from({ length: VISIBLE_RADIUS * 2 + 1 }, (_, offsetIndex) => {
+      const relativeIndex = offsetIndex - VISIBLE_RADIUS;
+      const optionIndex = normalizeIndex(visibleCenterIndex + relativeIndex);
+      return {
+        key: `${options[optionIndex].value}-${relativeIndex}`,
+        option: options[optionIndex],
+        relativeIndex,
+        visualOffset,
+      };
     });
-    window.setTimeout(() => {
-      isAdjustingScrollRef.current = false;
-    }, 120);
-  }, [getCenteredScrollTop, normalizeIndex, onChange, options, value]);
-
-  const snapToNearest = React.useCallback(() => {
-    if (!scrollRef.current || !options.length) {
-      return;
-    }
-
-    const rawIndex = Math.round(scrollRef.current.scrollTop / ITEM_HEIGHT);
-    snapToIndex(rawIndex);
-  }, [options.length, snapToIndex]);
-
-  const scheduleSnapToNearest = React.useCallback(() => {
-    clearSnapTimeout();
-    scrollTimeoutRef.current = window.setTimeout(() => {
-      snapToNearest();
-    }, RELEASE_SNAP_DELAY_MS);
-  }, [clearSnapTimeout, snapToNearest]);
-
-  const handlePointerDown = React.useCallback(() => {
-    if (!scrollRef.current) {
-      return;
-    }
-
-    isPointerDownRef.current = true;
-    pointerStartScrollTopRef.current = scrollRef.current.scrollTop;
-    clearSnapTimeout();
-  }, [clearSnapTimeout]);
-
-  const handlePointerRelease = React.useCallback(() => {
-    if (!scrollRef.current || !options.length) {
-      return;
-    }
-
-    const totalMovement = Math.abs(scrollRef.current.scrollTop - pointerStartScrollTopRef.current);
-    isPointerDownRef.current = false;
-
-    if (totalMovement < DRAG_THRESHOLD_PX) {
-      snapToIndex(selectedIndex);
-      return;
-    }
-
-    scheduleSnapToNearest();
-  }, [options.length, scheduleSnapToNearest, selectedIndex, snapToIndex]);
-
-  const handleScroll = React.useCallback(() => {
-    if (!scrollRef.current || !options.length || isAdjustingScrollRef.current) {
-      return;
-    }
-
-    const scrollElement = scrollRef.current;
-    const rawIndex = Math.round(scrollElement.scrollTop / ITEM_HEIGHT);
-    const normalizedIndex = normalizeIndex(rawIndex);
-
-    if (rawIndex < options.length || rawIndex >= options.length * 2) {
-      isAdjustingScrollRef.current = true;
-      scrollElement.scrollTo({
-        top: getCenteredScrollTop(normalizedIndex),
-        behavior: "auto",
-      });
-      isAdjustingScrollRef.current = false;
-    }
-
-    if (isPointerDownRef.current) {
-      return;
-    }
-
-    scheduleSnapToNearest();
-  }, [getCenteredScrollTop, normalizeIndex, options.length, scheduleSnapToNearest]);
+  }, [currentIndex, dragOffset, normalizeIndex, options]);
 
   return (
-    <div className="wheel-picker" aria-label={ariaLabel}>
+    <div
+      className={isDragging ? "wheel-picker is-dragging" : "wheel-picker"}
+      aria-label={ariaLabel}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+    >
       <div className="wheel-picker-highlight" aria-hidden="true" />
-      <div
-        ref={scrollRef}
-        className="wheel-picker-scroll"
-        onScroll={handleScroll}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerRelease}
-        onPointerCancel={handlePointerRelease}
-      >
-        <div className="wheel-picker-spacer" aria-hidden="true" />
-        {repeatedOptions.map((option, index) => (
-          <div
-            key={`${option.value}-${index}`}
-            className={option.value === value ? "wheel-picker-option is-selected" : "wheel-picker-option"}
-          >
-            {option.label}
-          </div>
-        ))}
-        <div className="wheel-picker-spacer" aria-hidden="true" />
+      <div className="wheel-picker-viewport" aria-hidden="true">
+        {visibleOptions.map(({ key, option, relativeIndex, visualOffset }) => {
+          const offsetFromCenter = relativeIndex * ITEM_HEIGHT + visualOffset;
+          const distance = Math.abs(offsetFromCenter) / ITEM_HEIGHT;
+          const isCentered = Math.abs(offsetFromCenter) < ITEM_HEIGHT / 2;
+
+          return (
+            <div
+              key={key}
+              className={isCentered ? "wheel-picker-option is-selected" : "wheel-picker-option"}
+              style={{
+                top: `calc(50% - ${ITEM_HEIGHT / 2}px + ${offsetFromCenter}px)`,
+                opacity: Math.max(0.2, 1 - distance * 0.28),
+                transform: `scale(${Math.max(0.92, 1 - distance * 0.05)})`,
+                transition: isDragging ? "none" : "color 120ms ease",
+              }}
+            >
+              {option.label}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

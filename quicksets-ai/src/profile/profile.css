@@ -14,9 +14,7 @@
 }
 
 .profile-hero {
-    background:
-        radial-gradient(circle at top right, rgba(77, 163, 255, 0.18), transparent 34%),
-        linear-gradient(180deg, rgba(27, 31, 40, 0.98) 0%, rgba(19, 21, 27, 0.98) 100%);
+    background: var(--bg-panel-gradient);
 }
 
 .profile-kicker,
@@ -46,13 +44,16 @@
 .profile-meta-grid,
 .metric-grid,
 .trend-grid,
-.consistency-layout {
+.consistency-layout,
+.breakdown-layout,
+.account-overview-grid {
     display: grid;
     gap: 0.85rem;
 }
 
 .profile-meta-grid,
-.metric-grid {
+.metric-grid,
+.account-overview-grid {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
@@ -64,9 +65,16 @@
     grid-template-columns: 1.4fr 1fr;
 }
 
+.breakdown-layout {
+    grid-template-columns: minmax(260px, 0.95fr) minmax(0, 1.35fr);
+    align-items: stretch;
+}
+
 .profile-meta-card,
 .metric-card,
-.trend-card {
+.trend-card,
+.breakdown-visual-card,
+.breakdown-top-workouts {
     background: var(--bg-panel-strong);
     border: 1px solid var(--border-subtle);
     border-radius: 14px;
@@ -93,8 +101,233 @@
 }
 
 .metric-card-accent {
-    background: linear-gradient(180deg, rgba(77, 163, 255, 0.16) 0%, rgba(29, 33, 41, 0.96) 100%);
-    border-color: rgba(77, 163, 255, 0.32);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, color-mix(in srgb, var(--bg-panel-strong) 96%, transparent) 100%);
+    border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.breakdown-filter {
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-soft);
+    color: var(--text-soft);
+    border-radius: 999px;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.breakdown-filter.active {
+    color: var(--text-main);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+    background: var(--bg-selected);
+}
+
+.breakdown-visual-card,
+.breakdown-details,
+.breakdown-top-workouts,
+.breakdown-legend {
+    display: flex;
+    flex-direction: column;
+}
+
+.breakdown-visual-card,
+.breakdown-top-workouts {
+    justify-content: center;
+}
+
+.breakdown-details {
+    gap: 0.8rem;
+}
+
+.breakdown-donut-wrap,
+.breakdown-donut-empty {
+    position: relative;
+    width: min(260px, 100%);
+    aspect-ratio: 1;
+    margin: 0 auto;
+}
+
+.breakdown-donut {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.breakdown-donut-track,
+.breakdown-donut-segment {
+    fill: none;
+    stroke-width: 20;
+}
+
+.breakdown-donut-track {
+    stroke: var(--bg-row-strong);
+}
+
+.breakdown-donut-segment {
+    cursor: pointer;
+    transition: stroke-width 160ms ease, opacity 160ms ease, filter 160ms ease;
+    opacity: 0.76;
+}
+
+.breakdown-donut-segment:hover,
+.breakdown-donut-segment:focus-visible,
+.breakdown-donut-segment.is-active {
+    stroke-width: 23;
+    opacity: 1;
+    filter: brightness(1.06);
+    outline: none;
+}
+
+.breakdown-donut-segment.is-strength {
+    stroke: #4da3ff;
+}
+
+.breakdown-donut-segment.is-strength-duration {
+    stroke: #27d7c3;
+}
+
+.breakdown-donut-segment.is-cardio {
+    stroke: #ffba49;
+}
+
+.breakdown-donut-segment.is-mixed {
+    stroke: #ff7a67;
+}
+
+.breakdown-donut-segment.is-other {
+    stroke: #8893ab;
+}
+
+.breakdown-donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    text-align: center;
+    pointer-events: none;
+}
+
+.breakdown-donut-center strong {
+    font-size: clamp(2rem, 4vw, 2.6rem);
+    line-height: 1;
+}
+
+.breakdown-donut-center span {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.breakdown-legend {
+    gap: 0.55rem;
+}
+
+.breakdown-legend-row,
+.breakdown-workout-row {
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-soft);
+    color: var(--text-main);
+    border-radius: 12px;
+    padding: 0.7rem 0.8rem;
+    display: grid;
+    align-items: center;
+}
+
+.breakdown-legend-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    text-align: left;
+}
+
+.breakdown-legend-row.active,
+.breakdown-workout-row.active {
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, transparent), color-mix(in srgb, var(--bg-panel-strong) 96%, transparent));
+}
+
+.breakdown-swatch {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    box-shadow: var(--shadow-outline);
+}
+
+.breakdown-swatch.is-strength {
+    background: #4da3ff;
+}
+
+.breakdown-swatch.is-strength-duration {
+    background: #27d7c3;
+}
+
+.breakdown-swatch.is-cardio {
+    background: #ffba49;
+}
+
+.breakdown-swatch.is-mixed {
+    background: #ff7a67;
+}
+
+.breakdown-swatch.is-other {
+    background: #8893ab;
+}
+
+.breakdown-legend-copy,
+.breakdown-workout-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.breakdown-legend-copy strong,
+.breakdown-workout-copy strong {
+    font-size: 0.92rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.breakdown-workout-dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-outline-soft);
+}
+
+.breakdown-legend-copy span,
+.breakdown-workout-copy span,
+.breakdown-legend-percent,
+.breakdown-workout-share,
+.breakdown-workout-rank {
+    font-size: 0.76rem;
+    color: var(--text-soft);
+}
+
+.breakdown-top-workouts {
+    gap: 0.75rem;
+}
+
+.breakdown-workout-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+}
+
+.breakdown-workout-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.8rem;
+    text-align: left;
+}
+
+.breakdown-workout-rank {
+    width: 1.45rem;
+    text-align: center;
+    font-weight: 700;
 }
 
 .profile-loading-state,
@@ -116,9 +349,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
-    background:
-        radial-gradient(circle at top right, rgba(77, 163, 255, 0.18), transparent 34%),
-        linear-gradient(180deg, rgba(27, 31, 40, 0.98) 0%, rgba(19, 21, 27, 0.98) 100%);
+    background: var(--bg-panel-gradient);
 }
 
 .profile-loading-hero h2 {
@@ -133,8 +364,7 @@
 
 .profile-loading-card {
     min-height: 148px;
-    background:
-        linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+    background: var(--bg-skeleton);
     background-size: 220% 100%;
     animation: profileShimmer 1.2s linear infinite;
 }
@@ -194,10 +424,10 @@
 .password-field input:focus,
 .password-field input:focus-visible {
     outline: none;
-    border-color: rgba(77, 163, 255, 0.42);
+    border-color: var(--border-accent-strong);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.05),
-        0 0 0 1px rgba(77, 163, 255, 0.18);
+        var(--shadow-inner-strong),
+        0 0 0 1px var(--accent-ring);
 }
 
 .password-form-actions {
@@ -210,7 +440,7 @@
 .password-modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(8, 8, 10, 0.88);
+    background: var(--bg-overlay);
     backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
@@ -221,7 +451,7 @@
 
 .password-modal {
     width: min(460px, 100%);
-    background: linear-gradient(180deg, rgba(31, 34, 42, 0.98) 0%, rgba(19, 21, 27, 0.98) 100%);
+    background: var(--bg-panel-gradient-strong);
     border: 1px solid var(--border-subtle);
     border-radius: 22px;
     padding: 1rem;
@@ -252,7 +482,7 @@
 }
 
 .password-status.success {
-    color: #9fe3b4;
+    color: var(--text-success);
 }
 
 .password-status.error {
@@ -268,27 +498,27 @@
     color: var(--text-main);
     appearance: none;
     background-image:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 4%, transparent), color-mix(in srgb, var(--text-on-accent) 1%, transparent)),
         var(--select-chevron);
     background-repeat: no-repeat, no-repeat;
     background-position: 0 0, right 0.8rem center;
     background-size: auto, 0.95rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    box-shadow: var(--shadow-inner-highlight);
 }
 
 .workout-select select:focus {
     outline: none;
-    border-color: rgba(77, 163, 255, 0.5);
-    box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.12);
+    border-color: var(--border-accent-active);
+    box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
 .workout-select select:focus,
 .workout-select select:focus-visible {
     outline: none;
-    border-color: rgba(77, 163, 255, 0.42);
+    border-color: var(--border-accent-strong);
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.05),
-        0 0 0 1px rgba(77, 163, 255, 0.18);
+        var(--shadow-inner-strong),
+        0 0 0 1px var(--accent-ring);
 }
 
 .trend-card {
@@ -320,7 +550,7 @@
     stroke-width: 3;
     stroke-linecap: round;
     stroke-linejoin: round;
-    filter: drop-shadow(0 0 10px rgba(77, 163, 255, 0.18));
+    filter: drop-shadow(0 0 10px var(--accent-ring));
 }
 
 .chart-axis-labels {
@@ -400,8 +630,8 @@
     width: 16px;
     height: 16px;
     border-radius: 4px;
-    background: #24272d;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--bg-surface-soft);
+    border: 1px solid var(--border-soft);
 }
 
 .heatmap-cell.intensity-1 {
@@ -417,7 +647,8 @@
 }
 
 @media (max-width: 800px) {
-    .consistency-layout {
+    .consistency-layout,
+    .breakdown-layout {
         grid-template-columns: 1fr;
     }
 }
@@ -462,6 +693,16 @@
 
     .trend-grid {
         grid-template-columns: 1fr;
+    }
+
+    .breakdown-visual-card,
+    .breakdown-top-workouts {
+        padding: 0.75rem;
+    }
+
+    .breakdown-legend-row,
+    .breakdown-workout-row {
+        padding: 0.65rem 0.7rem;
     }
 
     .profile-subcopy,

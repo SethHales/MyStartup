@@ -4,8 +4,11 @@ import { Dropdown } from "../components/dropdown";
 import { DatePicker } from "../components/datePicker";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { WheelPicker } from "../components/wheelPicker";
+import { getWorkoutColor, workoutColorPalette } from "../utils/workoutColors";
 
 const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
+const MIXED_WORKOUT_TEMPLATE_ID = "__mixed_workout__";
+const MIXED_WORKOUT_NAME = "Mixed Workout";
 
 const defaultTemplateFields = {
   reps: true,
@@ -20,6 +23,14 @@ const defaultTemplateMeasurements = {
   duration: "mm:ss",
   distance: "miles",
   notes: "default",
+};
+
+const mixedTemplateFields = {
+  reps: true,
+  weight: true,
+  duration: true,
+  distance: true,
+  notes: true,
 };
 
 const setTypeOptions = [
@@ -102,6 +113,7 @@ function readLoggerDraft() {
 function normalizeTemplate(template) {
   return {
     ...template,
+    color: getWorkoutColor(template),
     fields: {
       reps: Boolean(template?.fields?.reps),
       weight: Boolean(template?.fields?.weight),
@@ -110,6 +122,16 @@ function normalizeTemplate(template) {
       notes: true,
     },
     measurements: normalizeTemplateMeasurements(template?.measurements),
+  };
+}
+
+function buildMixedTemplate() {
+  return {
+    id: MIXED_WORKOUT_TEMPLATE_ID,
+    name: MIXED_WORKOUT_NAME,
+    fields: mixedTemplateFields,
+    measurements: defaultTemplateMeasurements,
+    isMixed: true,
   };
 }
 
@@ -126,6 +148,7 @@ function normalizeTemplateMeasurements(measurements) {
 }
 
 export function Logger() {
+  const mixedTemplate = React.useMemo(() => buildMixedTemplate(), []);
   const storedDraft = React.useMemo(() => readLoggerDraft(), []);
   const isMobile = useIsMobile();
   const [templates, setTemplates] = React.useState([]);
@@ -145,6 +168,7 @@ export function Logger() {
   const [editingSetId, setEditingSetId] = React.useState(null);
   const [openSetMenuId, setOpenSetMenuId] = React.useState(null);
   const [newTemplateName, setNewTemplateName] = React.useState("");
+  const [newTemplateColor, setNewTemplateColor] = React.useState(workoutColorPalette[0]);
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
   const [newTemplateMeasurements, setNewTemplateMeasurements] = React.useState(defaultTemplateMeasurements);
   const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
@@ -185,9 +209,11 @@ export function Logger() {
   }, [selectedTemplateId]);
 
   React.useEffect(() => {
-    const template = templates.find((item) => item.id === selectedTemplateId) ?? null;
+    const template = selectedTemplateId === MIXED_WORKOUT_TEMPLATE_ID
+      ? mixedTemplate
+      : templates.find((item) => item.id === selectedTemplateId) ?? null;
     setSelectedTemplate(template);
-  }, [templates, selectedTemplateId]);
+  }, [mixedTemplate, templates, selectedTemplateId]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -256,9 +282,7 @@ export function Logger() {
     );
   }, [selectedTemplateId, date, notes, starred, sets]);
 
-  const activeSetFields = templateFieldOptions.filter(
-    (field) => selectedTemplate?.fields?.[field.key]
-  );
+  const activeSetFields = getLoggerVisibleFields(selectedTemplate, sets);
   const canSubmitWorkout = Boolean(selectedTemplate && date && sets.length > 0);
 
   React.useEffect(() => {
@@ -286,7 +310,9 @@ export function Logger() {
   const handleTemplateSelection = (event) => {
     const nextTemplateId = event.target.value;
 
-    const template = templates.find((item) => item.id === nextTemplateId) ?? null;
+    const template = nextTemplateId === MIXED_WORKOUT_TEMPLATE_ID
+      ? mixedTemplate
+      : templates.find((item) => item.id === nextTemplateId) ?? null;
     setSelectedTemplateId(nextTemplateId);
     setNotes("");
     setStarred(false);
@@ -300,19 +326,21 @@ export function Logger() {
     setShowTemplateActions(false);
     setIsEditingTemplate(false);
     setNewTemplateName("");
+    setNewTemplateColor(workoutColorPalette[0]);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
     setShowTemplateModal(true);
   };
 
   const openEditTemplateModal = () => {
-    if (!selectedTemplate) {
+    if (!selectedTemplate || selectedTemplate.isMixed) {
       return;
     }
 
     setShowTemplateActions(false);
     setIsEditingTemplate(true);
     setNewTemplateName(selectedTemplate.name);
+    setNewTemplateColor(selectedTemplate.color || workoutColorPalette[0]);
     setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
     setNewTemplateMeasurements({
       ...defaultTemplateMeasurements,
@@ -322,11 +350,11 @@ export function Logger() {
   };
 
   const handleDeleteTemplate = async () => {
-    if (!selectedTemplate) {
+    if (!selectedTemplate || selectedTemplate.isMixed) {
       return;
     }
 
-    const confirmed = window.confirm(`Delete ${selectedTemplate.name}? Existing history will stay saved.`);
+    const confirmed = window.confirm(`Delete ${selectedTemplate.name}? This will also delete every saved workout logged with that template.`);
     if (!confirmed) {
       return;
     }
@@ -368,7 +396,7 @@ export function Logger() {
     }
 
     const nextId = sets.length + 1;
-    const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts);
+    const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates);
     setEditingSetId(null);
     setOpenSetMenuId(null);
     setPendingSet({
@@ -384,7 +412,7 @@ export function Logger() {
     setOpenSetMenuId(null);
     setPendingSet({
       id: setToEdit.id,
-      ...copyTrackedFields(setToEdit, selectedTemplate.fields),
+      ...copyTrackedFields(setToEdit, getSetTemplateFields(selectedTemplate, setToEdit, templates)),
     });
     setShowSetModal(true);
   };
@@ -392,10 +420,29 @@ export function Logger() {
   const closeSetModal = () => {
     setShowSetModal(false);
     setEditingSetId(null);
-    setPendingSet(buildEmptySet(selectedTemplate?.fields || defaultTemplateFields, sets.length + 1));
+    setPendingSet(getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates));
   };
 
   const handlePendingSetChange = (field, value) => {
+    if (field === "templateId" && selectedTemplate?.isMixed) {
+      const nextTemplate = templates.find((template) => template.id === value) || null;
+      if (!nextTemplate) {
+        return;
+      }
+
+      const defaults = getMixedTemplateDefaultSet(nextTemplate, sets, savedWorkouts);
+      setPendingSet((currentSet) => ({
+        id: currentSet.id,
+        setType: "regular",
+        templateId: nextTemplate.id,
+        templateName: nextTemplate.name,
+        fields: nextTemplate.fields,
+        measurements: nextTemplate.measurements,
+        ...defaults,
+      }));
+      return;
+    }
+
     setPendingSet((currentSet) => ({
       ...currentSet,
       [field]: value,
@@ -408,7 +455,7 @@ export function Logger() {
       setSets((prevSets) =>
         prevSets.map((set) =>
           set.id === editingSetId
-            ? { ...set, ...copyTrackedFields(pendingSet, selectedTemplate.fields) }
+            ? { ...set, ...copyTrackedFields(pendingSet, getSetTemplateFields(selectedTemplate, pendingSet, templates)) }
             : set
         )
       );
@@ -467,6 +514,7 @@ export function Logger() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: newTemplateName,
+          color: newTemplateColor,
           fields: newTemplateFields,
           measurements: newTemplateMeasurements,
         }),
@@ -488,6 +536,51 @@ export function Logger() {
           ? prevTemplates.map((template) => (template.id === savedTemplate.id ? savedTemplate : template))
           : [...prevTemplates, savedTemplate]
       );
+      setSavedWorkouts((prevWorkouts) =>
+        prevWorkouts.map((workout) => {
+          const isDirectMatch = !workout.isMixed && (
+            workout.templateId === savedTemplate.id
+            || workout.templateName === selectedTemplate?.name
+            || workout.exercise === selectedTemplate?.name
+          );
+
+          if (isDirectMatch) {
+            return {
+              ...workout,
+              templateId: savedTemplate.id,
+              templateName: savedTemplate.name,
+              exercise: savedTemplate.name,
+              color: savedTemplate.color,
+              fields: savedTemplate.fields,
+              measurements: savedTemplate.measurements,
+            };
+          }
+
+          if (!workout.isMixed || !Array.isArray(workout.sets)) {
+            return workout;
+          }
+
+          const updatedSets = workout.sets.map((set) => {
+            const isMatchingSet = set?.templateId === savedTemplate.id || set?.templateName === selectedTemplate?.name;
+            if (!isMatchingSet) {
+              return set;
+            }
+
+            return {
+              ...set,
+              templateId: savedTemplate.id,
+              templateName: savedTemplate.name,
+              color: savedTemplate.color,
+              fields: savedTemplate.fields,
+              measurements: savedTemplate.measurements,
+            };
+          });
+
+          return updatedSets.some((set, index) => set !== workout.sets[index])
+            ? { ...workout, sets: updatedSets }
+            : workout;
+        })
+      );
       setSelectedTemplateId(savedTemplate.id);
       setSelectedTemplate(savedTemplate);
       setSets([]);
@@ -495,6 +588,7 @@ export function Logger() {
       setStarred(false);
 
       setNewTemplateName("");
+      setNewTemplateColor(workoutColorPalette[0]);
       setNewTemplateFields(defaultTemplateFields);
       setNewTemplateMeasurements(defaultTemplateMeasurements);
       setShowTemplateModal(false);
@@ -508,6 +602,7 @@ export function Logger() {
     setShowTemplateModal(false);
     setIsEditingTemplate(false);
     setNewTemplateName("");
+    setNewTemplateColor(workoutColorPalette[0]);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
 
@@ -589,7 +684,8 @@ export function Logger() {
                 placeholder="Select a workout"
                 options={[
                   { value: "", label: "Select a workout", disabled: true },
-                  ...templates.map((template) => ({ value: template.id, label: template.name })),
+                  { value: MIXED_WORKOUT_TEMPLATE_ID, label: MIXED_WORKOUT_NAME, badge: "New", color: "#f4b95e" },
+                  ...templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) })),
                 ]}
                 ariaLabel="Workout"
               />
@@ -615,7 +711,7 @@ export function Logger() {
                       type="button"
                       className="template-actions-item"
                       onClick={openEditTemplateModal}
-                      disabled={!selectedTemplate}
+                      disabled={!selectedTemplate || selectedTemplate.isMixed}
                     >
                       Edit selected workout
                     </button>
@@ -623,7 +719,7 @@ export function Logger() {
                       type="button"
                       className="template-actions-item delete"
                       onClick={handleDeleteTemplate}
-                      disabled={!selectedTemplate}
+                      disabled={!selectedTemplate || selectedTemplate.isMixed}
                     >
                       Delete selected workout
                     </button>
@@ -638,7 +734,14 @@ export function Logger() {
               <div className="section-header">
                 <div>
                   <h3>Sets</h3>
-                  <p>{selectedTemplate.name}</p>
+                  <p className="logger-workout-subtitle">
+                    <span
+                      className="logger-workout-color"
+                      style={{ backgroundColor: getWorkoutColor(selectedTemplate) }}
+                      aria-hidden="true"
+                    />
+                    {selectedTemplate.name}
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -654,6 +757,7 @@ export function Logger() {
                   <thead>
                     <tr>
                       <th>Set</th>
+                      {selectedTemplate?.isMixed && <th>Workout</th>}
                       {activeSetFields.map((field) => (
                         <th key={field.key}>{getFieldLabel(field, selectedTemplate.measurements)}</th>
                       ))}
@@ -664,6 +768,17 @@ export function Logger() {
                     {sets.map((set, index) => (
                       <tr key={set.id}>
                         <td>{getSetDisplayLabel(set, sets, index)}</td>
+                        {selectedTemplate?.isMixed && (
+                          <td className="logger-mixed-workout-cell">
+                            <span
+                              className="logger-inline-workout"
+                              style={{ '--workout-color': getWorkoutColor(set) }}
+                            >
+                              <span className="logger-inline-workout-dot" aria-hidden="true" />
+                              {set.templateName || "Mixed set"}
+                            </span>
+                          </td>
+                        )}
                         {activeSetFields.map((field) => (
                           <td key={field.key}>{set[field.key] ?? ""}</td>
                         ))}
@@ -759,6 +874,28 @@ export function Logger() {
                 />
               </label>
 
+              <section className="template-color-panel">
+                <div className="section-header">
+                  <h3>Theme color</h3>
+                  <p>Choose the color this workout uses across the app.</p>
+                </div>
+                <div className="template-color-grid" role="radiogroup" aria-label="Workout color">
+                  {workoutColorPalette.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      role="radio"
+                      aria-checked={newTemplateColor === color}
+                      className={newTemplateColor === color ? "template-color-option is-selected" : "template-color-option"}
+                      style={{ "--template-color": color }}
+                      onClick={() => setNewTemplateColor(color)}
+                    >
+                      <span className="template-color-swatch" aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+
               <section className="template-fields-panel">
                 <div className="section-header">
                   <h3>Choose the fields you want every time</h3>
@@ -824,6 +961,17 @@ export function Logger() {
             <form className="template-modal-form" onSubmit={handleConfirmAddSet} onKeyDown={handleModalFormKeyDown}>
               <section className="template-fields-panel">
                 <div className="set-modal-grid">
+                  {selectedTemplate?.isMixed && (
+                    <label>
+                      Workout
+                      <Dropdown
+                        value={pendingSet.templateId || templates[0]?.id || ""}
+                        onChange={(nextValue) => handlePendingSetChange("templateId", nextValue)}
+                        options={templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) }))}
+                        ariaLabel="Set workout"
+                      />
+                    </label>
+                  )}
                   <label>
                     Set type
                     <Dropdown
@@ -834,12 +982,14 @@ export function Logger() {
                     />
                   </label>
                   {activeSetFields.map((field) => (
+                    shouldShowSetField(field.key, selectedTemplate, pendingSet)
+                      ? (
                     <label key={field.key}>
-                      {getFieldLabel(field, selectedTemplate.measurements)}
+                      {getFieldLabel(field, getSetMeasurements(selectedTemplate, pendingSet))}
                       {isMobile ? (
                         <MobileSetField
                           field={field}
-                          measurements={selectedTemplate.measurements}
+                          measurements={getSetMeasurements(selectedTemplate, pendingSet)}
                           value={pendingSet[field.key] ?? ""}
                           onChange={(nextValue) => handlePendingSetChange(field.key, nextValue)}
                         />
@@ -851,14 +1001,15 @@ export function Logger() {
                             placeholder={field.placeholder}
                             onChange={(event) => handlePendingSetChange(field.key, event.target.value)}
                           />
-                          {getFieldUnitSuffix(field, selectedTemplate.measurements) && (
+                          {getFieldUnitSuffix(field, getSetMeasurements(selectedTemplate, pendingSet)) && (
                             <span className="input-unit">
-                              {getFieldUnitSuffix(field, selectedTemplate.measurements)}
+                              {getFieldUnitSuffix(field, getSetMeasurements(selectedTemplate, pendingSet))}
                             </span>
                           )}
                         </div>
                       )}
                     </label>
+                      ) : null
                   ))}
                 </div>
               </section>
@@ -879,9 +1030,37 @@ export function Logger() {
   );
 }
 
-function getDefaultSetValues(selectedTemplate, currentSets, savedWorkouts) {
+function getDefaultSetValues(selectedTemplate, currentSets, savedWorkouts, templates = []) {
   if (!selectedTemplate) {
     return {};
+  }
+
+  if (selectedTemplate.isMixed) {
+    const lastCurrentMixedSet = currentSets.length > 0 ? currentSets[currentSets.length - 1] : null;
+    if (lastCurrentMixedSet) {
+      const sourceTemplate = templates.find((template) => template.id === lastCurrentMixedSet.templateId) || null;
+      return {
+        ...copyTrackedFields(lastCurrentMixedSet, getSetTemplateFields(selectedTemplate, lastCurrentMixedSet, templates)),
+        templateId: lastCurrentMixedSet.templateId || sourceTemplate?.id || templates[0]?.id || "",
+        templateName: lastCurrentMixedSet.templateName || sourceTemplate?.name || templates[0]?.name || "",
+        fields: sourceTemplate?.fields || lastCurrentMixedSet.fields || templates[0]?.fields || defaultTemplateFields,
+        measurements: sourceTemplate?.measurements || lastCurrentMixedSet.measurements || templates[0]?.measurements || defaultTemplateMeasurements,
+      };
+    }
+
+    const fallbackTemplate = templates[0] || null;
+    if (!fallbackTemplate) {
+      return buildEmptySet(defaultTemplateFields, 1);
+    }
+
+    return {
+      ...getMixedTemplateDefaultSet(fallbackTemplate, currentSets, savedWorkouts),
+      templateId: fallbackTemplate.id,
+      templateName: fallbackTemplate.name,
+      fields: fallbackTemplate.fields,
+      measurements: fallbackTemplate.measurements,
+      setType: "regular",
+    };
   }
 
   if (currentSets.length > 0) {
@@ -895,6 +1074,20 @@ function getDefaultSetValues(selectedTemplate, currentSets, savedWorkouts) {
   }
 
   return buildEmptySet(selectedTemplate.fields, 1);
+}
+
+function getMixedTemplateDefaultSet(template, currentSets, savedWorkouts) {
+  const currentMatchingSet = [...currentSets].reverse().find((set) => set.templateId === template.id);
+  if (currentMatchingSet) {
+    return copyTrackedFields(currentMatchingSet, template.fields);
+  }
+
+  const previousSet = findLastSavedSet(savedWorkouts, template);
+  if (previousSet) {
+    return copyTrackedFields(previousSet, template.fields);
+  }
+
+  return buildEmptySet(template.fields, 1);
 }
 
 function MobileSetField({ field, measurements, value, onChange }) {
@@ -952,9 +1145,16 @@ function MobileSetField({ field, measurements, value, onChange }) {
 function findLastSavedSet(savedWorkouts, selectedTemplate) {
   for (let index = savedWorkouts.length - 1; index >= 0; index -= 1) {
     const workout = savedWorkouts[index];
+    const mixedSetMatch = Array.isArray(workout.sets)
+      ? [...workout.sets].reverse().find((set) => set.templateId === selectedTemplate.id || set.templateName === selectedTemplate.name)
+      : null;
     const isMatchingWorkout = workout.templateId === selectedTemplate.id
       || workout.templateName === selectedTemplate.name
       || workout.exercise === selectedTemplate.name;
+
+    if (mixedSetMatch) {
+      return mixedSetMatch;
+    }
 
     if (!isMatchingWorkout || !Array.isArray(workout.sets) || workout.sets.length === 0) {
       continue;
@@ -969,11 +1169,66 @@ function findLastSavedSet(savedWorkouts, selectedTemplate) {
 function copyTrackedFields(sourceSet, fields) {
   return {
     setType: normalizeSetType(sourceSet?.setType),
+    ...(sourceSet?.templateId ? { templateId: sourceSet.templateId } : {}),
+    ...(sourceSet?.templateName ? { templateName: sourceSet.templateName } : {}),
+    ...(sourceSet?.fields ? { fields: sourceSet.fields } : {}),
+    ...(sourceSet?.measurements ? { measurements: sourceSet.measurements } : {}),
     ...(fields.reps ? { reps: sourceSet?.reps ?? "" } : {}),
     ...(fields.weight ? { weight: sourceSet?.weight ?? "" } : {}),
     ...(fields.duration ? { duration: sourceSet?.duration ?? "" } : {}),
     ...(fields.distance ? { distance: sourceSet?.distance ?? "" } : {}),
   };
+}
+
+function getLoggerVisibleFields(selectedTemplate, sets) {
+  if (!selectedTemplate) {
+    return [];
+  }
+
+  if (!selectedTemplate.isMixed) {
+    return templateFieldOptions.filter((field) => selectedTemplate?.fields?.[field.key]);
+  }
+
+  const visibleKeys = new Set();
+  sets.forEach((set) => {
+    const fields = set.fields || {};
+    Object.keys(fields).forEach((key) => {
+      if (fields[key]) {
+        visibleKeys.add(key);
+      }
+    });
+  });
+
+  if (visibleKeys.size === 0) {
+    templateFieldOptions.forEach((field) => visibleKeys.add(field.key));
+  }
+
+  return templateFieldOptions.filter((field) => visibleKeys.has(field.key));
+}
+
+function getSetTemplateFields(selectedTemplate, set, templates = []) {
+  if (!selectedTemplate?.isMixed) {
+    return selectedTemplate?.fields || defaultTemplateFields;
+  }
+
+  const matchedTemplate = templates.find((template) => template.id === set?.templateId) || null;
+  return matchedTemplate?.fields || set?.fields || defaultTemplateFields;
+}
+
+function getSetMeasurements(selectedTemplate, set) {
+  if (!selectedTemplate?.isMixed) {
+    return selectedTemplate?.measurements || defaultTemplateMeasurements;
+  }
+
+  return set?.measurements || defaultTemplateMeasurements;
+}
+
+function shouldShowSetField(fieldKey, selectedTemplate, set) {
+  if (!selectedTemplate?.isMixed) {
+    return Boolean(selectedTemplate?.fields?.[fieldKey]);
+  }
+
+  return Boolean(getSetTemplateFields(selectedTemplate, set)[fieldKey]);
 }
 
 function formatTemplatePreview(name, fields, measurements = defaultTemplateMeasurements) {

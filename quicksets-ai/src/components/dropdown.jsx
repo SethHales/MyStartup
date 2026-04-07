@@ -1,5 +1,6 @@
 import React from "react";
 import "./dropdown.css";
+import { getWorkoutColor } from "../utils/workoutColors";
 
 export function Dropdown({
   value,
@@ -149,6 +150,13 @@ export function Dropdown({
         onClick={() => setIsOpen((current) => !current)}
         onKeyDown={handleButtonKeyDown}
       >
+        {selectedOption?.color && (
+          <span
+            className="qs-dropdown-color"
+            style={{ backgroundColor: getWorkoutColor(selectedOption) }}
+            aria-hidden="true"
+          />
+        )}
         <span className="qs-dropdown-label">
           {selectedOption?.label || placeholder}
         </span>
@@ -179,7 +187,15 @@ export function Dropdown({
               onMouseEnter={() => setHighlightedIndex(index)}
               onClick={() => commitSelection(option.value)}
             >
+              {option.color && (
+                <span
+                  className="qs-dropdown-color"
+                  style={{ backgroundColor: getWorkoutColor(option) }}
+                  aria-hidden="true"
+                />
+              )}
               <span>{option.label}</span>
+              {option.badge && <span className="qs-dropdown-badge">{option.badge}</span>}
             </button>
           ))}
         </div>

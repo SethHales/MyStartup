@@ -6,9 +6,11 @@ import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNaviga
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
-import { Profile } from './profile/profile';
+import { Analytics, Account } from './profile/profile';
 import { BrandMark } from './components/brandMark';
 import { useIsMobile } from './hooks/useIsMobile';
+
+const THEME_STORAGE_KEY = "quicksets.theme";
 
 function ProtectedRoute({ currentUser, isAuthChecked, children }) {
     if (!isAuthChecked) {
@@ -22,7 +24,7 @@ function ProtectedRoute({ currentUser, isAuthChecked, children }) {
     return children;
 }
 
-function Header({ currentUser, setCurrentUser }) {
+function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
     const location = useLocation();
     const navigate = useNavigate();
     const isMobile = useIsMobile();
@@ -64,9 +66,9 @@ function Header({ currentUser, setCurrentUser }) {
         navigate("/");
     };
 
-    const handleChangePassword = () => {
+    const handleOpenAccount = () => {
         setShowAccountMenu(false);
-        navigate("/profile?modal=account-settings");
+        navigate("/account");
     };
     const displayName = currentUser?.name || currentUser?.email || "";
     let title = "";
@@ -84,8 +86,11 @@ function Header({ currentUser, setCurrentUser }) {
         case "/logger":
             title = "LOGGER";
             break;
-        case "/profile":
-            title = "PROFILE";
+        case "/analytics":
+            title = "ANALYTICS";
+            break;
+        case "/account":
+            title = "ACCOUNT";
             break;
         default:
             title = "QuickSets";
@@ -114,6 +119,14 @@ function Header({ currentUser, setCurrentUser }) {
                     <p className="user-email">{displayName}</p>
                     <button
                         type="button"
+                        className="theme-toggle"
+                        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                        onClick={toggleTheme}
+                    >
+                        <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+                    </button>
+                    <button
+                        type="button"
                         className="account-menu-trigger"
                         aria-label="Account menu"
                         aria-expanded={showAccountMenu}
@@ -124,23 +137,38 @@ function Header({ currentUser, setCurrentUser }) {
                     {showAccountMenu && (
                         <div className="account-menu-popover">
                             <p>{displayName}</p>
+                            <button type="button" onClick={handleOpenAccount}>Profile</button>
                             <button type="button" onClick={handleLogout}>Logout</button>
-                            <button type="button" onClick={handleChangePassword}>Account settings</button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {!currentUser && (
+                <div className="user-section">
+                    <button
+                        type="button"
+                        className="theme-toggle"
+                        aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                        onClick={toggleTheme}
+                    >
+                        <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+                    </button>
                 </div>
             )}
         </header>
     );
 }
 
-function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
+function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleTheme }) {
     const location = useLocation();
-    const showFooterNav = Boolean(currentUser) && location.pathname !== "/" && location.pathname !== "/signup";
+    const showFooterNav = Boolean(currentUser)
+        && location.pathname !== "/"
+        && location.pathname !== "/signup";
 
     return (
         <div className="app">
-            <Header currentUser={currentUser} setCurrentUser={setCurrentUser} />
+            <Header currentUser={currentUser} setCurrentUser={setCurrentUser} theme={theme} toggleTheme={toggleTheme} />
 
             <Routes>
                 <Route
@@ -179,10 +207,19 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
                     }
                 />
                 <Route
-                    path="/profile"
+                    path="/analytics"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <Profile currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                            <Analytics currentUser={currentUser} />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/account"
+                    element={
+                        <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
+                            <Account currentUser={currentUser} setCurrentUser={setCurrentUser} />
                         </ProtectedRoute>
                     }
                 />
@@ -206,8 +243,8 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
                             History
                         </NavLink>
 
-                        <NavLink to="/profile" className="tab">
-                            Profile
+                        <NavLink to="/analytics" className="tab">
+                            Analytics
                         </NavLink>
                     </nav>
                 </footer>
@@ -219,6 +256,21 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked }) {
 export default function App() {
     const [currentUser, setCurrentUser] = React.useState(null);
     const [isAuthChecked, setIsAuthChecked] = React.useState(false);
+    const [theme, setTheme] = React.useState(() => {
+        const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+        return storedTheme === "light" ? "light" : "dark";
+    });
+
+    React.useEffect(() => {
+        document.documentElement.setAttribute("data-theme", theme);
+        window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+        const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeColorMeta) {
+            themeColorMeta.setAttribute("content", theme === "light" ? "#f4f7fb" : "#101114");
+        }
+    }, [theme]);
+
     React.useEffect(() => {
         async function loadUser() {
             try {
@@ -246,7 +298,13 @@ export default function App() {
 
     return (
         <BrowserRouter>
-            <AppShell currentUser={currentUser} setCurrentUser={setCurrentUser} isAuthChecked={isAuthChecked} />
+            <AppShell
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+                isAuthChecked={isAuthChecked}
+                theme={theme}
+                toggleTheme={() => setTheme((currentTheme) => currentTheme === "dark" ? "light" : "dark")}
+            />
         </BrowserRouter>
     );
 }

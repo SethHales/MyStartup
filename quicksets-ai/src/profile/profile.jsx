@@ -2,25 +2,15 @@ import React from 'react';
 import "./profile.css";
 import { Dropdown } from "../components/dropdown";
 import { useLocation, useNavigate } from 'react-router-dom';
+import { getWorkoutColor } from "../utils/workoutColors";
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
-export function Profile({ currentUser, setCurrentUser }) {
-  const location = useLocation();
-  const navigate = useNavigate();
+export function Analytics({ currentUser }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [selectedBreakdownCategory, setSelectedBreakdownCategory] = React.useState("all");
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
-  const [displayNameInput, setDisplayNameInput] = React.useState(currentUser?.name || "");
-  const [currentPassword, setCurrentPassword] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [passwordStatus, setPasswordStatus] = React.useState({ type: "", message: "" });
-  const [isSavingPassword, setIsSavingPassword] = React.useState(false);
-
-  React.useEffect(() => {
-    setDisplayNameInput(currentUser?.name || "");
-  }, [currentUser?.name]);
 
   React.useEffect(() => {
     fetch('/api/workouts', {
@@ -53,147 +43,35 @@ export function Profile({ currentUser, setCurrentUser }) {
       });
   }, []);
 
-  const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const isPasswordModalOpen = searchParams.get("modal") === "account-settings";
-
-  const openPasswordModal = () => {
-    const nextSearchParams = new URLSearchParams(location.search);
-    nextSearchParams.set("modal", "account-settings");
-    navigate(`${location.pathname}?${nextSearchParams.toString()}`);
-  };
-
-  const closePasswordModal = React.useCallback(() => {
-    const nextSearchParams = new URLSearchParams(location.search);
-    nextSearchParams.delete("modal");
-    const nextSearch = nextSearchParams.toString();
-    navigate(nextSearch ? `${location.pathname}?${nextSearch}` : location.pathname, { replace: true });
-  }, [location.pathname, location.search, navigate]);
-
-  React.useEffect(() => {
-    if (!isPasswordModalOpen) {
-      return;
-    }
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        closePasswordModal();
-      }
-    };
-
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [closePasswordModal, isPasswordModalOpen]);
-
-  const workoutNames = React.useMemo(() => getWorkoutNames(workouts), [workouts]);
-  const uniqueWorkoutDays = React.useMemo(() => getUniqueWorkoutDays(workouts), [workouts]);
-  const dayCountMap = React.useMemo(() => getWorkoutDayCountMap(workouts), [workouts]);
+  const analyticsWorkouts = React.useMemo(() => expandAnalyticsWorkouts(workouts), [workouts]);
+  const workoutNames = React.useMemo(() => getWorkoutNames(analyticsWorkouts), [analyticsWorkouts]);
+  const uniqueWorkoutDays = React.useMemo(() => getUniqueWorkoutDays(analyticsWorkouts), [analyticsWorkouts]);
+  const dayCountMap = React.useMemo(() => getWorkoutDayCountMap(analyticsWorkouts), [analyticsWorkouts]);
 
   const profileIdentity = React.useMemo(
-    () => buildProfileIdentity(workouts, currentUser),
-    [workouts, currentUser]
+    () => buildProfileIdentity(analyticsWorkouts, currentUser),
+    [analyticsWorkouts, currentUser]
+  );
+
+  const workoutBreakdown = React.useMemo(
+    () => buildWorkoutBreakdown(analyticsWorkouts, selectedBreakdownCategory),
+    [analyticsWorkouts, selectedBreakdownCategory]
   );
 
   const weeklySnapshot = React.useMemo(
-    () => buildWeeklySnapshot(workouts, uniqueWorkoutDays),
-    [workouts, uniqueWorkoutDays]
+    () => buildWeeklySnapshot(analyticsWorkouts, uniqueWorkoutDays),
+    [analyticsWorkouts, uniqueWorkoutDays]
   );
 
   const consistencyStats = React.useMemo(
-    () => buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap),
-    [workouts, uniqueWorkoutDays, dayCountMap]
+    () => buildConsistencyStats(analyticsWorkouts, uniqueWorkoutDays, dayCountMap),
+    [analyticsWorkouts, uniqueWorkoutDays, dayCountMap]
   );
 
   const selectedWorkoutStats = React.useMemo(
-    () => buildSelectedWorkoutStats(workouts, selectedWorkoutName),
-    [workouts, selectedWorkoutName]
+    () => buildSelectedWorkoutStats(analyticsWorkouts, selectedWorkoutName),
+    [analyticsWorkouts, selectedWorkoutName]
   );
-
-  const handlePasswordSubmit = async (event) => {
-    event.preventDefault();
-
-    setIsSavingPassword(true);
-    setPasswordStatus({ type: "", message: "" });
-
-    try {
-      const trimmedName = displayNameInput.trim();
-      const shouldUpdateName = trimmedName && trimmedName !== (currentUser?.name || "");
-      const shouldUpdatePassword = Boolean(currentPassword || newPassword || confirmPassword);
-
-      if (!shouldUpdateName && !shouldUpdatePassword) {
-        setPasswordStatus({ type: "error", message: "Make a change before saving." });
-        return;
-      }
-
-      if (shouldUpdateName) {
-        const nameResponse = await fetch('/api/user/me', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            name: trimmedName,
-          }),
-        });
-
-        let nameBody = {};
-        try {
-          nameBody = await nameResponse.json();
-        } catch (_err) {
-          nameBody = {};
-        }
-
-        if (!nameResponse.ok) {
-          setPasswordStatus({ type: "error", message: nameBody.msg || "Couldn't update name." });
-          return;
-        }
-
-        setCurrentUser((current) => current ? { ...current, name: nameBody.name || trimmedName } : current);
-      }
-
-      if (shouldUpdatePassword) {
-        if (!currentPassword || !newPassword || !confirmPassword) {
-          setPasswordStatus({ type: "error", message: "Fill out all password fields to change your password." });
-          return;
-        }
-
-        if (newPassword !== confirmPassword) {
-          setPasswordStatus({ type: "error", message: "New passwords do not match." });
-          return;
-        }
-
-        const response = await fetch('/api/auth/password', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            currentPassword,
-            newPassword,
-          }),
-        });
-
-        if (!response.ok) {
-          let body = {};
-          try {
-            body = await response.json();
-          } catch (_err) {
-            body = {};
-          }
-
-          setPasswordStatus({ type: "error", message: body.msg || "Couldn't update password." });
-          return;
-        }
-      }
-
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordStatus({ type: "success", message: shouldUpdatePassword ? "Account settings updated." : "Name updated." });
-    } catch (err) {
-      console.error('Error updating password:', err);
-      setPasswordStatus({ type: "error", message: "Couldn't update account settings." });
-    } finally {
-      setIsSavingPassword(false);
-    }
-  };
 
   return (
     <main>
@@ -201,7 +79,7 @@ export function Profile({ currentUser, setCurrentUser }) {
         {isLoading ? (
           <section className="profile-loading-state" aria-live="polite">
             <div className="profile-loading-hero">
-              <p className="profile-kicker">Profile</p>
+              <p className="profile-kicker">Analytics</p>
               <h2>Loading your dashboard...</h2>
               <p className="panel-muted">Crunching your training trends.</p>
             </div>
@@ -216,7 +94,7 @@ export function Profile({ currentUser, setCurrentUser }) {
           <>
         <section className="profile-hero">
           <div>
-            <p className="profile-kicker">Profile</p>
+            <p className="profile-kicker">Analytics</p>
             <h2>{profileIdentity.displayName}</h2>
           </div>
           <div className="profile-meta-grid">
@@ -231,6 +109,103 @@ export function Profile({ currentUser, setCurrentUser }) {
             <div className="profile-meta-card">
               <span>Favorite Workout</span>
               <strong>{profileIdentity.favoriteWorkout}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="profile-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Workout Breakdown</p>
+              <h3>{workoutBreakdown.mode === "workouts" ? "Workout Split" : "How You Train"}</h3>
+            </div>
+            <button
+              type="button"
+              className={selectedBreakdownCategory === "all" ? "breakdown-filter active" : "breakdown-filter"}
+              onClick={() => setSelectedBreakdownCategory("all")}
+            >
+              {selectedBreakdownCategory === "all"
+                ? workoutBreakdown.mode === "workouts" ? "All workout splits" : "All workouts"
+                : `Showing ${workoutBreakdown.activeCategoryLabel}`}
+            </button>
+          </div>
+
+          <div className="breakdown-layout">
+            <div className="breakdown-visual-card">
+              <DonutBreakdownChart
+                segments={workoutBreakdown.categories}
+                total={workoutBreakdown.totalWorkouts}
+                activeCategoryKey={workoutBreakdown.activeCategoryKey}
+                onSelectCategory={(categoryKey) => {
+                  setSelectedBreakdownCategory((currentKey) => (
+                    currentKey === categoryKey ? "all" : categoryKey
+                  ));
+                }}
+              />
+            </div>
+
+            <div className="breakdown-details">
+              <div className="breakdown-legend">
+                {workoutBreakdown.categories.map((category) => (
+                  <button
+                    key={category.key}
+                    type="button"
+                    className={category.key === workoutBreakdown.activeCategoryKey ? "breakdown-legend-row active" : "breakdown-legend-row"}
+                    onClick={() => {
+                      setSelectedBreakdownCategory((currentKey) => (
+                        currentKey === category.key ? "all" : category.key
+                      ));
+                    }}
+                  >
+                    <span
+                      className={`breakdown-swatch ${category.swatchClass}`}
+                      style={category.color ? { background: category.color } : undefined}
+                      aria-hidden="true"
+                    />
+                    <span className="breakdown-legend-copy">
+                      <strong>{category.label}</strong>
+                      <span>{category.count} workouts</span>
+                    </span>
+                    <span className="breakdown-legend-percent">{category.percentage}%</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="breakdown-top-workouts">
+                <div className="trend-card-header">
+                  <h4>{workoutBreakdown.activeCategoryLabel}</h4>
+                  <p>{workoutBreakdown.activeCategoryDescription}</p>
+                </div>
+
+                {workoutBreakdown.topWorkouts.length > 0 ? (
+                  <div className="breakdown-workout-list">
+                    {workoutBreakdown.topWorkouts.map((workout) => (
+                      <button
+                        key={workout.name}
+                        type="button"
+                        className={workout.name === selectedWorkoutName ? "breakdown-workout-row active" : "breakdown-workout-row"}
+                        onClick={() => setSelectedWorkoutName(workout.name)}
+                        >
+                          <span className="breakdown-workout-rank">{workout.rank}</span>
+                          <span className="breakdown-workout-copy">
+                            <strong>
+                              <span
+                                className="breakdown-workout-dot"
+                                style={{ backgroundColor: workout.color || getWorkoutColor(workout.name) }}
+                                aria-hidden="true"
+                              />
+                              {workout.name}
+                            </strong>
+                            <span>{workout.count} sessions</span>
+                          </span>
+                        <span className="breakdown-workout-share">{workout.share}%</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No workouts in this category yet.</p>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -254,7 +229,7 @@ export function Profile({ currentUser, setCurrentUser }) {
         <section className="profile-panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Workout Breakdown</p>
+              <p className="panel-kicker">Workout Deep Dive</p>
               <h3>One Workout At A Time</h3>
             </div>
             <label className="workout-select">
@@ -262,7 +237,11 @@ export function Profile({ currentUser, setCurrentUser }) {
               <Dropdown
                 value={selectedWorkoutName}
                 onChange={setSelectedWorkoutName}
-                options={workoutNames.map((name) => ({ value: name, label: name }))}
+                options={workoutNames.map((name) => ({
+                  value: name,
+                  label: name,
+                  color: getWorkoutColorByName(analyticsWorkouts, name),
+                }))}
                 ariaLabel="Profile workout selector"
               />
             </label>
@@ -329,26 +308,256 @@ export function Profile({ currentUser, setCurrentUser }) {
           </div>
         </section>
 
-        <section className="profile-panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-kicker">Account</p>
-              <h3>Settings</h3>
-            </div>
-            <button type="button" className="btn btn-outline-light" onClick={openPasswordModal}>
-              Edit account
-            </button>
-          </div>
-          <p className="panel-muted">Update your display name or password in one place.</p>
-        </section>
-
         <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
           </>
         )}
       </div>
+    </main>
+  );
+}
 
-      {isPasswordModalOpen && (
-        <div className="password-modal-backdrop" role="presentation" onClick={closePasswordModal}>
+export function Account({ currentUser, setCurrentUser }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [workouts, setWorkouts] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [displayNameInput, setDisplayNameInput] = React.useState(currentUser?.name || "");
+  const [currentPassword, setCurrentPassword] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [accountStatus, setAccountStatus] = React.useState({ type: "", message: "" });
+  const [isSavingAccount, setIsSavingAccount] = React.useState(false);
+
+  React.useEffect(() => {
+    setDisplayNameInput(currentUser?.name || "");
+  }, [currentUser?.name]);
+
+  React.useEffect(() => {
+    fetch('/api/workouts', {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            return [];
+          }
+          throw new Error('Failed to fetch workouts');
+        }
+        return response.json();
+      })
+      .then((userWorkouts) => {
+        setWorkouts(sortWorkoutsAscending(userWorkouts));
+      })
+      .catch((err) => {
+        console.error('Error loading workouts:', err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, []);
+
+  const profileIdentity = React.useMemo(
+    () => buildProfileIdentity(workouts, currentUser),
+    [workouts, currentUser]
+  );
+
+  const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isAccountModalOpen = searchParams.get("modal") === "account-settings";
+
+  const openAccountModal = () => {
+    const nextSearchParams = new URLSearchParams(location.search);
+    nextSearchParams.set("modal", "account-settings");
+    navigate(`${location.pathname}?${nextSearchParams.toString()}`);
+  };
+
+  const closeAccountModal = React.useCallback(() => {
+    const nextSearchParams = new URLSearchParams(location.search);
+    nextSearchParams.delete("modal");
+    const nextSearch = nextSearchParams.toString();
+    navigate(nextSearch ? `${location.pathname}?${nextSearch}` : location.pathname, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  React.useEffect(() => {
+    if (!isAccountModalOpen) {
+      return;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        closeAccountModal();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [closeAccountModal, isAccountModalOpen]);
+
+  const handleAccountSubmit = async (event) => {
+    event.preventDefault();
+
+    setIsSavingAccount(true);
+    setAccountStatus({ type: "", message: "" });
+
+    try {
+      const trimmedName = displayNameInput.trim();
+      const shouldUpdateName = trimmedName && trimmedName !== (currentUser?.name || "");
+      const shouldUpdatePassword = Boolean(currentPassword || newPassword || confirmPassword);
+
+      if (!shouldUpdateName && !shouldUpdatePassword) {
+        setAccountStatus({ type: "error", message: "Make a change before saving." });
+        return;
+      }
+
+      if (shouldUpdateName) {
+        const nameResponse = await fetch('/api/user/me', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: trimmedName }),
+        });
+
+        let nameBody = {};
+        try {
+          nameBody = await nameResponse.json();
+        } catch (_err) {
+          nameBody = {};
+        }
+
+        if (!nameResponse.ok) {
+          setAccountStatus({ type: "error", message: nameBody.msg || "Couldn't update name." });
+          return;
+        }
+
+        setCurrentUser((current) => current ? { ...current, name: nameBody.name || trimmedName } : current);
+      }
+
+      if (shouldUpdatePassword) {
+        if (!currentPassword || !newPassword || !confirmPassword) {
+          setAccountStatus({ type: "error", message: "Fill out all password fields to change your password." });
+          return;
+        }
+
+        if (newPassword !== confirmPassword) {
+          setAccountStatus({ type: "error", message: "New passwords do not match." });
+          return;
+        }
+
+        const response = await fetch('/api/auth/password', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            currentPassword,
+            newPassword,
+          }),
+        });
+
+        if (!response.ok) {
+          let body = {};
+          try {
+            body = await response.json();
+          } catch (_err) {
+            body = {};
+          }
+
+          setAccountStatus({ type: "error", message: body.msg || "Couldn't update password." });
+          return;
+        }
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setAccountStatus({ type: "success", message: shouldUpdatePassword ? "Account updated." : "Name updated." });
+    } catch (err) {
+      console.error('Error updating account:', err);
+      setAccountStatus({ type: "error", message: "Couldn't update account settings." });
+    } finally {
+      setIsSavingAccount(false);
+    }
+  };
+
+  return (
+    <main>
+      <div className="main-formatting profile-layout">
+        {isLoading ? (
+          <section className="profile-loading-state" aria-live="polite">
+            <div className="profile-loading-hero">
+              <p className="profile-kicker">Account</p>
+              <h2>Loading your profile...</h2>
+              <p className="panel-muted">Gathering your account details.</p>
+            </div>
+            <div className="profile-loading-grid">
+              <div className="profile-loading-card profile-loading-card-wide" />
+              <div className="profile-loading-card" />
+              <div className="profile-loading-card" />
+            </div>
+          </section>
+        ) : (
+          <>
+            <section className="profile-hero">
+              <div>
+                <p className="profile-kicker">Account</p>
+                <h2>{profileIdentity.displayName}</h2>
+              </div>
+              <div className="profile-meta-grid">
+                <div className="profile-meta-card">
+                  <span>Username</span>
+                  <strong>{currentUser?.name || "Not set"}</strong>
+                </div>
+                <div className="profile-meta-card">
+                  <span>Email</span>
+                  <strong>{currentUser?.email || "Unknown"}</strong>
+                </div>
+                <div className="profile-meta-card">
+                  <span>Member Since</span>
+                  <strong>{profileIdentity.memberSince}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="profile-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="panel-kicker">Profile</p>
+                  <h3>Personal Information</h3>
+                </div>
+                <button type="button" className="btn btn-outline-light" onClick={openAccountModal}>
+                  Edit account
+                </button>
+              </div>
+              <div className="account-overview-grid">
+                <div className="metric-card">
+                  <span>Display name</span>
+                  <strong>{currentUser?.name || "Not set"}</strong>
+                </div>
+                <div className="metric-card">
+                  <span>Email</span>
+                  <strong>{currentUser?.email || "Unknown"}</strong>
+                </div>
+                <div className="metric-card metric-card-accent">
+                  <span>Favorite Workout</span>
+                  <strong>{profileIdentity.favoriteWorkout}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="profile-panel">
+              <div className="panel-header">
+                <div>
+                  <p className="panel-kicker">Security</p>
+                  <h3>Login & Password</h3>
+                </div>
+              </div>
+              <p className="panel-muted">Manage your display name and password from one place.</p>
+            </section>
+          </>
+        )}
+      </div>
+
+      {isAccountModalOpen && (
+        <div className="password-modal-backdrop" role="presentation" onClick={closeAccountModal}>
           <div
             className="password-modal"
             role="dialog"
@@ -361,12 +570,12 @@ export function Profile({ currentUser, setCurrentUser }) {
                 <p className="panel-kicker">Account</p>
                 <h3 id="change-password-title">Account Settings</h3>
               </div>
-              <button type="button" className="password-modal-close" onClick={closePasswordModal}>
+              <button type="button" className="password-modal-close" onClick={closeAccountModal}>
                 Close
               </button>
             </div>
 
-            <form className="password-form" onSubmit={handlePasswordSubmit}>
+            <form className="password-form" onSubmit={handleAccountSubmit}>
               <label className="password-field">
                 Display name
                 <input
@@ -404,17 +613,17 @@ export function Profile({ currentUser, setCurrentUser }) {
                   autoComplete="new-password"
                 />
               </label>
-              {passwordStatus.message && (
-                <p className={passwordStatus.type === "success" ? "password-status success" : "password-status error"}>
-                  {passwordStatus.message}
+              {accountStatus.message && (
+                <p className={accountStatus.type === "success" ? "password-status success" : "password-status error"}>
+                  {accountStatus.message}
                 </p>
               )}
               <div className="password-form-actions">
-                <button type="button" className="btn btn-outline-light" onClick={closePasswordModal}>
+                <button type="button" className="btn btn-outline-light" onClick={closeAccountModal}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={isSavingPassword}>
-                  {isSavingPassword ? "Saving..." : "Save"}
+                <button type="submit" className="btn btn-primary" disabled={isSavingAccount}>
+                  {isSavingAccount ? "Saving..." : "Save"}
                 </button>
               </div>
             </form>
@@ -442,6 +651,65 @@ function TrendCard({ title, subtitle, children }) {
         <p>{subtitle}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+function DonutBreakdownChart({ segments, total, activeCategoryKey, onSelectCategory }) {
+  if (!total) {
+    return (
+      <div className="breakdown-donut-empty">
+        <div className="breakdown-donut-center">
+          <strong>0</strong>
+          <span>No workouts yet</span>
+        </div>
+      </div>
+    );
+  }
+
+  const radius = 78;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+
+  return (
+    <div className="breakdown-donut-wrap">
+      <svg viewBox="0 0 220 220" className="breakdown-donut" role="img" aria-label="Workout breakdown donut chart">
+        <circle className="breakdown-donut-track" cx="110" cy="110" r={radius} />
+        {segments.map((segment) => {
+          const segmentLength = (segment.count / total) * circumference;
+          const dashArray = `${segmentLength} ${circumference - segmentLength}`;
+          const dashOffset = -offset;
+          offset += segmentLength;
+
+            return (
+              <circle
+                key={segment.key}
+                className={segment.key === activeCategoryKey ? `breakdown-donut-segment ${segment.segmentClass} is-active` : `breakdown-donut-segment ${segment.segmentClass}`}
+                cx="110"
+                cy="110"
+                r={radius}
+                strokeDasharray={dashArray}
+                strokeDashoffset={dashOffset}
+                style={segment.color ? { stroke: segment.color } : undefined}
+                onClick={() => onSelectCategory(segment.key)}
+                role="button"
+                tabIndex={0}
+              aria-label={`${segment.label}: ${segment.count} workouts`}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelectCategory(segment.key);
+                }
+              }}
+            />
+          );
+        })}
+      </svg>
+
+      <div className="breakdown-donut-center">
+        <strong>{total}</strong>
+        <span>sessions</span>
+      </div>
     </div>
   );
 }
@@ -543,6 +811,37 @@ function buildProfileIdentity(workouts, currentUser) {
   };
 }
 
+function expandAnalyticsWorkouts(workouts) {
+  return workouts.flatMap((workout) => {
+    if (!workout?.isMixed || !Array.isArray(workout.sets)) {
+      return [workout];
+    }
+
+    const groupedSets = new Map();
+    workout.sets.forEach((set, index) => {
+      const key = set.templateId || set.templateName || `mixed-${index}`;
+      const existing = groupedSets.get(key) || {
+        ...workout,
+        id: `${workout.id}-${key}`,
+        templateId: set.templateId || workout.templateId,
+        templateName: set.templateName || workout.templateName,
+        exercise: set.templateName || workout.exercise,
+        fields: set.fields || {},
+        measurements: set.measurements || workout.measurements,
+        sets: [],
+      };
+
+      existing.sets.push({
+        ...set,
+        id: existing.sets.length + 1,
+      });
+      groupedSets.set(key, existing);
+    });
+
+    return Array.from(groupedSets.values());
+  });
+}
+
 function buildWeeklySnapshot(workouts, uniqueWorkoutDays) {
   const today = stripTime(new Date());
   const weekStart = getWeekStart(today);
@@ -562,6 +861,189 @@ function buildWeeklySnapshot(workouts, uniqueWorkoutDays) {
     weekRange: `${formatReadableDate(formatDateValue(weekStart))} to ${formatReadableDate(formatDateValue(weekEnd))}`,
     shortWeekRange: `${formatShortMonthDay(weekStart)}-${formatShortMonthDay(weekEnd)}`,
   };
+}
+
+function buildWorkoutBreakdown(workouts, selectedCategoryKey) {
+  const totalWorkouts = workouts.length;
+  const workoutPalette = [
+    "#4da3ff",
+    "#27d7c3",
+    "#ffba49",
+    "#ff7a67",
+    "#c084fc",
+    "#7dd3fc",
+    "#a3e635",
+    "#fb7185",
+    "#f59e0b",
+    "#22c55e",
+  ];
+  const categoryMeta = [
+    {
+      key: "strength",
+      label: "Strength",
+      description: "Weight or reps-driven workouts.",
+      swatchClass: "is-strength",
+      segmentClass: "is-strength",
+    },
+    {
+      key: "strength-duration",
+      label: "Strength Duration",
+      description: "Timed holds or weighted efforts over time.",
+      swatchClass: "is-strength-duration",
+      segmentClass: "is-strength-duration",
+    },
+    {
+      key: "cardio",
+      label: "Cardio",
+      description: "Distance-focused movement and endurance sessions.",
+      swatchClass: "is-cardio",
+      segmentClass: "is-cardio",
+    },
+    {
+      key: "mixed",
+      label: "Mixed",
+      description: "Workouts blending strength and cardio signals.",
+      swatchClass: "is-mixed",
+      segmentClass: "is-mixed",
+    },
+    {
+      key: "other",
+      label: "Other",
+      description: "Anything that does not fit the main buckets.",
+      swatchClass: "is-other",
+      segmentClass: "is-other",
+    },
+  ];
+
+  const counts = new Map(categoryMeta.map((category) => [category.key, 0]));
+  const workoutsByCategory = new Map(categoryMeta.map((category) => [category.key, []]));
+
+  workouts.forEach((workout) => {
+    const categoryKey = classifyWorkout(workout);
+    counts.set(categoryKey, (counts.get(categoryKey) || 0) + 1);
+    workoutsByCategory.get(categoryKey)?.push(workout);
+  });
+
+  const categories = categoryMeta
+    .map((category) => ({
+      ...category,
+      count: counts.get(category.key) || 0,
+      percentage: totalWorkouts ? Math.round(((counts.get(category.key) || 0) / totalWorkouts) * 100) : 0,
+    }))
+    .filter((category) => category.count > 0);
+
+  const sortedCategories = [...categories].sort((left, right) => right.count - left.count);
+  const topCategoryShare = totalWorkouts ? (sortedCategories[0]?.count || 0) / totalWorkouts : 0;
+  const meaningfulCategories = categories.filter((category) => {
+    if (!totalWorkouts) {
+      return false;
+    }
+
+    return category.count / totalWorkouts >= 0.1;
+  }).length;
+  const shouldShowWorkoutSplit = categories.length <= 1 || topCategoryShare >= 0.8 || meaningfulCategories < 2;
+  const breakdownMode = shouldShowWorkoutSplit ? "workouts" : "categories";
+
+  const workoutSummaryMap = new Map();
+  workouts.forEach((workout) => {
+    const name = workout.templateName || workout.exercise;
+    if (!name) {
+      return;
+    }
+
+    const existing = workoutSummaryMap.get(name) || {
+      key: `workout-${name}`,
+      label: name,
+      name,
+      count: 0,
+      categoryKey: classifyWorkout(workout),
+      color: getWorkoutColor(workout),
+    };
+    existing.count += 1;
+    workoutSummaryMap.set(name, existing);
+  });
+
+  const workoutSegments = Array.from(workoutSummaryMap.values())
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+    .map((segment, index) => ({
+      ...segment,
+      percentage: totalWorkouts ? Math.round((segment.count / totalWorkouts) * 100) : 0,
+      swatchClass: "is-custom",
+      segmentClass: "is-custom",
+      color: segment.color || workoutPalette[index % workoutPalette.length],
+    }));
+
+  const segments = breakdownMode === "workouts" ? workoutSegments : categories;
+  const selectedSegment = segments.find((segment) => segment.key === selectedCategoryKey);
+  const activeSegmentKey = selectedSegment ? selectedSegment.key : "all";
+
+  let filteredWorkouts = workouts;
+  if (activeSegmentKey !== "all") {
+    filteredWorkouts = breakdownMode === "workouts"
+      ? workouts.filter((workout) => (workout.templateName || workout.exercise) === selectedSegment?.name)
+      : workoutsByCategory.get(activeSegmentKey) || [];
+  }
+
+  const workoutCounts = new Map();
+  filteredWorkouts.forEach((workout) => {
+    const name = workout.templateName || workout.exercise;
+    if (!name) {
+      return;
+    }
+
+    workoutCounts.set(name, (workoutCounts.get(name) || 0) + 1);
+  });
+
+  const topWorkouts = Array.from(workoutCounts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+    .map(([name, count], index) => ({
+      name,
+      count,
+      rank: index + 1,
+      share: filteredWorkouts.length ? Math.round((count / filteredWorkouts.length) * 100) : 0,
+      color: getWorkoutColorByName(filteredWorkouts, name),
+    }));
+
+  return {
+    mode: breakdownMode,
+    totalWorkouts,
+    categories: segments,
+    activeCategoryKey: activeSegmentKey,
+    activeCategoryLabel: selectedSegment
+      ? selectedSegment.label
+      : breakdownMode === "workouts"
+        ? "Workout Split"
+        : "All Workouts",
+    activeCategoryDescription: selectedSegment
+      ? breakdownMode === "workouts"
+        ? `${selectedSegment.count} sessions of ${selectedSegment.label}.`
+        : selectedSegment.description
+      : breakdownMode === "workouts"
+        ? "One workout type dominates, so this view drills into your specific workouts."
+        : "Your most-performed workouts across every category.",
+    topWorkouts,
+  };
+}
+
+function getCategoryStyleClass(categoryKey) {
+  switch (categoryKey) {
+    case "strength":
+      return "is-strength";
+    case "strength-duration":
+      return "is-strength-duration";
+    case "cardio":
+      return "is-cardio";
+    case "mixed":
+      return "is-mixed";
+    default:
+      return "is-other";
+  }
+}
+
+function getWorkoutColorByName(workouts, workoutName) {
+  const matchedWorkout = workouts.find((workout) => (workout.templateName || workout.exercise) === workoutName);
+  return matchedWorkout ? getWorkoutColor(matchedWorkout) : getWorkoutColor(workoutName);
 }
 
 function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
@@ -640,6 +1122,36 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
     })),
     monthlyFrequency: buildMonthlyFrequency(selectedWorkouts),
   };
+}
+
+function classifyWorkout(workout) {
+  const fields = workout.fields || {};
+  const hasWeight = Boolean(fields.weight);
+  const hasReps = Boolean(fields.reps);
+  const hasDistance = Boolean(fields.distance);
+  const hasDuration = Boolean(fields.duration);
+
+  if (hasDistance && (hasWeight || hasReps)) {
+    return "mixed";
+  }
+
+  if (hasDistance) {
+    return "cardio";
+  }
+
+  if (hasDuration && (hasWeight || hasReps)) {
+    return "strength-duration";
+  }
+
+  if (hasWeight || hasReps) {
+    return "strength";
+  }
+
+  if (hasDuration) {
+    return "strength-duration";
+  }
+
+  return "other";
 }
 
 function getBestMetric(workouts, fields, measurements) {
