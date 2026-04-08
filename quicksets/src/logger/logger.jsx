@@ -20,15 +20,22 @@ export function Logger() {
 
   React.useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${protocol}://${window.location.host}`);
+    const host =
+    window.location.hostname === 'localhost'
+      ? 'localhost:4000'
+      : window.location.host;
+    const socket = new WebSocket(`${protocol}://${host}`);
 
     socket.onopen = () => {
       console.log('WebSocket connected');
     };
-    
+    return () => {
+      socket.close();
+    };
   }, []);
 
   const handleAddSet = () => {
+    console.log('adding set')
     setSets(prevSets => {
       const nextId = prevSets.length + 1;
 
