@@ -35,6 +35,7 @@ apiRouter.post('/auth/create', async (req, res) => {
     const user = await createUser(req.body.email, req.body.password);
 
     setAuthCookie(res, user.token);
+    broadcastNotification(`${user.email} just created an account!`);
     res.send({ email: user.email });
   }
 });
@@ -51,6 +52,7 @@ apiRouter.post('/auth/login', async (req, res) => {
       );
 
       setAuthCookie(res, user.token);
+      broadcastNotification(`${user.email} just logged in!`);
       res.send({ email: user.email });
       return;
     }
@@ -100,8 +102,8 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     sets: req.body.sets || [],
   };
   
-  broadcastNotification(`${req.user.email} saved a workout!`);
   await workoutCollection.insertOne(newWorkout);
+  broadcastNotification(`${req.user.email} saved a workout!`);
   res.send(newWorkout);
 });
 
