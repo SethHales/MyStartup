@@ -4,7 +4,7 @@ const express = require('express');
 const uuid = require('uuid');
 const app = express();
 const http = require('http');
-const { peerProxy } = require('./peerProxy');
+const { peerProxy, broadcastNotification } = require('./peerProxy');
 
 const authCookieName = 'token';
 
@@ -99,7 +99,8 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     notes: req.body.notes,
     sets: req.body.sets || [],
   };
-
+  
+  broadcastNotification(`${req.user.email} saved a workout!`);
   await workoutCollection.insertOne(newWorkout);
   res.send(newWorkout);
 });
