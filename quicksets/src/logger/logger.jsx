@@ -2,7 +2,7 @@ import React from 'react';
 import "./logger.css";
 const WORKOUTS_KEY = "quicksets.workouts";
 
-export function Logger({ current }) {
+export function Logger({ currentUser }) {
   const getTodayLocal = () => {
     const today = new Date();
     const year = today.getFullYear();
@@ -34,7 +34,7 @@ export function Logger({ current }) {
       const text = typeof event.data === 'string' ? event.data : await event.data.text();
       const message = JSON.parse(text);
 
-      if (message.type === 'notification' && message.sender != ) {
+      if (message.type === 'notification' && message.sender !== currentUser.email) {
         setMessages((prev) => [message.message, ...prev]);
       }
     };

@@ -117,7 +117,7 @@ export default function App() {
                         path="/logger"
                         element={
                             <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                                <Logger />
+                                <Logger currentUser={currentUser} />
                             </ProtectedRoute>
                         }
                     />
