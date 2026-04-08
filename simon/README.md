@@ -72,7 +72,7 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [x] **HTML pages** - Four different pages. One for each view.
+- [x] **HTML pages** - Four different pages. One for each view. `index.html` (Login), `play.html`, `scores.html`, and `about.html`.
 - [x] **Proper HTML element usage** - I spent a lot of time learning about elements. I used header, footer, main, nav, img, a, fieldset, input, button, form, and many more.
 - [x] **Links** - Links between views.
 - [x] **Text** - About page has text.
@@ -86,7 +86,7 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [x] **Header, footer, and main content body** - I used a common CSS file to style these (main.css).
+- [x] **Header, footer, and main content body** - I used a common CSS file to style these `main.css`. The views specific things are in `about.css` and `play.css`.
 - [x] **Navigation elements** - Bootstrap NavBar. What a time saver.
 - [x] **Responsive to window resizing** - Bootstrap and `display:flex' did most the work here. I'm really happy with the game rendering.
 - [x] **Application elements** - I used a lot of `display:flex` to get things to align correctly.
@@ -125,3 +125,13 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 - [x] **Stores data in MongoDB** - Scores stored in MongoDB from `service/database.js`.
 - [x] **Stores credentials in MongoDB** - Auth stored in MongoDB from `service/database.js`.
+
+## 🚀 WebSocket deliverable
+
+For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
+
+- [x] **Backend listens for WebSocket connection** - Backend webSocket management executed in `service/webSocket.js`.
+- [x] **Frontend makes WebSocket connection** - Backend webSocket management executed in `src/gameNotifier.js`.
+- [x] **Data sent over WebSocket connection** - JSON representation of game notifications.
+- [x] **WebSocket data displayed** - Game notifications displayed on Play view.
+- [x] **Application is fully functional** - Yahoo 🎉. Ready for Demo day. I'm thinking chocolate. 🍫
