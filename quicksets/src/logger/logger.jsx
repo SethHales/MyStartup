@@ -16,6 +16,7 @@ export function Logger() {
   const [exercise, setExercise] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [messages, setMessages] = React.useState([]);
+  const [notifications, setNotifications] = React.useState([]);
 
   const mockMessages = [
     { msg: "Started a workout 💪" },
@@ -24,31 +25,7 @@ export function Logger() {
   ]
 
   React.useEffect(() => {
-    let index = 0;
-
-    const interval = setInterval(() => {
-      const userName = `User-${Math.floor(Math.random() * 100)}`;
-
-      const newMessage = {
-        id: Date.now(),
-        msg: mockMessages[index % mockMessages.length].msg,
-        from: userName,
-      };
-
-      // Show message
-      setMessages((prev) => [...prev, newMessage]);
-
-      // Remove after 5 seconds
-      setTimeout(() => {
-        setMessages((prev) =>
-          prev.filter((m) => m.id !== newMessage.id)
-        );
-      }, 10000);
-
-      index++;
-    }, 10000);
-
-    return () => clearInterval(interval);
+    
   }, []);
 
   const handleAddSet = () => {
