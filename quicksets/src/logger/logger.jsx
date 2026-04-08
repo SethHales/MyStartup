@@ -2,7 +2,7 @@ import React from 'react';
 import "./logger.css";
 const WORKOUTS_KEY = "quicksets.workouts";
 
-export function Logger() {
+export function Logger({ current }) {
   const getTodayLocal = () => {
     const today = new Date();
     const year = today.getFullYear();
@@ -21,14 +21,32 @@ export function Logger() {
   React.useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const host =
-    window.location.hostname === 'localhost'
-      ? 'localhost:4000'
-      : window.location.host;
+      window.location.hostname === 'localhost'
+        ? 'localhost:4000'
+        : window.location.host;
     const socket = new WebSocket(`${protocol}://${host}`);
 
     socket.onopen = () => {
       console.log('WebSocket connected');
     };
+
+    socket.onmessage = async (event) => {
+      const text = typeof event.data === 'string' ? event.data : await event.data.text();
+      const message = JSON.parse(text);
+
+      if (message.type === 'notification' && message.sender != ) {
+        setMessages((prev) => [message.message, ...prev]);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket disconnected');
+    };
+
+    socket.onerror = (error) => {
+      console.log('WebSocket error:', error);
+    };
+
     return () => {
       socket.close();
     };
@@ -105,9 +123,9 @@ export function Logger() {
       <div className="main-formatting">
         <section className="live-feed">
           <p className="feed-title">Live Feed</p>
-          {messages.map((message) => (
-            <p key={message.id}>
-              <strong>{message.from}</strong>: {message.msg}
+          {messages.map((message, index) => (
+            <p key={index}>
+              {message}
             </p>
           ))}
         </section>

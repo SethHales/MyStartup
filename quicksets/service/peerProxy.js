@@ -37,12 +37,13 @@ function peerProxy(httpServer) {
   }, 10000);
 }
 
-function broadcastNotification(messageText) {
+function broadcastNotification(messageText, sender = null) {
   if (!socketServer) return;
 
   const payload = JSON.stringify({
     type: 'notification',
     message: messageText,
+    sender: sender,
   });
 
   socketServer.clients.forEach((client) => {
