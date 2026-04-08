@@ -110,8 +110,8 @@ For this deliverable I did the following. I checked the box `[x]` and added a de
 
 For this deliverable I did the following. I checked the box `[x]` and added a description for things I completed.
 
-- [ ] **Backend listens for WebSocket connection** - I did not complete this part of the deliverable.
-- [ ] **Frontend makes WebSocket connection** - I did not complete this part of the deliverable.
-- [ ] **Data sent over WebSocket connection** - I did not complete this part of the deliverable.
-- [ ] **WebSocket data displayed** - I did not complete this part of the deliverable.
-- [ ] **Application is fully functional** - I did not complete this part of the deliverable.
+- [x] **Backend listens for WebSocket connection** - Yep!
+- [x] **Frontend makes WebSocket connection** - The logger page establishes a websocket connection on load.
+- [x] **Data sent over WebSocket connection** - Messages are sent from the backend (not the frontend) after successfully logging in, registering, or saving a workout. 
+- [x] **WebSocket data displayed** - Websocket messages are displayed at the top of the logger page.
+- [x] **Application is fully functional** - Yep! You can now register, login, save workouts, view workouts, and view some stats on the profile page. If you want to see a version that's a lot further along, check out quicksets.net (not startup.quicksets.net). I used a LOT of AI on this version which is why I haven't been turning it in as my assignment, but it's got a lot more functionality.
