@@ -16,15 +16,15 @@ export function Logger() {
   const [exercise, setExercise] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [messages, setMessages] = React.useState([]);
-  const [notifications, setNotifications] = React.useState([]);
 
-  const mockMessages = [
-    { msg: "Started a workout 💪" },
-    { msg: "Hit a new PR 🔥" },
-    { msg: "Just finished leg day 🦵" },
-  ]
 
   React.useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const socket = new WebSocket(`${protocol}://${window.location.host}`);
+
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+    };
     
   }, []);
 
