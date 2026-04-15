@@ -91,14 +91,6 @@ export function History() {
             )}
           </tbody>
         </table>
-        <div className="import-actions">
-          <button type="button" className="btn btn-outline-primary">
-            Import from Garmin
-          </button>
-          <p className="import-hint">
-            Import workouts directly from Garmin
-          </p>
-        </div>
         <a href="https://github.com/SethHales/MyStartup">GitHub</a>
       </section>
     </main>
