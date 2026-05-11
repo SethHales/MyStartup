@@ -194,6 +194,42 @@ export function History() {
     }
   }, []);
 
+  const handleSeparateWorkout = React.useCallback(async (workout) => {
+    setOpenWorkoutMenuId(null);
+
+    const confirmed = window.confirm(
+      `Separate ${workout.templateName || workout.exercise}? This will split the mixed workout into its individual workouts.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/workouts/${workout.id}/separate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        alert(body?.msg || 'Failed to separate workout');
+        return;
+      }
+
+      setWorkouts((currentWorkouts) =>
+        sortWorkouts([
+          ...currentWorkouts.filter((currentWorkout) => currentWorkout.id !== workout.id),
+          ...body,
+        ])
+      );
+      setExpandedWorkoutId((currentId) => currentId === workout.id ? null : currentId);
+    } catch (err) {
+      console.error('Error separating workout:', err);
+    }
+  }, []);
+
   const toggleWorkoutMenu = React.useCallback((workoutId) => {
     setOpenWorkoutMenuId((currentId) =>
       currentId === workoutId ? null : workoutId
@@ -424,6 +460,7 @@ export function History() {
             onToggleStarred={handleToggleStarred}
             onToggleWorkoutMenu={toggleWorkoutMenu}
             onOpenEditModal={openEditModal}
+            onSeparateWorkout={handleSeparateWorkout}
             onDeleteWorkout={handleDeleteWorkout}
           />
         ))}
@@ -432,17 +469,22 @@ export function History() {
       {editingWorkout && draftWorkout && (
         <div className="history-modal-backdrop" role="presentation">
           <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="edit-workout-title">
+            <button type="button" className="history-close-button is-icon" onClick={closeEditModal} aria-label="Close workout editor">
+              ×
+            </button>
             <div className="history-modal-header">
               <div>
                 <p className="history-modal-eyebrow">Edit Workout</p>
                 <h2 id="edit-workout-title">{editingWorkout.templateName || editingWorkout.exercise}</h2>
               </div>
-              <button type="button" className="history-close-button" onClick={closeEditModal}>
-                Close
-              </button>
+              <div className="modal-header-actions">
+                <button type="submit" form="history-workout-form" className="btn btn-primary">
+                  Save
+                </button>
+              </div>
             </div>
 
-            <form className="history-modal-form" onSubmit={handleSaveWorkout}>
+            <form id="history-workout-form" className="history-modal-form" onSubmit={handleSaveWorkout}>
               <label>
                 Date
                 <input
@@ -500,6 +542,8 @@ export function History() {
                               <Dropdown
                                 value={set.templateId || ''}
                                 onChange={(nextValue) => handleDraftSetChange(set.id, 'templateId', nextValue)}
+                                searchable
+                                searchPlaceholder="Search workouts"
                                 options={getMixedWorkoutTemplateOptions(workouts)}
                                 ariaLabel={`Set ${set.id} workout`}
                               />
@@ -548,11 +592,11 @@ export function History() {
               </section>
 
               <div className="history-modal-actions">
-                <button type="button" className="btn btn-outline-light" onClick={closeEditModal}>
+                <button type="button" className="history-close-button" onClick={closeEditModal} aria-label="Close workout editor">
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  Save Workout
+                  Save
                 </button>
               </div>
             </form>
@@ -608,6 +652,7 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
   onToggleStarred,
   onToggleWorkoutMenu,
   onOpenEditModal,
+  onSeparateWorkout,
   onDeleteWorkout,
 }) {
   const hasOpenMenu = group.days.some((dayGroup) =>
@@ -636,6 +681,7 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
                   onToggleStarred={onToggleStarred}
                   onToggleWorkoutMenu={onToggleWorkoutMenu}
                   onOpenEditModal={onOpenEditModal}
+                  onSeparateWorkout={onSeparateWorkout}
                   onDeleteWorkout={onDeleteWorkout}
                 />
               ))}
@@ -655,6 +701,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   onToggleStarred,
   onToggleWorkoutMenu,
   onOpenEditModal,
+  onSeparateWorkout,
   onDeleteWorkout,
 }) {
   const workoutName = workout.templateName || workout.exercise;
@@ -802,6 +849,15 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
           >
             Edit
           </button>
+          {workout.isMixed && (
+            <button
+              type="button"
+              className="workout-menu-item"
+              onClick={() => onSeparateWorkout(workout)}
+            >
+              Separate
+            </button>
+          )}
           <button
             type="button"
             className="workout-menu-item delete"

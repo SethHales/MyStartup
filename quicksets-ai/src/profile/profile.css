@@ -1,5 +1,7 @@
 .profile-layout {
     gap: 1rem;
+    min-width: 0;
+    overflow-x: hidden;
 }
 
 .profile-hero,
@@ -11,6 +13,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
+    min-width: 0;
 }
 
 .profile-hero {
@@ -49,6 +52,7 @@
 .account-overview-grid {
     display: grid;
     gap: 0.85rem;
+    min-width: 0;
 }
 
 .profile-meta-grid,
@@ -63,6 +67,54 @@
 
 .consistency-layout {
     grid-template-columns: 1.4fr 1fr;
+}
+
+.workout-focus-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.45fr);
+    gap: 0.85rem;
+    min-width: 0;
+}
+
+.workout-focus-details {
+    min-width: 0;
+}
+
+.workout-focus-card {
+    background: var(--bg-panel-strong);
+    border: 1px solid color-mix(in srgb, var(--selected-workout-color, var(--accent)) 22%, var(--border-subtle));
+    border-radius: 14px;
+    padding: 0.8rem;
+    min-width: 0;
+}
+
+.workout-focus-panel {
+    background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--selected-workout-color, var(--accent)) 14%, transparent), transparent 36%),
+        var(--bg-panel);
+    border-color: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 24%, var(--border-subtle));
+}
+
+.workout-focus-panel .metric-card-accent {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--selected-workout-color, var(--accent)) 18%, transparent) 0%,
+        color-mix(in srgb, var(--bg-panel-strong) 96%, transparent) 100%
+    );
+    border-color: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 38%, transparent);
+}
+
+.workout-focus-panel .line-chart-path {
+    stroke: var(--selected-workout-color, var(--accent));
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--selected-workout-color, var(--accent)) 24%, transparent));
+}
+
+.workout-focus-panel .bar-chart-fill {
+    background: linear-gradient(
+        180deg,
+        var(--selected-workout-color, var(--accent)) 0%,
+        color-mix(in srgb, var(--selected-workout-color, var(--accent)) 76%, black) 100%
+    );
 }
 
 .breakdown-layout {
@@ -249,6 +301,15 @@
     background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, transparent), color-mix(in srgb, var(--bg-panel-strong) 96%, transparent));
 }
 
+.workout-focus-panel .breakdown-workout-row.active {
+    border-color: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 38%, transparent);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--selected-workout-color, var(--accent)) 16%, transparent),
+        color-mix(in srgb, var(--bg-panel-strong) 96%, transparent)
+    );
+}
+
 .breakdown-swatch {
     width: 0.7rem;
     height: 0.7rem;
@@ -316,6 +377,94 @@
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
+}
+
+.workout-focus-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin-bottom: 0.8rem;
+}
+
+.workout-focus-detail-header {
+    margin-bottom: 0.85rem;
+}
+
+.workout-page-size {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 88px;
+    font-size: 0.78rem;
+    color: var(--text-soft);
+}
+
+.workout-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.8rem;
+}
+
+.workout-pagination-button {
+    border: 1px solid color-mix(in srgb, var(--selected-workout-color, var(--accent)) 24%, var(--border-subtle));
+    background: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 10%, transparent);
+    color: var(--text-main);
+    border-radius: 999px;
+    padding: 0.52rem 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.workout-pagination-button:disabled {
+    opacity: 0.45;
+}
+
+.workout-pagination-status {
+    font-size: 0.76rem;
+    color: var(--text-soft);
+}
+
+.workout-averages-card {
+    margin-top: 0.85rem;
+    padding: 0.85rem 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--selected-workout-color, var(--accent)) 22%, var(--border-subtle));
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--selected-workout-color, var(--accent)) 10%, transparent), transparent 58%),
+        color-mix(in srgb, var(--bg-panel-strong) 96%, transparent);
+}
+
+.workout-averages-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.75rem;
+}
+
+.workout-averages-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--selected-workout-color, var(--accent)) 14%, var(--border-subtle));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 8%, transparent);
+}
+
+.workout-averages-label {
+    min-width: 0;
+    font-size: 0.84rem;
+    color: var(--text-muted);
+}
+
+.workout-averages-value {
+    font-size: 0.92rem;
+    color: var(--text-main);
+    text-align: right;
 }
 
 .breakdown-workout-row {
@@ -525,6 +674,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
+    min-width: 0;
+    overflow-x: hidden;
 }
 
 .trend-card-header {
@@ -567,6 +718,20 @@
     min-height: 156px;
 }
 
+.bar-chart-scroll {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.bar-chart.is-scrollable {
+    width: max-content;
+    min-width: 100%;
+}
+
 .bar-chart-column {
     flex: 1;
     min-width: 0;
@@ -574,6 +739,11 @@
     flex-direction: column;
     align-items: center;
     gap: 0.35rem;
+}
+
+.bar-chart.is-scrollable .bar-chart-column {
+    width: 3.35rem;
+    min-width: 3.35rem;
 }
 
 .bar-chart-value {
@@ -604,7 +774,7 @@
 .heatmap {
     display: flex;
     gap: 0.6rem;
-    overflow-x: auto;
+    min-width: 0;
 }
 
 .heatmap-days,
@@ -621,9 +791,20 @@
     align-items: center;
 }
 
+.heatmap-scroll {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
 .heatmap-weeks {
     display: flex;
     gap: 4px;
+    width: max-content;
+    min-width: 100%;
 }
 
 .heatmap-cell {
@@ -646,14 +827,40 @@
     background: var(--accent);
 }
 
+.bar-chart-scroll::-webkit-scrollbar,
+.heatmap-scroll::-webkit-scrollbar {
+    height: 8px;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-track,
+.heatmap-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-thumb,
+.heatmap-scroll::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 999px;
+}
+
+.bar-chart-scroll::-webkit-scrollbar-thumb:hover,
+.heatmap-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+
 @media (max-width: 800px) {
     .consistency-layout,
-    .breakdown-layout {
+    .breakdown-layout,
+    .workout-focus-layout {
         grid-template-columns: 1fr;
     }
 }
 
 @media (max-width: 700px) {
+    .workout-focus-list-card {
+        display: none;
+    }
+
     .profile-hero,
     .profile-panel {
         padding: 0.8rem;
@@ -700,9 +907,19 @@
         padding: 0.75rem;
     }
 
+    .workout-focus-card {
+        padding: 0.75rem;
+    }
+
     .breakdown-legend-row,
     .breakdown-workout-row {
         padding: 0.65rem 0.7rem;
+    }
+
+    .workout-focus-toolbar,
+    .workout-pagination {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .profile-subcopy,

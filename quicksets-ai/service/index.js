@@ -5,18 +5,30 @@ const uuid = require('uuid');
 const app = express();
 const mixedWorkoutTemplateId = '__mixed_workout__';
 const mixedWorkoutName = 'Mixed Workout';
+const defaultRestDuration = '00:30';
 const workoutColorPalette = [
-  '#4da3ff',
-  '#27d7c3',
-  '#ffba49',
-  '#ff7a67',
-  '#c084fc',
-  '#7dd3fc',
-  '#a3e635',
-  '#fb7185',
-  '#f59e0b',
+  '#ef4444',
+  '#f97316',
+  '#eab308',
   '#22c55e',
+  '#3b82f6',
+  '#a855f7',
+  '#ec4899',
+  '#8b5e3c',
+  '#94a3b8',
 ];
+const legacyWorkoutColorMap = {
+  '#4da3ff': '#3b82f6',
+  '#27d7c3': '#3b82f6',
+  '#ffba49': '#eab308',
+  '#ff7a67': '#ef4444',
+  '#c084fc': '#a855f7',
+  '#7dd3fc': '#3b82f6',
+  '#a3e635': '#22c55e',
+  '#fb7185': '#ec4899',
+  '#f59e0b': '#f97316',
+  '#22c55e': '#22c55e',
+};
 
 const authCookieName = 'token';
 
@@ -54,7 +66,8 @@ apiRouter.post('/auth/create', async (req, res) => {
     const user = await createUser(name, req.body.email, req.body.password);
 
     setAuthCookie(res, user.token);
-    res.send({ email: user.email, name: user.name });
+    const payload = await buildUserPayload(user);
+    res.send(payload);
   }
 });
 
@@ -70,7 +83,8 @@ apiRouter.post('/auth/login', async (req, res) => {
       );
 
       setAuthCookie(res, user.token);
-      res.send({ email: user.email, name: user.name || '' });
+      const payload = await buildUserPayload(user);
+      res.send(payload);
       return;
     }
   }
@@ -136,7 +150,23 @@ apiRouter.put('/user/me', verifyAuth, async (req, res) => {
     { $set: { name } }
   );
 
-  res.send({ email: req.user.email, name });
+  const payload = await buildUserPayload({ ...req.user, name });
+  res.send(payload);
+});
+
+apiRouter.put('/user/color-labels', verifyAuth, async (req, res) => {
+  const workoutColorLabels = sanitizeWorkoutColorLabels(req.body?.workoutColorLabels);
+
+  await userCollection.updateOne(
+    { email: req.user.email },
+    { $set: { workoutColorLabels } }
+  );
+
+  res.send({
+    email: req.user.email,
+    name: req.user.name || '',
+    workoutColorLabels,
+  });
 });
 
 // Middleware to verify that the user is authorized to call an endpoint
@@ -153,16 +183,43 @@ async function verifyAuth(req, res, next) {
 // Workouts
 apiRouter.get('/workouts', verifyAuth, async (req, res) => {
   const cursor = workoutCollection.find({ userEmail: req.user.email });
-  const userWorkouts = (await cursor.toArray()).map((workout) => ({
-    ...workout,
-    color: sanitizeWorkoutColor(workout.color) || getFallbackWorkoutColor(workout.templateName || workout.exercise),
-    sets: Array.isArray(workout.sets)
+  const storedWorkouts = await cursor.toArray();
+
+  const userWorkouts = await Promise.all(storedWorkouts.map(async (workout) => {
+    const normalizedColor = workout.isMixed
+      ? ''
+      : normalizeStoredWorkoutColor(workout.color, workout.templateName || workout.exercise);
+    const normalizedSets = Array.isArray(workout.sets)
       ? workout.sets.map((set) => ({
         ...set,
-        color: sanitizeWorkoutColor(set.color) || getFallbackWorkoutColor(set.templateName || set.templateId || workout.templateName || workout.exercise),
+        color: normalizeStoredWorkoutColor(set.color, set.templateName || set.templateId || workout.templateName || workout.exercise),
       }))
-      : [],
+      : [];
+
+    const didWorkoutColorChange = normalizedColor !== (workout.color || '');
+    const didAnySetColorChange = normalizedSets.some((set, index) => set.color !== workout.sets?.[index]?.color);
+
+    if (didWorkoutColorChange || didAnySetColorChange) {
+      await workoutCollection.updateOne(
+        { id: workout.id, userEmail: req.user.email },
+        {
+          $set: {
+            color: normalizedColor,
+            sets: normalizedSets,
+          },
+        }
+      );
+    }
+
+    return {
+      ...workout,
+      color: workout.isMixed
+        ? normalizedColor
+        : normalizedColor || getFallbackWorkoutColor(workout.templateName || workout.exercise),
+      sets: normalizedSets,
+    };
   }));
+
   res.send(userWorkouts);
 });
 
@@ -230,11 +287,128 @@ apiRouter.delete('/workouts/:id', verifyAuth, async (req, res) => {
   res.status(204).end();
 });
 
+apiRouter.post('/workouts/:id/separate', verifyAuth, async (req, res) => {
+  const existingWorkout = await workoutCollection.findOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (!existingWorkout) {
+    res.status(404).send({ msg: 'Workout not found' });
+    return;
+  }
+
+  if (!existingWorkout.isMixed) {
+    res.status(400).send({ msg: 'Only mixed workouts can be separated' });
+    return;
+  }
+
+  const sourceSets = Array.isArray(existingWorkout.sets) ? existingWorkout.sets.filter(Boolean) : [];
+  if (sourceSets.length === 0) {
+    res.status(400).send({ msg: 'This mixed workout has no sets to separate' });
+    return;
+  }
+
+  const groupedSets = new Map();
+  sourceSets.forEach((set) => {
+    const templateId = typeof set?.templateId === 'string' ? set.templateId : '';
+    const templateName = typeof set?.templateName === 'string' ? set.templateName : '';
+    const groupKey = templateId || templateName;
+
+    if (!groupKey) {
+      return;
+    }
+
+    if (!groupedSets.has(groupKey)) {
+      groupedSets.set(groupKey, {
+        templateId,
+        templateName,
+        sets: [],
+      });
+    }
+
+    groupedSets.get(groupKey).sets.push(set);
+  });
+
+  if (groupedSets.size === 0) {
+    res.status(400).send({ msg: 'No valid workout sets were found to separate' });
+    return;
+  }
+
+  const templateIds = Array.from(new Set(
+    Array.from(groupedSets.values())
+      .map((group) => group.templateId)
+      .filter(Boolean)
+  ));
+  const templates = templateIds.length > 0
+    ? await workoutTemplateCollection.find({
+      userEmail: req.user.email,
+      id: { $in: templateIds },
+    }).toArray()
+    : [];
+  const templateMap = new Map(templates.map((template) => [template.id, template]));
+  const baseCreatedAt = Date.parse(existingWorkout.createdAt || '');
+
+  const separatedWorkouts = Array.from(groupedSets.values()).map((group, index) => {
+    const template = group.templateId ? templateMap.get(group.templateId) : null;
+    const templateName = template?.name || group.templateName || `Workout ${index + 1}`;
+    const fields = template?.fields || inferFieldsFromSets(group.sets);
+    const normalizedSets = group.sets.map((set, setIndex) => sanitizeSet(set, fields, setIndex));
+    const createdAt = Number.isNaN(baseCreatedAt)
+      ? new Date().toISOString()
+      : new Date(baseCreatedAt + index).toISOString();
+
+    return {
+      id: uuid.v4(),
+      createdAt,
+      userEmail: req.user.email,
+      date: existingWorkout.date,
+      templateId: template?.id || group.templateId || '',
+      templateName,
+      exercise: templateName,
+      isMixed: false,
+      color: normalizeStoredWorkoutColor(template?.color, templateName)
+        || normalizeStoredWorkoutColor(group.sets[0]?.color, templateName)
+        || getFallbackWorkoutColor(templateName),
+      usesRestTimer: template ? Boolean(template.usesRestTimer) : false,
+      restDuration: template ? sanitizeRestDuration(template.restDuration) : defaultRestDuration,
+      fields,
+      measurements: template
+        ? sanitizeMeasurements(template.measurements)
+        : sanitizeMeasurements(group.sets[0]?.measurements),
+      notes: existingWorkout.notes || '',
+      starred: Boolean(existingWorkout.starred),
+      sets: normalizedSets,
+    };
+  });
+
+  await workoutCollection.insertMany(separatedWorkouts);
+  await workoutCollection.deleteOne({
+    id: existingWorkout.id,
+    userEmail: req.user.email,
+  });
+
+  res.send(separatedWorkouts);
+});
+
 apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
   const cursor = workoutTemplateCollection.find({ userEmail: req.user.email });
-  const templates = (await cursor.toArray()).map((template) => ({
-    ...template,
-    color: sanitizeWorkoutColor(template.color) || getFallbackWorkoutColor(template.name),
+  const storedTemplates = await cursor.toArray();
+  const templates = await Promise.all(storedTemplates.map(async (template) => {
+    const normalizedColor = normalizeStoredWorkoutColor(template.color, template.name);
+    if (normalizedColor !== (template.color || '')) {
+      await workoutTemplateCollection.updateOne(
+        { id: template.id, userEmail: req.user.email },
+        { $set: { color: normalizedColor } }
+      );
+    }
+
+    return {
+      ...template,
+      color: normalizedColor || getFallbackWorkoutColor(template.name),
+      usesRestTimer: Boolean(template.usesRestTimer),
+      restDuration: sanitizeRestDuration(template.restDuration),
+    };
   }));
   res.send(templates);
 });
@@ -242,6 +416,8 @@ apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
 apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const requestedColor = sanitizeApprovedWorkoutColor(req.body.color);
+  const usesRestTimer = Boolean(req.body.usesRestTimer);
+  const restDuration = sanitizeRestDuration(req.body.restDuration);
   const fields = sanitizeFields(req.body.fields);
   const measurements = sanitizeMeasurements(req.body.measurements);
 
@@ -271,6 +447,8 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
     name,
     normalizedName: name.toLowerCase(),
     color: requestedColor || generateUniqueWorkoutColor(existingTemplateColors(await workoutTemplateCollection.find({ userEmail: req.user.email }).toArray()), name),
+    usesRestTimer,
+    restDuration,
     fields,
     measurements,
   };
@@ -292,6 +470,8 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
 
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const requestedColor = sanitizeApprovedWorkoutColor(req.body.color);
+  const usesRestTimer = Boolean(req.body.usesRestTimer);
+  const restDuration = sanitizeRestDuration(req.body.restDuration);
   const fields = sanitizeFields(req.body.fields);
   const measurements = sanitizeMeasurements(req.body.measurements);
 
@@ -320,14 +500,16 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
     ...existingTemplate,
     name,
     normalizedName: name.toLowerCase(),
-    color: requestedColor || sanitizeWorkoutColor(existingTemplate.color) || getFallbackWorkoutColor(name),
+    color: requestedColor || normalizeStoredWorkoutColor(existingTemplate.color, name) || getFallbackWorkoutColor(name),
+    usesRestTimer,
+    restDuration,
     fields,
     measurements,
   };
 
   await workoutTemplateCollection.updateOne(
     { id: existingTemplate.id, userEmail: req.user.email },
-    { $set: { name, normalizedName: name.toLowerCase(), color: updatedTemplate.color, fields, measurements } }
+    { $set: { name, normalizedName: name.toLowerCase(), color: updatedTemplate.color, usesRestTimer, restDuration, fields, measurements } }
   );
 
   await workoutCollection.updateMany(
@@ -345,6 +527,8 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
         templateName: name,
         exercise: name,
         color: updatedTemplate.color,
+        usesRestTimer,
+        restDuration,
         fields,
         measurements,
       },
@@ -374,6 +558,8 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
             templateId: existingTemplate.id,
             templateName: name,
             color: updatedTemplate.color,
+            usesRestTimer,
+            restDuration,
             fields,
             measurements,
           };
@@ -391,23 +577,66 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
 });
 
 apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
-  const result = await workoutTemplateCollection.deleteOne({
-    id: req.params.id,
+  const templateIdToDelete = req.params.id;
+  const existingTemplate = await workoutTemplateCollection.findOne({
+    id: templateIdToDelete,
     userEmail: req.user.email,
   });
 
-  if (result.deletedCount === 0) {
+  if (!existingTemplate) {
     res.status(404).send({ msg: 'Workout template not found' });
     return;
   }
 
+  await workoutTemplateCollection.deleteOne({
+    id: templateIdToDelete,
+    userEmail: req.user.email,
+  });
+
   await workoutCollection.deleteMany({
     userEmail: req.user.email,
+    isMixed: { $ne: true },
     $or: [
-      { templateId: req.params.id },
-      { sets: { $elemMatch: { templateId: req.params.id } } },
+      { templateId: templateIdToDelete },
+      {
+        templateId: { $in: [null, ''] },
+        $or: [
+          { templateName: existingTemplate.name },
+          { exercise: existingTemplate.name },
+        ],
+      },
     ],
   });
+
+  const mixedWorkoutsToUpdate = await workoutCollection.find({
+    userEmail: req.user.email,
+    isMixed: true,
+    sets: { $elemMatch: { templateId: templateIdToDelete } },
+  }).toArray();
+
+  await Promise.all(
+    mixedWorkoutsToUpdate.map(async (workout) => {
+      const updatedSets = Array.isArray(workout.sets)
+        ? workout.sets.filter((set) => set?.templateId !== templateIdToDelete)
+        : [];
+
+      if (updatedSets.length === 0) {
+        await workoutCollection.deleteOne({ id: workout.id, userEmail: req.user.email });
+        return;
+      }
+
+      await workoutCollection.updateOne(
+        { id: workout.id, userEmail: req.user.email },
+        {
+          $set: {
+            sets: updatedSets,
+            fields: buildFieldsFromMixedSets(updatedSets),
+            updatedAt: new Date().toISOString(),
+          },
+        }
+      );
+    })
+  );
 
   const remainingTemplates = await workoutTemplateCollection
     .find({ userEmail: req.user.email }, { projection: { id: 1 } })
@@ -416,15 +645,18 @@ apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
     .map((template) => template.id)
     .filter(Boolean);
 
-  await workoutCollection.deleteMany({
+  const orphanedWorkoutQuery = {
     userEmail: req.user.email,
+    isMixed: { $ne: true },
     $or: [
       { templateId: { $exists: false } },
       { templateId: null },
       { templateId: '' },
-      ...(remainingTemplateIds.length > 0 ? [{ templateId: { $nin: remainingTemplateIds } }] : [{}]),
+      { templateId: { $nin: remainingTemplateIds } },
     ],
-  });
+  };
+
+  await workoutCollection.deleteMany(orphanedWorkoutQuery);
 
   res.status(204).end();
 });
@@ -474,7 +706,9 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     templateName: isMixedWorkout ? mixedWorkoutName : template.name,
     exercise: isMixedWorkout ? mixedWorkoutName : template.name,
     isMixed: isMixedWorkout,
-    color: isMixedWorkout ? '' : sanitizeWorkoutColor(template.color) || getFallbackWorkoutColor(template.name),
+    color: isMixedWorkout ? '' : normalizeStoredWorkoutColor(template.color, template.name) || getFallbackWorkoutColor(template.name),
+    usesRestTimer: isMixedWorkout ? false : Boolean(template.usesRestTimer),
+    restDuration: isMixedWorkout ? defaultRestDuration : sanitizeRestDuration(template.restDuration),
     fields: isMixedWorkout ? buildFieldsFromMixedSets(sets) : template.fields,
     measurements: isMixedWorkout ? sanitizeMeasurements({}) : sanitizeMeasurements(template.measurements),
     notes,
@@ -487,8 +721,9 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
 });
 
 // Get current email
-apiRouter.get('/user/me', verifyAuth, (req, res) => {
-  res.send({ email: req.user.email, name: req.user.name || '' })
+apiRouter.get('/user/me', verifyAuth, async (req, res) => {
+  const payload = await buildUserPayload(req.user);
+  res.send(payload)
 })
 
 // Default error handler
@@ -510,6 +745,7 @@ async function createUser(name, email, password) {
     email: email,
     password: passwordHash,
     token: uuid.v4(),
+    workoutColorLabels: {},
   };
   await userCollection.insertOne(user);
 
@@ -554,6 +790,39 @@ function sanitizeMeasurements(measurements) {
   };
 }
 
+function sanitizeRestDuration(duration) {
+  if (!duration) {
+    return defaultRestDuration;
+  }
+
+  const seconds = parseDurationToSeconds(duration);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function parseDurationToSeconds(duration) {
+  if (!duration) {
+    return 30;
+  }
+
+  const parts = `${duration}`.split(':').map((part) => Number(part));
+  if (parts.some((part) => Number.isNaN(part) || part < 0)) {
+    return 30;
+  }
+
+  if (parts.length === 2) {
+    return Math.floor(parts[0] * 60 + parts[1]);
+  }
+
+  if (parts.length === 3) {
+    return Math.floor(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  }
+
+  const seconds = Number(duration);
+  return Number.isNaN(seconds) ? 30 : Math.max(0, Math.floor(seconds));
+}
+
 function sanitizeSet(set, fields, index) {
   return {
     id: index + 1,
@@ -580,7 +849,7 @@ async function sanitizeMixedSet(set, userEmail, index) {
     ...sanitizeSet(set, template.fields, index),
     templateId: template.id,
     templateName: template.name,
-    color: sanitizeWorkoutColor(template.color) || getFallbackWorkoutColor(template.name),
+    color: normalizeStoredWorkoutColor(template.color, template.name) || getFallbackWorkoutColor(template.name),
     fields: template.fields,
     measurements: sanitizeMeasurements(template.measurements),
   };
@@ -623,14 +892,129 @@ function sanitizeWorkoutColor(value) {
 }
 
 function sanitizeApprovedWorkoutColor(value) {
-  const normalizedColor = sanitizeWorkoutColor(value);
+  const normalizedColor = sanitizeWorkoutColor(value).toLowerCase();
   return workoutColorPalette.includes(normalizedColor) ? normalizedColor : '';
+}
+
+function normalizeStoredWorkoutColor(value, seedName = 'quicksets') {
+  const normalizedColor = sanitizeWorkoutColor(value).toLowerCase();
+  if (!normalizedColor) {
+    return '';
+  }
+
+  if (workoutColorPalette.includes(normalizedColor)) {
+    return normalizedColor;
+  }
+
+  if (legacyWorkoutColorMap[normalizedColor]) {
+    return legacyWorkoutColorMap[normalizedColor];
+  }
+
+  return findNearestWorkoutPaletteColor(normalizedColor) || getFallbackWorkoutColor(seedName);
+}
+
+function sanitizeWorkoutColorLabels(colorLabels) {
+  if (!colorLabels || typeof colorLabels !== 'object' || Array.isArray(colorLabels)) {
+    return {};
+  }
+
+  return Object.entries(colorLabels).reduce((labels, [color, label]) => {
+    const normalizedColor = normalizeStoredWorkoutColor(color);
+    const normalizedLabel = `${label ?? ''}`.trim().slice(0, 32);
+
+    if (!normalizedColor || !normalizedLabel || labels[normalizedColor]) {
+      return labels;
+    }
+
+    return {
+      ...labels,
+      [normalizedColor]: normalizedLabel,
+    };
+  }, {});
+}
+
+function findNearestWorkoutPaletteColor(color) {
+  const sourceRgb = hexToRgb(color);
+  if (!sourceRgb) {
+    return '';
+  }
+
+  let nearestColor = workoutColorPalette[0];
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  workoutColorPalette.forEach((paletteColor) => {
+    const paletteRgb = hexToRgb(paletteColor);
+    if (!paletteRgb) {
+      return;
+    }
+
+    const distance = (
+      (sourceRgb.r - paletteRgb.r) ** 2
+      + (sourceRgb.g - paletteRgb.g) ** 2
+      + (sourceRgb.b - paletteRgb.b) ** 2
+    );
+
+    if (distance < nearestDistance) {
+      nearestColor = paletteColor;
+      nearestDistance = distance;
+    }
+  });
+
+  return nearestColor;
+}
+
+function hexToRgb(color) {
+  const normalizedColor = sanitizeWorkoutColor(color);
+  if (!normalizedColor) {
+    return null;
+  }
+
+  return {
+    r: parseInt(normalizedColor.slice(1, 3), 16),
+    g: parseInt(normalizedColor.slice(3, 5), 16),
+    b: parseInt(normalizedColor.slice(5, 7), 16),
+  };
 }
 
 function existingTemplateColors(templates) {
   return templates
-    .map((template) => sanitizeWorkoutColor(template.color))
+    .map((template) => normalizeStoredWorkoutColor(template.color, template.name))
     .filter(Boolean);
+}
+
+async function buildUserPayload(user) {
+  const workoutColorLabels = sanitizeWorkoutColorLabels(user?.workoutColorLabels);
+  const currentStoredLabels = user?.workoutColorLabels && typeof user.workoutColorLabels === 'object' && !Array.isArray(user.workoutColorLabels)
+    ? user.workoutColorLabels
+    : {};
+
+  if (user?.email && stringifyStableObject(workoutColorLabels) !== stringifyStableObject(currentStoredLabels)) {
+    await userCollection.updateOne(
+      { email: user.email },
+      { $set: { workoutColorLabels } }
+    );
+  }
+
+  return {
+    email: user?.email || '',
+    name: user?.name || '',
+    workoutColorLabels,
+  };
+}
+
+function stringifyStableObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return JSON.stringify(value ?? {});
+  }
+
+  return JSON.stringify(
+    Object.keys(value)
+      .sort()
+      .reduce((accumulator, key) => ({
+        ...accumulator,
+        [key]: value[key],
+      }), {})
+  );
 }
 
 function generateUniqueWorkoutColor(usedColors, seedName) {
@@ -640,66 +1024,13 @@ function generateUniqueWorkoutColor(usedColors, seedName) {
     return paletteColor;
   }
 
-  let attempt = 0;
-  while (attempt < 720) {
-    const candidate = buildGeneratedColor(seedName, attempt);
-    if (!normalizedUsedColors.has(candidate)) {
-      return candidate;
-    }
-    attempt += 1;
-  }
-
-  return getFallbackWorkoutColor(`${seedName}-${Date.now()}`);
+  return getFallbackWorkoutColor(seedName);
 }
 
 function getFallbackWorkoutColor(seedName) {
   const safeSeed = `${seedName || 'quicksets'}`;
   const hash = Array.from(safeSeed).reduce((total, character) => total + character.charCodeAt(0), 0);
   return workoutColorPalette[hash % workoutColorPalette.length];
-}
-
-function buildGeneratedColor(seedName, attempt) {
-  const safeSeed = `${seedName || 'quicksets'}`;
-  const hash = Array.from(safeSeed).reduce((total, character) => total + character.charCodeAt(0), 0);
-  const hue = Math.round((hash * 137.508 + attempt * 29) % 360);
-  const saturation = 68 + (attempt % 3) * 6;
-  const lightness = 58 + (attempt % 4) * 4;
-  return hslToHex(hue, saturation, lightness);
-}
-
-function hslToHex(h, s, l) {
-  const saturation = s / 100;
-  const lightness = l / 100;
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
-  const huePrime = h / 60;
-  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-
-  if (huePrime >= 0 && huePrime < 1) {
-    red = chroma;
-    green = x;
-  } else if (huePrime < 2) {
-    red = x;
-    green = chroma;
-  } else if (huePrime < 3) {
-    green = chroma;
-    blue = x;
-  } else if (huePrime < 4) {
-    green = x;
-    blue = chroma;
-  } else if (huePrime < 5) {
-    red = x;
-    blue = chroma;
-  } else {
-    red = chroma;
-    blue = x;
-  }
-
-  const match = lightness - chroma / 2;
-  const toHex = (value) => Math.round((value + match) * 255).toString(16).padStart(2, '0');
-  return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
 }
 
 app.listen(port, () => {

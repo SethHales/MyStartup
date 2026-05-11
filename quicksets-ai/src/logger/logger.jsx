@@ -1,14 +1,19 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import "./logger.css";
 import { Dropdown } from "../components/dropdown";
 import { DatePicker } from "../components/datePicker";
-import { useIsMobile } from "../hooks/useIsMobile";
 import { WheelPicker } from "../components/wheelPicker";
+import { TimeCaptureModal } from "../components/timeCaptureModal";
+import { playTimerPing, primeTimerAudio, vibrate } from "../utils/timerFeedback";
 import { getWorkoutColor, workoutColorPalette } from "../utils/workoutColors";
 
 const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
 const MIXED_WORKOUT_TEMPLATE_ID = "__mixed_workout__";
+const CREATE_TEMPLATE_OPTION_ID = "__create_workout_template__";
 const MIXED_WORKOUT_NAME = "Mixed Workout";
+const DEFAULT_REST_DURATION = "00:30";
+const UNLABELED_COLOR_COPY = "Unlabeled";
 
 const defaultTemplateFields = {
   reps: true,
@@ -102,7 +107,9 @@ function readLoggerDraft() {
       date: typeof draft?.date === "string" ? draft.date : getTodayLocal(),
       notes: typeof draft?.notes === "string" ? draft.notes : "",
       starred: Boolean(draft?.starred),
-      sets: Array.isArray(draft?.sets) ? draft.sets : [],
+      sets: Array.isArray(draft?.sets)
+        ? draft.sets.map((set, index) => ({ ...set, id: index + 1 }))
+        : [],
     };
   } catch (err) {
     console.error("Failed to restore logger draft:", err);
@@ -114,6 +121,8 @@ function normalizeTemplate(template) {
   return {
     ...template,
     color: getWorkoutColor(template),
+    usesRestTimer: Boolean(template?.usesRestTimer),
+    restDuration: normalizeRestDuration(template?.restDuration),
     fields: {
       reps: Boolean(template?.fields?.reps),
       weight: Boolean(template?.fields?.weight),
@@ -131,6 +140,8 @@ function buildMixedTemplate() {
     name: MIXED_WORKOUT_NAME,
     fields: mixedTemplateFields,
     measurements: defaultTemplateMeasurements,
+    usesRestTimer: false,
+    restDuration: DEFAULT_REST_DURATION,
     isMixed: true,
   };
 }
@@ -147,10 +158,9 @@ function normalizeTemplateMeasurements(measurements) {
   };
 }
 
-export function Logger() {
+export function Logger({ currentUser = null, setCurrentUser = null }) {
   const mixedTemplate = React.useMemo(() => buildMixedTemplate(), []);
   const storedDraft = React.useMemo(() => readLoggerDraft(), []);
-  const isMobile = useIsMobile();
   const [templates, setTemplates] = React.useState([]);
   const [savedWorkouts, setSavedWorkouts] = React.useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState(storedDraft?.selectedTemplateId || "");
@@ -163,16 +173,34 @@ export function Logger() {
   const [messages, setMessages] = React.useState([]);
   const [showTemplateModal, setShowTemplateModal] = React.useState(false);
   const [isEditingTemplate, setIsEditingTemplate] = React.useState(false);
+  const [templateCreationSource, setTemplateCreationSource] = React.useState("main");
   const [showSetModal, setShowSetModal] = React.useState(false);
   const [showTemplateActions, setShowTemplateActions] = React.useState(false);
   const [editingSetId, setEditingSetId] = React.useState(null);
-  const [openSetMenuId, setOpenSetMenuId] = React.useState(null);
+  const [openSetMenu, setOpenSetMenu] = React.useState(null);
   const [newTemplateName, setNewTemplateName] = React.useState("");
   const [newTemplateColor, setNewTemplateColor] = React.useState(workoutColorPalette[0]);
+  const [newTemplateUsesRestTimer, setNewTemplateUsesRestTimer] = React.useState(false);
+  const [newTemplateRestDuration, setNewTemplateRestDuration] = React.useState(DEFAULT_REST_DURATION);
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
   const [newTemplateMeasurements, setNewTemplateMeasurements] = React.useState(defaultTemplateMeasurements);
+  const [showColorPickerModal, setShowColorPickerModal] = React.useState(false);
+  const [editingColorLabel, setEditingColorLabel] = React.useState("");
+  const [colorLabelDraft, setColorLabelDraft] = React.useState("");
   const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
+  const [restTimerSeconds, setRestTimerSeconds] = React.useState(null);
+  const [isRestTimerActive, setIsRestTimerActive] = React.useState(false);
+  const [showRestTimerModal, setShowRestTimerModal] = React.useState(false);
+  const [timeCaptureMode, setTimeCaptureMode] = React.useState(null);
+  const [timeCaptureInitialSeconds, setTimeCaptureInitialSeconds] = React.useState(0);
+  const hasVibratedForCurrentTimer = React.useRef(false);
   const templateActionsRef = React.useRef(null);
+  const setMenuRef = React.useRef(null);
+  const templateNameInputRef = React.useRef(null);
+  const workoutColorLabels = React.useMemo(
+    () => normalizeWorkoutColorLabels(currentUser?.workoutColorLabels),
+    [currentUser?.workoutColorLabels]
+  );
 
   React.useEffect(() => {
     let isMounted = true;
@@ -214,6 +242,30 @@ export function Logger() {
       : templates.find((item) => item.id === selectedTemplateId) ?? null;
     setSelectedTemplate(template);
   }, [mixedTemplate, templates, selectedTemplateId]);
+
+  React.useEffect(() => {
+    if (!isRestTimerActive || restTimerSeconds === null) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setRestTimerSeconds((currentSeconds) => {
+        if (currentSeconds === null) {
+          return currentSeconds;
+        }
+
+        if (currentSeconds === 1 && !hasVibratedForCurrentTimer.current) {
+          hasVibratedForCurrentTimer.current = true;
+          vibrate([180, 90, 180]);
+          playTimerPing();
+        }
+
+        return currentSeconds - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [isRestTimerActive, restTimerSeconds]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -262,6 +314,49 @@ export function Logger() {
   }, []);
 
   React.useEffect(() => {
+    if (!showTemplateModal) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      templateNameInputRef.current?.focus();
+      templateNameInputRef.current?.select?.();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [showTemplateModal]);
+
+  React.useEffect(() => {
+    const handlePointerDown = (event) => {
+      const target = event.target;
+      if (
+        setMenuRef.current?.contains(target)
+        || target?.closest?.(".set-menu-trigger")
+      ) {
+        return;
+      }
+
+      setOpenSetMenu(null);
+    };
+
+    const handleViewportChange = () => {
+      setOpenSetMenu(null);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("resize", handleViewportChange);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", handleViewportChange);
+    };
+  }, []);
+
+  React.useEffect(() => {
     const normalizedSets = Array.isArray(sets)
       ? sets.map((set, index) => ({ ...set, id: index + 1 }))
       : [];
@@ -283,6 +378,9 @@ export function Logger() {
   }, [selectedTemplateId, date, notes, starred, sets]);
 
   const activeSetFields = getLoggerVisibleFields(selectedTemplate, sets);
+  const pendingSetFields = selectedTemplate?.isMixed
+    ? templateFieldOptions.filter((field) => getSetTemplateFields(selectedTemplate, pendingSet, templates)[field.key])
+    : activeSetFields;
   const canSubmitWorkout = Boolean(selectedTemplate && date && sets.length > 0);
 
   React.useEffect(() => {
@@ -307,26 +405,51 @@ export function Logger() {
     };
   }, [showTemplateModal, showSetModal, selectedTemplate, activeSetFields.length, sets, savedWorkouts]);
 
-  const handleTemplateSelection = (event) => {
-    const nextTemplateId = event.target.value;
+  const handleTemplateSelection = (nextTemplateId) => {
+    if (nextTemplateId === CREATE_TEMPLATE_OPTION_ID) {
+      openCreateTemplateModal("main");
+      return;
+    }
+
+    if (nextTemplateId === selectedTemplateId) {
+      return;
+    }
 
     const template = nextTemplateId === MIXED_WORKOUT_TEMPLATE_ID
       ? mixedTemplate
       : templates.find((item) => item.id === nextTemplateId) ?? null;
+
+    if (sets.length > 0) {
+      const confirmed = window.confirm(
+        "Switch workouts? This will discard the sets you've logged for the current workout."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setSelectedTemplateId(nextTemplateId);
     setNotes("");
     setStarred(false);
     setSets([]);
+    setRestTimerSeconds(null);
+    setIsRestTimerActive(false);
+    setShowRestTimerModal(false);
     if (!template) {
       setDate(getTodayLocal());
     }
   };
 
-  const openCreateTemplateModal = () => {
+  const openCreateTemplateModal = (source = "main") => {
+    const nextSource = typeof source === "string" ? source : "main";
     setShowTemplateActions(false);
+    setTemplateCreationSource(nextSource);
     setIsEditingTemplate(false);
     setNewTemplateName("");
     setNewTemplateColor(workoutColorPalette[0]);
+    setNewTemplateUsesRestTimer(false);
+    setNewTemplateRestDuration(DEFAULT_REST_DURATION);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
     setShowTemplateModal(true);
@@ -341,12 +464,26 @@ export function Logger() {
     setIsEditingTemplate(true);
     setNewTemplateName(selectedTemplate.name);
     setNewTemplateColor(selectedTemplate.color || workoutColorPalette[0]);
+    setNewTemplateUsesRestTimer(Boolean(selectedTemplate.usesRestTimer));
+    setNewTemplateRestDuration(normalizeRestDuration(selectedTemplate.restDuration));
     setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
     setNewTemplateMeasurements({
       ...defaultTemplateMeasurements,
       ...selectedTemplate.measurements,
     });
     setShowTemplateModal(true);
+  };
+
+  const closeColorPickerModal = () => {
+    setShowColorPickerModal(false);
+    setEditingColorLabel("");
+    setColorLabelDraft("");
+  };
+
+  const openColorPickerModal = () => {
+    setShowColorPickerModal(true);
+    setEditingColorLabel("");
+    setColorLabelDraft("");
   };
 
   const handleDeleteTemplate = async () => {
@@ -398,33 +535,42 @@ export function Logger() {
     const nextId = sets.length + 1;
     const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates);
     setEditingSetId(null);
-    setOpenSetMenuId(null);
+    setOpenSetMenu(null);
     setPendingSet({
       id: nextId,
       ...defaults,
       setType: "regular",
     });
+    setTimeCaptureMode(null);
     setShowSetModal(true);
   };
 
   const openEditSetModal = (setToEdit) => {
     setEditingSetId(setToEdit.id);
-    setOpenSetMenuId(null);
+    setOpenSetMenu(null);
     setPendingSet({
       id: setToEdit.id,
       ...copyTrackedFields(setToEdit, getSetTemplateFields(selectedTemplate, setToEdit, templates)),
     });
+    setTimeCaptureMode(null);
     setShowSetModal(true);
   };
 
   const closeSetModal = () => {
     setShowSetModal(false);
     setEditingSetId(null);
+    setTimeCaptureMode(null);
+    setOpenSetMenu(null);
     setPendingSet(getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates));
   };
 
   const handlePendingSetChange = (field, value) => {
     if (field === "templateId" && selectedTemplate?.isMixed) {
+      if (value === CREATE_TEMPLATE_OPTION_ID) {
+        openCreateTemplateModal("mixed-set");
+        return;
+      }
+
       const nextTemplate = templates.find((template) => template.id === value) || null;
       if (!nextTemplate) {
         return;
@@ -440,6 +586,7 @@ export function Logger() {
         measurements: nextTemplate.measurements,
         ...defaults,
       }));
+      setTimeCaptureMode(null);
       return;
     }
 
@@ -447,10 +594,27 @@ export function Logger() {
       ...currentSet,
       [field]: value,
     }));
+
+  };
+
+  const openTimeCaptureModal = (mode) => {
+    setTimeCaptureInitialSeconds(parseDurationToSeconds(pendingSet.duration || ""));
+    setTimeCaptureMode(mode);
+  };
+
+  const closeTimeCaptureModal = () => {
+    setTimeCaptureMode(null);
+  };
+
+  const handleConfirmTimeCapture = (capturedSeconds) => {
+    handlePendingSetChange("duration", formatDuration(capturedSeconds));
+    setTimeCaptureMode(null);
   };
 
   const handleConfirmAddSet = (event) => {
     event.preventDefault();
+    const shouldStartRestTimer = editingSetId === null;
+    const restDuration = getSetRestDuration(selectedTemplate, pendingSet, templates);
     if (editingSetId !== null) {
       setSets((prevSets) =>
         prevSets.map((set) =>
@@ -464,10 +628,36 @@ export function Logger() {
     }
     setShowSetModal(false);
     setEditingSetId(null);
+    if (shouldStartRestTimer) {
+      startRestTimer(restDuration, shouldUseSetRestTimer(selectedTemplate, pendingSet, templates));
+    }
+  };
+
+  const startRestTimer = (duration, shouldStart = true) => {
+    if (!shouldStart) {
+      return;
+    }
+
+    const seconds = parseDurationToSeconds(duration);
+    primeTimerAudio();
+    setRestTimerSeconds(seconds);
+    setIsRestTimerActive(true);
+    setShowRestTimerModal(true);
+    hasVibratedForCurrentTimer.current = seconds <= 0;
+
+    if (seconds <= 0) {
+      vibrate([180, 90, 180]);
+      playTimerPing();
+    }
+  };
+
+  const stopRestTimer = () => {
+    setIsRestTimerActive(false);
+    setShowRestTimerModal(false);
   };
 
   const handleDeleteSet = (setId) => {
-    setOpenSetMenuId(null);
+    setOpenSetMenu(null);
     setSets((prevSets) =>
       prevSets
         .filter((set) => set.id !== setId)
@@ -515,6 +705,8 @@ export function Logger() {
         body: JSON.stringify({
           name: newTemplateName,
           color: newTemplateColor,
+          usesRestTimer: newTemplateUsesRestTimer,
+          restDuration: normalizeRestDuration(newTemplateRestDuration),
           fields: newTemplateFields,
           measurements: newTemplateMeasurements,
         }),
@@ -536,66 +728,209 @@ export function Logger() {
           ? prevTemplates.map((template) => (template.id === savedTemplate.id ? savedTemplate : template))
           : [...prevTemplates, savedTemplate]
       );
-      setSavedWorkouts((prevWorkouts) =>
-        prevWorkouts.map((workout) => {
-          const isDirectMatch = !workout.isMixed && (
-            workout.templateId === savedTemplate.id
-            || workout.templateName === selectedTemplate?.name
-            || workout.exercise === selectedTemplate?.name
-          );
 
-          if (isDirectMatch) {
-            return {
-              ...workout,
-              templateId: savedTemplate.id,
-              templateName: savedTemplate.name,
-              exercise: savedTemplate.name,
-              color: savedTemplate.color,
-              fields: savedTemplate.fields,
-              measurements: savedTemplate.measurements,
-            };
-          }
+      if (isEditingTemplate) {
+        setSavedWorkouts((prevWorkouts) =>
+          prevWorkouts.map((workout) => {
+            const isDirectMatch = !workout.isMixed && (
+              workout.templateId === savedTemplate.id
+              || workout.templateName === selectedTemplate?.name
+              || workout.exercise === selectedTemplate?.name
+            );
 
-          if (!workout.isMixed || !Array.isArray(workout.sets)) {
-            return workout;
-          }
-
-          const updatedSets = workout.sets.map((set) => {
-            const isMatchingSet = set?.templateId === savedTemplate.id || set?.templateName === selectedTemplate?.name;
-            if (!isMatchingSet) {
-              return set;
+            if (isDirectMatch) {
+              return {
+                ...workout,
+                templateId: savedTemplate.id,
+                templateName: savedTemplate.name,
+                exercise: savedTemplate.name,
+                color: savedTemplate.color,
+                usesRestTimer: savedTemplate.usesRestTimer,
+                fields: savedTemplate.fields,
+                measurements: savedTemplate.measurements,
+                restDuration: savedTemplate.restDuration,
+              };
             }
 
-            return {
-              ...set,
-              templateId: savedTemplate.id,
-              templateName: savedTemplate.name,
-              color: savedTemplate.color,
-              fields: savedTemplate.fields,
-              measurements: savedTemplate.measurements,
-            };
-          });
+            if (!workout.isMixed || !Array.isArray(workout.sets)) {
+              return workout;
+            }
 
-          return updatedSets.some((set, index) => set !== workout.sets[index])
-            ? { ...workout, sets: updatedSets }
-            : workout;
-        })
-      );
-      setSelectedTemplateId(savedTemplate.id);
-      setSelectedTemplate(savedTemplate);
-      setSets([]);
-      setNotes("");
-      setStarred(false);
+            const updatedSets = workout.sets.map((set) => {
+              const isMatchingSet = set?.templateId === savedTemplate.id || set?.templateName === selectedTemplate?.name;
+              if (!isMatchingSet) {
+                return set;
+              }
+
+              return {
+                ...set,
+                templateId: savedTemplate.id,
+                templateName: savedTemplate.name,
+                color: savedTemplate.color,
+                usesRestTimer: savedTemplate.usesRestTimer,
+                fields: savedTemplate.fields,
+                measurements: savedTemplate.measurements,
+                restDuration: savedTemplate.restDuration,
+              };
+            });
+
+            return updatedSets.some((set, index) => set !== workout.sets[index])
+              ? { ...workout, sets: updatedSets }
+              : workout;
+          })
+        );
+        setSelectedTemplateId(savedTemplate.id);
+        setSelectedTemplate(savedTemplate);
+      } else if (templateCreationSource === "mixed-set" && selectedTemplate?.isMixed) {
+        const defaults = getMixedTemplateDefaultSet(savedTemplate, sets, savedWorkouts);
+        setPendingSet((currentSet) => ({
+          ...defaults,
+          id: currentSet.id,
+          templateId: savedTemplate.id,
+          templateName: savedTemplate.name,
+          fields: savedTemplate.fields,
+          measurements: savedTemplate.measurements,
+          setType: "regular",
+        }));
+        setTimeCaptureMode(null);
+      } else if (sets.length === 0) {
+        setSelectedTemplateId(savedTemplate.id);
+        setSelectedTemplate(savedTemplate);
+        setNotes("");
+        setStarred(false);
+      }
 
       setNewTemplateName("");
       setNewTemplateColor(workoutColorPalette[0]);
+      setNewTemplateUsesRestTimer(false);
+      setNewTemplateRestDuration(DEFAULT_REST_DURATION);
       setNewTemplateFields(defaultTemplateFields);
       setNewTemplateMeasurements(defaultTemplateMeasurements);
       setShowTemplateModal(false);
       setIsEditingTemplate(false);
+      setTemplateCreationSource("main");
+      closeColorPickerModal();
     } catch (err) {
       console.error(`Failed to ${isEditingTemplate ? 'update' : 'create'} workout template:`, err);
     }
+  };
+
+  const startEditingColorLabel = (color) => {
+    setEditingColorLabel(color);
+    setColorLabelDraft(workoutColorLabels[color] || "");
+  };
+
+  const handleSaveColorLabel = async (color) => {
+    if (!setCurrentUser) {
+      return;
+    }
+
+    const nextLabels = {
+      ...workoutColorLabels,
+      ...(colorLabelDraft.trim()
+        ? { [color]: colorLabelDraft.trim() }
+        : {}),
+    };
+
+    if (!colorLabelDraft.trim()) {
+      delete nextLabels[color];
+    }
+
+    try {
+      const response = await fetch('/api/user/color-labels', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ workoutColorLabels: nextLabels }),
+      });
+
+      const body = await response.json();
+      if (!response.ok) {
+        alert(body.msg || 'Failed to save color label');
+        return;
+      }
+
+      setCurrentUser((current) => ({
+        ...(current || {}),
+        ...body,
+      }));
+      setEditingColorLabel("");
+      setColorLabelDraft("");
+    } catch (err) {
+      console.error('Failed to save color label:', err);
+    }
+  };
+
+  const selectedTemplateColorLabel = getWorkoutColorLabel(newTemplateColor, workoutColorLabels);
+
+  const openSetMenuEntry = React.useMemo(() => {
+    if (!openSetMenu) {
+      return null;
+    }
+
+    return sets.find((set, index) => `${set.id}-${index}` === openSetMenu.rowKey) || null;
+  }, [openSetMenu, sets]);
+
+  React.useLayoutEffect(() => {
+    if (!openSetMenu || !setMenuRef.current || !openSetMenu.anchorRect) {
+      return;
+    }
+
+    const menuRect = setMenuRef.current.getBoundingClientRect();
+    const viewportPadding = 12;
+    const footerHeightValue = Number.parseFloat(
+      window.getComputedStyle(document.documentElement).getPropertyValue("--footer-height")
+    );
+    const footerReserve = (Number.isFinite(footerHeightValue) ? footerHeightValue : 76) + 18;
+    const maxTop = window.innerHeight - footerReserve - menuRect.height;
+    const preferredTop = openSetMenu.anchorRect.bottom + 8;
+    const fallbackTop = openSetMenu.anchorRect.top - menuRect.height - 8;
+    const nextTop = preferredTop <= maxTop
+      ? preferredTop
+      : Math.max(viewportPadding, fallbackTop);
+    const nextLeft = Math.max(
+      viewportPadding,
+      Math.min(
+        openSetMenu.anchorRect.right - menuRect.width,
+        window.innerWidth - menuRect.width - viewportPadding
+      )
+    );
+
+    if (openSetMenu.top !== nextTop || openSetMenu.left !== nextLeft) {
+      setOpenSetMenu((currentMenu) => (
+        currentMenu
+        && currentMenu.rowKey === openSetMenu.rowKey
+        && currentMenu.anchorRect === openSetMenu.anchorRect
+          ? { ...currentMenu, top: nextTop, left: nextLeft }
+          : currentMenu
+      ));
+    }
+  }, [openSetMenu]);
+
+  const toggleSetMenu = (event, set, index) => {
+    event.stopPropagation();
+
+    const rowKey = `${set.id}-${index}`;
+    setOpenSetMenu((currentMenu) => {
+      if (currentMenu?.rowKey === rowKey) {
+        return null;
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect();
+
+      return {
+        rowKey,
+        setId: set.id,
+        anchorRect: {
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          left: rect.left,
+        },
+        top: rect.bottom + 8,
+        left: rect.right,
+      };
+    });
   };
 
   const closeTemplateModal = () => {
@@ -603,8 +938,11 @@ export function Logger() {
     setIsEditingTemplate(false);
     setNewTemplateName("");
     setNewTemplateColor(workoutColorPalette[0]);
+    setNewTemplateUsesRestTimer(false);
+    setNewTemplateRestDuration(DEFAULT_REST_DURATION);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
+    setTemplateCreationSource("main");
 
     if (!selectedTemplateId) {
       setSelectedTemplateId("");
@@ -649,11 +987,21 @@ export function Logger() {
       setNotes("");
       setStarred(false);
       setSets([]);
+      setRestTimerSeconds(null);
+      setIsRestTimerActive(false);
+      setShowRestTimerModal(false);
       window.localStorage.removeItem(LOGGER_DRAFT_KEY);
     } catch (err) {
       console.error("Failed to update workouts in service:", err);
     }
   };
+
+  const restTimerDisplaySeconds = restTimerSeconds ?? parseDurationToSeconds(selectedTemplate?.restDuration || DEFAULT_REST_DURATION);
+  const restTimerStatus = restTimerDisplaySeconds <= 0
+    ? "is-expired"
+    : restTimerDisplaySeconds <= 5
+      ? "is-warning"
+      : "is-running";
 
   return (
     <main>
@@ -680,9 +1028,12 @@ export function Logger() {
             <div className="template-picker-row">
               <Dropdown
                 value={selectedTemplateId}
-                onChange={(nextValue) => handleTemplateSelection({ target: { value: nextValue } })}
+                onChange={handleTemplateSelection}
                 placeholder="Select a workout"
+                searchable
+                searchPlaceholder="Search workouts"
                 options={[
+                  { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
                   { value: "", label: "Select a workout", disabled: true },
                   { value: MIXED_WORKOUT_TEMPLATE_ID, label: MIXED_WORKOUT_NAME, badge: "New", color: "#f4b95e" },
                   ...templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) })),
@@ -788,32 +1139,11 @@ export function Logger() {
                               type="button"
                               className="set-menu-trigger"
                               aria-label={`Manage set ${set.id}`}
-                              onClick={() =>
-                                setOpenSetMenuId((currentId) =>
-                                  currentId === set.id ? null : set.id
-                                )
-                              }
+                              aria-expanded={openSetMenu?.rowKey === `${set.id}-${index}`}
+                              onClick={(event) => toggleSetMenu(event, set, index)}
                             >
                               ...
                             </button>
-                            {openSetMenuId === set.id && (
-                              <div className="set-menu-popover">
-                                <button
-                                  type="button"
-                                  className="set-menu-item"
-                                  onClick={() => openEditSetModal(set)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="set-menu-item delete"
-                                  onClick={() => handleDeleteSet(set.id)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -850,22 +1180,33 @@ export function Logger() {
       </div>
 
       {showTemplateModal && (
-        <div className="template-modal-backdrop" role="presentation">
+        <div
+          className={templateCreationSource === "mixed-set"
+            ? "template-modal-backdrop is-stacked-modal"
+            : "template-modal-backdrop"}
+          role="presentation"
+        >
           <div className="template-modal" role="dialog" aria-modal="true" aria-labelledby="create-workout-title">
+            <button type="button" className="template-close-button is-icon" onClick={closeTemplateModal} aria-label="Close workout template editor">
+              ×
+            </button>
             <div className="template-modal-header">
               <div>
                 <p className="template-eyebrow">New Workout</p>
                 <h2 id="create-workout-title">Build your workout template</h2>
               </div>
-              <button type="button" className="template-close-button" onClick={closeTemplateModal}>
-                Close
-              </button>
+              <div className="modal-header-actions">
+                <button type="submit" form="workout-template-form" className="btn btn-primary">
+                  {isEditingTemplate ? "Save" : "Create"}
+                </button>
+              </div>
             </div>
 
-            <form className="template-modal-form" onSubmit={handleSaveTemplate} onKeyDown={handleModalFormKeyDown}>
+            <form id="workout-template-form" className="template-modal-form" onSubmit={handleSaveTemplate} onKeyDown={handleModalFormKeyDown}>
               <label>
                 Workout name
                 <input
+                  ref={templateNameInputRef}
                   type="text"
                   placeholder="Bench Press"
                   value={newTemplateName}
@@ -877,23 +1218,48 @@ export function Logger() {
               <section className="template-color-panel">
                 <div className="section-header">
                   <h3>Theme color</h3>
-                  <p>Choose the color this workout uses across the app.</p>
+                  <p>Assign a color label system that works for you.</p>
                 </div>
-                <div className="template-color-grid" role="radiogroup" aria-label="Workout color">
-                  {workoutColorPalette.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      role="radio"
-                      aria-checked={newTemplateColor === color}
-                      className={newTemplateColor === color ? "template-color-option is-selected" : "template-color-option"}
-                      style={{ "--template-color": color }}
-                      onClick={() => setNewTemplateColor(color)}
-                    >
-                      <span className="template-color-swatch" aria-hidden="true" />
-                    </button>
-                  ))}
+                <button
+                  type="button"
+                  className="template-color-picker-trigger"
+                  onClick={openColorPickerModal}
+                >
+                  <span className="template-color-picker-preview">
+                    <span className="template-color-swatch" style={{ "--template-color": newTemplateColor }} aria-hidden="true" />
+                    <span className="template-color-picker-copy">
+                      <strong>{selectedTemplateColorLabel}</strong>
+                      <span>{formatColorHexLabel(newTemplateColor)}</span>
+                    </span>
+                  </span>
+                  <span className="template-color-picker-action">Change</span>
+                </button>
+              </section>
+
+              <section className="template-rest-panel">
+                <div className="section-header">
+                  <h3>Rest timer</h3>
+                  <p>Optionally start a timer after saving a set.</p>
                 </div>
+                <label className="template-rest-toggle">
+                  <input
+                    type="checkbox"
+                    checked={newTemplateUsesRestTimer}
+                    onChange={(event) => setNewTemplateUsesRestTimer(event.target.checked)}
+                  />
+                  Use a rest timer for this workout
+                </label>
+                <label className={!newTemplateUsesRestTimer ? "template-rest-duration is-disabled" : "template-rest-duration"}>
+                  Default rest
+                  <input
+                    type="text"
+                    value={newTemplateRestDuration}
+                    placeholder={DEFAULT_REST_DURATION}
+                    disabled={!newTemplateUsesRestTimer}
+                    onChange={(event) => setNewTemplateRestDuration(event.target.value)}
+                    onBlur={() => setNewTemplateRestDuration((currentValue) => normalizeRestDuration(currentValue))}
+                  />
+                </label>
               </section>
 
               <section className="template-fields-panel">
@@ -936,11 +1302,11 @@ export function Logger() {
               </div>
 
               <div className="template-modal-actions">
-                <button type="button" className="btn btn-outline-light" onClick={closeTemplateModal}>
+                <button type="button" className="template-close-button" onClick={closeTemplateModal} aria-label="Close workout template editor">
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  {isEditingTemplate ? "Save workout" : "Create workout"}
+                  {isEditingTemplate ? "Save" : "Create"}
                 </button>
               </div>
             </form>
@@ -967,7 +1333,12 @@ export function Logger() {
                       <Dropdown
                         value={pendingSet.templateId || templates[0]?.id || ""}
                         onChange={(nextValue) => handlePendingSetChange("templateId", nextValue)}
-                        options={templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) }))}
+                        searchable
+                        searchPlaceholder="Search workouts"
+                        options={[
+                          { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
+                          ...templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) })),
+                        ]}
                         ariaLabel="Set workout"
                       />
                     </label>
@@ -981,31 +1352,25 @@ export function Logger() {
                       ariaLabel="Set type"
                     />
                   </label>
-                  {activeSetFields.map((field) => (
+                  {pendingSetFields.map((field) => (
                     shouldShowSetField(field.key, selectedTemplate, pendingSet)
                       ? (
                     <label key={field.key}>
                       {getFieldLabel(field, getSetMeasurements(selectedTemplate, pendingSet))}
-                      {isMobile ? (
-                        <MobileSetField
-                          field={field}
-                          measurements={getSetMeasurements(selectedTemplate, pendingSet)}
-                          value={pendingSet[field.key] ?? ""}
-                          onChange={(nextValue) => handlePendingSetChange(field.key, nextValue)}
-                        />
-                      ) : (
-                        <div className="input-with-unit">
-                          <input
-                            type={field.inputType}
-                            value={pendingSet[field.key] ?? ""}
-                            placeholder={field.placeholder}
-                            onChange={(event) => handlePendingSetChange(field.key, event.target.value)}
-                          />
-                          {getFieldUnitSuffix(field, getSetMeasurements(selectedTemplate, pendingSet)) && (
-                            <span className="input-unit">
-                              {getFieldUnitSuffix(field, getSetMeasurements(selectedTemplate, pendingSet))}
-                            </span>
-                          )}
+                      <MobileSetField
+                        field={field}
+                        measurements={getSetMeasurements(selectedTemplate, pendingSet)}
+                        value={pendingSet[field.key] ?? ""}
+                        onChange={(nextValue) => handlePendingSetChange(field.key, nextValue)}
+                      />
+                      {field.key === "duration" && (
+                        <div className="duration-capture-buttons">
+                          <button type="button" onClick={() => openTimeCaptureModal("stopwatch")}>
+                            Stopwatch
+                          </button>
+                          <button type="button" onClick={() => openTimeCaptureModal("timer")}>
+                            Timer
+                          </button>
                         </div>
                       )}
                     </label>
@@ -1025,6 +1390,143 @@ export function Logger() {
             </form>
           </div>
         </div>
+      )}
+
+      {showColorPickerModal && (
+        <div className="template-modal-backdrop is-stacked-modal" role="presentation">
+          <div className="template-modal color-picker-modal" role="dialog" aria-modal="true" aria-labelledby="color-picker-title">
+            <button type="button" className="template-close-button is-icon" onClick={closeColorPickerModal} aria-label="Close color picker">
+              ×
+            </button>
+            <div className="template-modal-header">
+              <div>
+                <p className="template-eyebrow">Workout Colors</p>
+                <h2 id="color-picker-title">Pick a color label</h2>
+              </div>
+              <div className="modal-header-actions">
+                <button type="button" className="btn btn-primary" onClick={closeColorPickerModal}>
+                  Done
+                </button>
+              </div>
+            </div>
+
+            <div className="template-modal-form">
+              <section className="template-color-panel">
+                <div className="template-color-list" role="list" aria-label="Workout colors">
+                  {workoutColorPalette.map((color) => {
+                    const isSelected = newTemplateColor === color;
+                    const isEditing = editingColorLabel === color;
+                    const label = workoutColorLabels[color] || UNLABELED_COLOR_COPY;
+
+                    return (
+                      <div
+                        key={color}
+                        className={isSelected ? "template-color-row is-selected" : "template-color-row"}
+                        style={{ "--template-color": color }}
+                        role="listitem"
+                      >
+                        <button
+                          type="button"
+                          className="template-color-row-main"
+                          onClick={() => setNewTemplateColor(color)}
+                        >
+                          <span className="template-color-swatch" style={{ "--template-color": color }} aria-hidden="true" />
+                          <span className="template-color-row-copy">
+                            <strong>{label}</strong>
+                            <span>{formatColorHexLabel(color)}</span>
+                          </span>
+                          {isSelected && <span className="template-color-selected-pill">Selected</span>}
+                        </button>
+                        <div className="template-color-row-actions">
+                          <button
+                            type="button"
+                            className="template-color-label-button"
+                            onClick={() => startEditingColorLabel(color)}
+                          >
+                            {workoutColorLabels[color] ? "Edit label" : "Add label"}
+                          </button>
+                        </div>
+                        {isEditing && (
+                          <div className="template-color-label-editor">
+                            <input
+                              type="text"
+                              value={colorLabelDraft}
+                              placeholder="Upper Body, Push, Cardio..."
+                              onChange={(event) => setColorLabelDraft(event.target.value)}
+                              maxLength={32}
+                            />
+                            <div className="template-color-label-actions">
+                              <button type="button" className="template-close-button" onClick={() => { setEditingColorLabel(""); setColorLabelDraft(""); }}>
+                                Cancel
+                              </button>
+                              <button type="button" className="btn btn-primary" onClick={() => handleSaveColorLabel(color)}>
+                                Save label
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRestTimerModal && (
+        <div className="template-modal-backdrop rest-timer-modal-backdrop" role="presentation">
+          <div
+            className={`rest-timer-modal ${restTimerStatus}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rest-timer-title"
+          >
+            <p className="rest-timer-kicker">Rest Timer</p>
+            <h2 id="rest-timer-title">{formatSignedDuration(restTimerDisplaySeconds)}</h2>
+            <p className="rest-timer-copy">
+              {restTimerDisplaySeconds <= 0
+                ? "Rest is up. Start when you're ready."
+                : "Resting between sets."}
+            </p>
+            <button type="button" className="rest-timer-stop-button" onClick={stopRestTimer}>
+              Stop
+            </button>
+          </div>
+        </div>
+      )}
+
+      {timeCaptureMode && (
+        <TimeCaptureModal
+          mode={timeCaptureMode}
+          initialSeconds={timeCaptureInitialSeconds}
+          onConfirm={handleConfirmTimeCapture}
+          onClose={closeTimeCaptureModal}
+        />
+      )}
+      {openSetMenu && openSetMenuEntry && typeof document !== "undefined" && createPortal(
+        <div
+          ref={setMenuRef}
+          className="set-menu-popover is-floating"
+          style={{ top: `${openSetMenu.top}px`, left: `${openSetMenu.left}px` }}
+        >
+          <button
+            type="button"
+            className="set-menu-item"
+            onClick={() => openEditSetModal(openSetMenuEntry)}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="set-menu-item delete"
+            onClick={() => handleDeleteSet(openSetMenu.setId)}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </main>
   );
@@ -1247,6 +1749,26 @@ function normalizeSetType(value) {
   return ["regular", "warmup", "max"].includes(value) ? value : "regular";
 }
 
+function normalizeWorkoutColorLabels(colorLabels) {
+  if (!colorLabels || typeof colorLabels !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(colorLabels)
+      .filter(([color, label]) => workoutColorPalette.includes(color) && `${label ?? ""}`.trim())
+      .map(([color, label]) => [color, `${label}`.trim()])
+  );
+}
+
+function getWorkoutColorLabel(color, workoutColorLabels) {
+  return workoutColorLabels[color] || UNLABELED_COLOR_COPY;
+}
+
+function formatColorHexLabel(color) {
+  return `${color}`.toUpperCase();
+}
+
 function getSetDisplayLabel(set, sets, index) {
   const setType = normalizeSetType(set?.setType);
 
@@ -1338,6 +1860,62 @@ function parseDurationParts(duration) {
   }
 
   return { minutes: "", seconds: "" };
+}
+
+function parseDurationToSeconds(duration) {
+  if (!duration) {
+    return parseDurationToSeconds(DEFAULT_REST_DURATION);
+  }
+
+  const parts = `${duration}`.split(":").map((part) => Number(part));
+  if (parts.some((part) => Number.isNaN(part) || part < 0)) {
+    return parseDurationToSeconds(DEFAULT_REST_DURATION);
+  }
+
+  if (parts.length === 2) {
+    return Math.floor(parts[0] * 60 + parts[1]);
+  }
+
+  if (parts.length === 3) {
+    return Math.floor(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  }
+
+  const seconds = Number(duration);
+  return Number.isNaN(seconds) ? parseDurationToSeconds(DEFAULT_REST_DURATION) : Math.max(0, Math.floor(seconds));
+}
+
+function normalizeRestDuration(duration) {
+  return formatDuration(parseDurationToSeconds(duration));
+}
+
+function formatDuration(totalSeconds) {
+  const safeSeconds = Math.max(0, Math.floor(Math.abs(totalSeconds)));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatSignedDuration(totalSeconds) {
+  const prefix = totalSeconds < 0 ? "-" : "";
+  return `${prefix}${formatDuration(totalSeconds)}`;
+}
+
+function getSetRestDuration(selectedTemplate, set, templates = []) {
+  if (selectedTemplate?.isMixed) {
+    const setTemplate = templates.find((template) => template.id === set?.templateId);
+    return setTemplate?.restDuration || DEFAULT_REST_DURATION;
+  }
+
+  return selectedTemplate?.restDuration || DEFAULT_REST_DURATION;
+}
+
+function shouldUseSetRestTimer(selectedTemplate, set, templates = []) {
+  if (selectedTemplate?.isMixed) {
+    const setTemplate = templates.find((template) => template.id === set?.templateId);
+    return Boolean(setTemplate?.usesRestTimer);
+  }
+
+  return Boolean(selectedTemplate?.usesRestTimer);
 }
 
 function clampDurationPart(value, max) {

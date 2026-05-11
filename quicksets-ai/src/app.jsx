@@ -193,7 +193,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
                     path="/logger"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <Logger />
+                            <Logger currentUser={currentUser} setCurrentUser={setCurrentUser} />
                         </ProtectedRoute>
                     }
                 />

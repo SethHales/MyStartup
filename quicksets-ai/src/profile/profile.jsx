@@ -9,8 +9,9 @@ const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 export function Analytics({ currentUser }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [selectedBreakdownCategory, setSelectedBreakdownCategory] = React.useState("all");
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
+  const [workoutPageSize, setWorkoutPageSize] = React.useState("5");
+  const [workoutPage, setWorkoutPage] = React.useState(1);
 
   React.useEffect(() => {
     fetch('/api/workouts', {
@@ -29,10 +30,10 @@ export function Analytics({ currentUser }) {
       .then((userWorkouts) => {
         const sortedWorkouts = sortWorkoutsAscending(userWorkouts);
         setWorkouts(sortedWorkouts);
-
-        const workoutNames = getWorkoutNames(sortedWorkouts);
-        if (workoutNames.length > 0) {
-          setSelectedWorkoutName((currentName) => currentName || workoutNames[0]);
+        const expandedWorkouts = expandAnalyticsWorkouts(sortedWorkouts);
+        const mostUsedWorkoutName = getMostUsedWorkoutName(expandedWorkouts);
+        if (mostUsedWorkoutName && mostUsedWorkoutName !== "None yet") {
+          setSelectedWorkoutName((currentName) => currentName || mostUsedWorkoutName);
         }
       })
       .catch((err) => {
@@ -53,11 +54,6 @@ export function Analytics({ currentUser }) {
     [analyticsWorkouts, currentUser]
   );
 
-  const workoutBreakdown = React.useMemo(
-    () => buildWorkoutBreakdown(analyticsWorkouts, selectedBreakdownCategory),
-    [analyticsWorkouts, selectedBreakdownCategory]
-  );
-
   const weeklySnapshot = React.useMemo(
     () => buildWeeklySnapshot(analyticsWorkouts, uniqueWorkoutDays),
     [analyticsWorkouts, uniqueWorkoutDays]
@@ -72,6 +68,37 @@ export function Analytics({ currentUser }) {
     () => buildSelectedWorkoutStats(analyticsWorkouts, selectedWorkoutName),
     [analyticsWorkouts, selectedWorkoutName]
   );
+  const workoutExplorerItems = React.useMemo(
+    () => buildWorkoutExplorerItems(analyticsWorkouts),
+    [analyticsWorkouts]
+  );
+  const selectedWorkoutColor = React.useMemo(
+    () => selectedWorkoutName
+      ? getWorkoutColorByName(analyticsWorkouts, selectedWorkoutName)
+      : getWorkoutColor("QuickSets"),
+    [analyticsWorkouts, selectedWorkoutName]
+  );
+  const pageSize = Number(workoutPageSize) || 5;
+  const totalWorkoutPages = Math.max(1, Math.ceil(workoutExplorerItems.length / pageSize));
+  const activeWorkoutPage = Math.min(workoutPage, totalWorkoutPages);
+  const visibleWorkoutItems = React.useMemo(() => {
+    const startIndex = (activeWorkoutPage - 1) * pageSize;
+    return workoutExplorerItems.slice(startIndex, startIndex + pageSize);
+  }, [activeWorkoutPage, pageSize, workoutExplorerItems]);
+
+  React.useEffect(() => {
+    setWorkoutPage((currentPage) => Math.min(currentPage, totalWorkoutPages));
+  }, [totalWorkoutPages]);
+
+  React.useEffect(() => {
+    const selectedIndex = workoutExplorerItems.findIndex((workout) => workout.name === selectedWorkoutName);
+    if (selectedIndex < 0) {
+      return;
+    }
+
+    const nextPage = Math.floor(selectedIndex / pageSize) + 1;
+    setWorkoutPage((currentPage) => currentPage === nextPage ? currentPage : nextPage);
+  }, [pageSize, selectedWorkoutName, workoutExplorerItems]);
 
   return (
     <main>
@@ -116,103 +143,6 @@ export function Analytics({ currentUser }) {
         <section className="profile-panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Workout Breakdown</p>
-              <h3>{workoutBreakdown.mode === "workouts" ? "Workout Split" : "How You Train"}</h3>
-            </div>
-            <button
-              type="button"
-              className={selectedBreakdownCategory === "all" ? "breakdown-filter active" : "breakdown-filter"}
-              onClick={() => setSelectedBreakdownCategory("all")}
-            >
-              {selectedBreakdownCategory === "all"
-                ? workoutBreakdown.mode === "workouts" ? "All workout splits" : "All workouts"
-                : `Showing ${workoutBreakdown.activeCategoryLabel}`}
-            </button>
-          </div>
-
-          <div className="breakdown-layout">
-            <div className="breakdown-visual-card">
-              <DonutBreakdownChart
-                segments={workoutBreakdown.categories}
-                total={workoutBreakdown.totalWorkouts}
-                activeCategoryKey={workoutBreakdown.activeCategoryKey}
-                onSelectCategory={(categoryKey) => {
-                  setSelectedBreakdownCategory((currentKey) => (
-                    currentKey === categoryKey ? "all" : categoryKey
-                  ));
-                }}
-              />
-            </div>
-
-            <div className="breakdown-details">
-              <div className="breakdown-legend">
-                {workoutBreakdown.categories.map((category) => (
-                  <button
-                    key={category.key}
-                    type="button"
-                    className={category.key === workoutBreakdown.activeCategoryKey ? "breakdown-legend-row active" : "breakdown-legend-row"}
-                    onClick={() => {
-                      setSelectedBreakdownCategory((currentKey) => (
-                        currentKey === category.key ? "all" : category.key
-                      ));
-                    }}
-                  >
-                    <span
-                      className={`breakdown-swatch ${category.swatchClass}`}
-                      style={category.color ? { background: category.color } : undefined}
-                      aria-hidden="true"
-                    />
-                    <span className="breakdown-legend-copy">
-                      <strong>{category.label}</strong>
-                      <span>{category.count} workouts</span>
-                    </span>
-                    <span className="breakdown-legend-percent">{category.percentage}%</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="breakdown-top-workouts">
-                <div className="trend-card-header">
-                  <h4>{workoutBreakdown.activeCategoryLabel}</h4>
-                  <p>{workoutBreakdown.activeCategoryDescription}</p>
-                </div>
-
-                {workoutBreakdown.topWorkouts.length > 0 ? (
-                  <div className="breakdown-workout-list">
-                    {workoutBreakdown.topWorkouts.map((workout) => (
-                      <button
-                        key={workout.name}
-                        type="button"
-                        className={workout.name === selectedWorkoutName ? "breakdown-workout-row active" : "breakdown-workout-row"}
-                        onClick={() => setSelectedWorkoutName(workout.name)}
-                        >
-                          <span className="breakdown-workout-rank">{workout.rank}</span>
-                          <span className="breakdown-workout-copy">
-                            <strong>
-                              <span
-                                className="breakdown-workout-dot"
-                                style={{ backgroundColor: workout.color || getWorkoutColor(workout.name) }}
-                                aria-hidden="true"
-                              />
-                              {workout.name}
-                            </strong>
-                            <span>{workout.count} sessions</span>
-                          </span>
-                        <span className="breakdown-workout-share">{workout.share}%</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="panel-empty">No workouts in this category yet.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="profile-panel">
-          <div className="panel-header">
-            <div>
               <p className="panel-kicker">Weekly Snapshot</p>
               <h3>This Week</h3>
             </div>
@@ -229,62 +159,6 @@ export function Analytics({ currentUser }) {
         <section className="profile-panel">
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Workout Deep Dive</p>
-              <h3>One Workout At A Time</h3>
-            </div>
-            <label className="workout-select">
-              Workout
-              <Dropdown
-                value={selectedWorkoutName}
-                onChange={setSelectedWorkoutName}
-                options={workoutNames.map((name) => ({
-                  value: name,
-                  label: name,
-                  color: getWorkoutColorByName(analyticsWorkouts, name),
-                }))}
-                ariaLabel="Profile workout selector"
-              />
-            </label>
-          </div>
-
-          {selectedWorkoutStats ? (
-            <>
-              <div className="metric-grid">
-                <MetricCard label="Sessions Logged" value={selectedWorkoutStats.sessionsLogged} />
-                <MetricCard label="Avg Sets / Session" value={selectedWorkoutStats.averageSetsPerSession} />
-                <MetricCard label="Last Performed" value={selectedWorkoutStats.lastPerformed} />
-                <MetricCard label={selectedWorkoutStats.bestMetricLabel} value={selectedWorkoutStats.bestMetricValue} accent />
-              </div>
-
-              <div className="trend-grid">
-                <TrendCard
-                  title={selectedWorkoutStats.performanceTrend.title}
-                  subtitle={selectedWorkoutStats.performanceTrend.shortSubtitle || selectedWorkoutStats.performanceTrend.subtitle}
-                >
-                  <LineTrendChart points={selectedWorkoutStats.performanceTrend.points} />
-                </TrendCard>
-                <TrendCard
-                  title="Set Volume Trend"
-                  subtitle="Last 12 sessions"
-                >
-                  <BarTrendChart points={selectedWorkoutStats.setVolumeTrend} />
-                </TrendCard>
-                <TrendCard
-                  title="Monthly Frequency"
-                  subtitle="Recent months"
-                >
-                  <BarTrendChart points={selectedWorkoutStats.monthlyFrequency} />
-                </TrendCard>
-              </div>
-            </>
-          ) : (
-            <p className="panel-empty">Select a workout to see trends and stats.</p>
-          )}
-        </section>
-
-        <section className="profile-panel">
-          <div className="panel-header">
-            <div>
               <p className="panel-kicker">Consistency</p>
               <h3>Consistency</h3>
             </div>
@@ -292,8 +166,8 @@ export function Analytics({ currentUser }) {
           </div>
 
           <div className="metric-grid">
-            <MetricCard label="Current Streak" value={`${consistencyStats.currentStreak} day${consistencyStats.currentStreak === 1 ? "" : "s"}`} />
-            <MetricCard label="Longest Streak" value={`${consistencyStats.longestStreak} day${consistencyStats.longestStreak === 1 ? "" : "s"}`} />
+            <MetricCard label="Current Streak" value={`${consistencyStats.currentStreak} week${consistencyStats.currentStreak === 1 ? "" : "s"}`} />
+            <MetricCard label="Longest Streak" value={`${consistencyStats.longestStreak} week${consistencyStats.longestStreak === 1 ? "" : "s"}`} />
             <MetricCard label="Workout Days" value={consistencyStats.totalWorkoutDays} />
             <MetricCard label="Average / Week" value={consistencyStats.averageWorkoutDaysPerWeek} accent />
           </div>
@@ -303,12 +177,167 @@ export function Analytics({ currentUser }) {
               <CalendarHeatmap weeks={consistencyStats.heatmapWeeks} />
             </TrendCard>
             <TrendCard title="Weekly Frequency" subtitle="Last 12 weeks">
-              <BarTrendChart points={consistencyStats.weeklyFrequency} />
+              <BarTrendChart points={consistencyStats.weeklyFrequency} scrollable defaultToEnd />
             </TrendCard>
           </div>
         </section>
 
-        <a className="github-link" href="https://github.com/SethHales/MyStartup">GitHub</a>
+        <section
+          className="profile-panel workout-focus-panel"
+          style={{ "--selected-workout-color": selectedWorkoutColor }}
+        >
+          <div className="panel-header">
+            <div>
+              <p className="panel-kicker">Workout Explorer</p>
+              <h3>One Workout At A Time</h3>
+            </div>
+          </div>
+
+          <div className="workout-focus-layout">
+            <div className="workout-focus-card workout-focus-list-card">
+              <div className="workout-focus-toolbar">
+                <div className="trend-card-header">
+                  <h4>Workouts</h4>
+                  <p>{workoutExplorerItems.length} tracked</p>
+                </div>
+                <label className="workout-page-size">
+                  Per page
+                  <Dropdown
+                    value={workoutPageSize}
+                    onChange={setWorkoutPageSize}
+                    options={[
+                      { value: "5", label: "5" },
+                      { value: "10", label: "10" },
+                      { value: "20", label: "20" },
+                    ]}
+                    ariaLabel="Workouts per page"
+                  />
+                </label>
+              </div>
+
+              {visibleWorkoutItems.length > 0 ? (
+                <div className="breakdown-workout-list">
+                  {visibleWorkoutItems.map((workout) => (
+                    <button
+                      key={workout.name}
+                      type="button"
+                      className={workout.name === selectedWorkoutName ? "breakdown-workout-row active" : "breakdown-workout-row"}
+                      onClick={() => setSelectedWorkoutName(workout.name)}
+                    >
+                      <span className="breakdown-workout-rank">{workout.rank}</span>
+                      <span className="breakdown-workout-copy">
+                        <strong>
+                          <span
+                            className="breakdown-workout-dot"
+                            style={{ backgroundColor: workout.color || getWorkoutColor(workout.name) }}
+                            aria-hidden="true"
+                          />
+                          {workout.name}
+                        </strong>
+                        <span>{workout.count} sessions</span>
+                      </span>
+                      <span className="breakdown-workout-share">{workout.share}%</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty">No workouts logged yet.</p>
+              )}
+
+              <div className="workout-pagination">
+                <button
+                  type="button"
+                  className="workout-pagination-button"
+                  onClick={() => setWorkoutPage((currentPage) => Math.max(1, currentPage - 1))}
+                  disabled={activeWorkoutPage <= 1}
+                >
+                  Previous
+                </button>
+                <span className="workout-pagination-status">
+                  Page {activeWorkoutPage} of {totalWorkoutPages}
+                </span>
+                <button
+                  type="button"
+                  className="workout-pagination-button"
+                  onClick={() => setWorkoutPage((currentPage) => Math.min(totalWorkoutPages, currentPage + 1))}
+                  disabled={activeWorkoutPage >= totalWorkoutPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+
+            <div className="workout-focus-details">
+              <div className="workout-focus-card workout-focus-detail-card">
+                <div className="panel-header workout-focus-detail-header">
+                  <div>
+                    <p className="panel-kicker">Selected Workout</p>
+                    <h3>{selectedWorkoutName || "Choose a workout"}</h3>
+                  </div>
+                  <label className="workout-select">
+                    Workout
+                    <Dropdown
+                      value={selectedWorkoutName}
+                      onChange={setSelectedWorkoutName}
+                      searchable
+                      searchPlaceholder="Search workouts"
+                      options={workoutNames.map((name) => ({
+                        value: name,
+                        label: name,
+                        color: getWorkoutColorByName(analyticsWorkouts, name),
+                      }))}
+                      ariaLabel="Profile workout selector"
+                    />
+                  </label>
+                </div>
+
+                {selectedWorkoutStats ? (
+                  <>
+                    <div className="metric-grid">
+                      <MetricCard label="Last Performed" value={selectedWorkoutStats.lastPerformed} />
+                      {selectedWorkoutStats.bestMetricLabel && selectedWorkoutStats.bestMetricValue ? (
+                        <MetricCard label={selectedWorkoutStats.bestMetricLabel} value={selectedWorkoutStats.bestMetricValue} accent />
+                      ) : null}
+                      {selectedWorkoutStats.secondaryBestMetricLabel && selectedWorkoutStats.secondaryBestMetricValue ? (
+                        <MetricCard label={selectedWorkoutStats.secondaryBestMetricLabel} value={selectedWorkoutStats.secondaryBestMetricValue} accent />
+                      ) : null}
+                      <MetricCard label="Highest Reps" value={selectedWorkoutStats.mostRepsInSet} accent />
+                    </div>
+
+                    <WorkoutAveragesTable
+                      workoutName={selectedWorkoutName}
+                      metrics={selectedWorkoutStats.averageMetrics}
+                    />
+
+                    <div className="trend-grid">
+                      <TrendCard
+                        title={selectedWorkoutStats.performanceTrend.title}
+                        subtitle={selectedWorkoutStats.performanceTrend.shortSubtitle || selectedWorkoutStats.performanceTrend.subtitle}
+                      >
+                        <LineTrendChart points={selectedWorkoutStats.performanceTrend.points} />
+                      </TrendCard>
+                      <TrendCard
+                        title="Set Volume Trend"
+                        subtitle="Last 12 sessions"
+                      >
+                        <BarTrendChart points={selectedWorkoutStats.setVolumeTrend} />
+                      </TrendCard>
+                      <TrendCard
+                        title="Monthly Frequency"
+                        subtitle="Recent months"
+                      >
+                        <BarTrendChart points={selectedWorkoutStats.monthlyFrequency} />
+                      </TrendCard>
+                    </div>
+                  </>
+                ) : (
+                  <p className="panel-empty">Select a workout to see trends and stats.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
           </>
         )}
       </div>
@@ -655,6 +684,29 @@ function TrendCard({ title, subtitle, children }) {
   );
 }
 
+function WorkoutAveragesTable({ workoutName, metrics }) {
+  if (!metrics || metrics.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="workout-averages-card">
+      <div className="trend-card-header">
+        <h4>Averages</h4>
+        <p>Session and set-level benchmarks for {workoutName}.</p>
+      </div>
+      <div className="workout-averages-table" role="table" aria-label="Workout averages">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="workout-averages-row" role="row">
+            <span className="workout-averages-label" role="cell">{metric.label}</span>
+            <strong className="workout-averages-value" role="cell">{metric.value}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DonutBreakdownChart({ segments, total, activeCategoryKey, onSelectCategory }) {
   if (!total) {
     return (
@@ -714,6 +766,34 @@ function DonutBreakdownChart({ segments, total, activeCategoryKey, onSelectCateg
   );
 }
 
+function buildWorkoutExplorerItems(workouts) {
+  const totalWorkouts = workouts.length;
+  const workoutSummaryMap = new Map();
+
+  workouts.forEach((workout) => {
+    const name = workout.templateName || workout.exercise;
+    if (!name) {
+      return;
+    }
+
+    const existing = workoutSummaryMap.get(name) || {
+      name,
+      count: 0,
+      color: getWorkoutColor(workout),
+    };
+    existing.count += 1;
+    workoutSummaryMap.set(name, existing);
+  });
+
+  return Array.from(workoutSummaryMap.values())
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+    .map((workout, index) => ({
+      ...workout,
+      rank: index + 1,
+      share: totalWorkouts ? Math.round((workout.count / totalWorkouts) * 100) : 0,
+    }));
+}
+
 function LineTrendChart({ points }) {
   if (!points || points.length === 0) {
     return <p className="chart-empty">Not enough data yet.</p>;
@@ -746,15 +826,24 @@ function LineTrendChart({ points }) {
   );
 }
 
-function BarTrendChart({ points }) {
+function BarTrendChart({ points, scrollable = false, defaultToEnd = false }) {
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!scrollable || !defaultToEnd || !scrollRef.current) {
+      return;
+    }
+
+    scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [defaultToEnd, points, scrollable]);
+
   if (!points || points.length === 0) {
     return <p className="chart-empty">Not enough data yet.</p>;
   }
 
   const maxValue = Math.max(...points.map((point) => point.value), 1);
-
-  return (
-    <div className="bar-chart">
+  const chart = (
+    <div className={scrollable ? "bar-chart is-scrollable" : "bar-chart"}>
       {points.map((point) => (
         <div key={point.label} className="bar-chart-column">
           <span className="bar-chart-value">{point.value}</span>
@@ -769,9 +858,31 @@ function BarTrendChart({ points }) {
       ))}
     </div>
   );
+
+  if (scrollable) {
+    return (
+      <div className="bar-chart-scroll" ref={scrollRef}>
+        {chart}
+      </div>
+    );
+  }
+
+  return (
+    chart
+  );
 }
 
 function CalendarHeatmap({ weeks }) {
+  const scrollRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!scrollRef.current) {
+      return;
+    }
+
+    scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [weeks]);
+
   return (
     <div className="heatmap">
       <div className="heatmap-days">
@@ -779,18 +890,20 @@ function CalendarHeatmap({ weeks }) {
           <span key={`${label}-${index}`}>{label}</span>
         ))}
       </div>
-      <div className="heatmap-weeks">
-        {weeks.map((week) => (
-          <div key={week.key} className="heatmap-week">
-            {week.days.map((day) => (
-              <div
-                key={day.date}
-                className={`heatmap-cell intensity-${day.intensity}`}
-                title={`${day.date}: ${day.count} workout${day.count === 1 ? "" : "s"}`}
-              />
-            ))}
-          </div>
-        ))}
+      <div className="heatmap-scroll" ref={scrollRef}>
+        <div className="heatmap-weeks">
+          {weeks.map((week) => (
+            <div key={week.key} className="heatmap-week">
+              {week.days.map((day) => (
+                <div
+                  key={day.date}
+                  className={`heatmap-cell intensity-${day.intensity}`}
+                  title={`${day.date}: ${day.count} workout${day.count === 1 ? "" : "s"}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1048,8 +1161,13 @@ function getWorkoutColorByName(workouts, workoutName) {
 
 function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
   const today = stripTime(new Date());
-  const heatmapStart = addDays(today, -181);
-  const heatmapStartMonday = getWeekStart(heatmapStart);
+  const minimumHeatmapStart = addDays(getWeekStart(today), -49);
+  const firstWorkoutDate = workouts.length > 0
+    ? parseLocalDate(workouts[0].date)
+    : null;
+  const heatmapStartMonday = firstWorkoutDate
+    ? earlierDate(getWeekStart(firstWorkoutDate), minimumHeatmapStart)
+    : minimumHeatmapStart;
   const heatmapWeeks = [];
   let currentWeekStart = new Date(heatmapStartMonday);
 
@@ -1086,6 +1204,10 @@ function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
   };
 }
 
+function earlierDate(left, right) {
+  return left <= right ? left : right;
+}
+
 function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
   if (!selectedWorkoutName) {
     return null;
@@ -1108,6 +1230,9 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
   ).toFixed(1);
   const lastPerformed = formatReadableDate(selectedWorkouts[selectedWorkouts.length - 1].date);
   const bestMetric = getBestMetric(selectedWorkouts, fields, measurements);
+  const secondaryBestMetric = getSecondaryBestMetric(selectedWorkouts, fields, measurements);
+  const mostRepsInSet = getMostRepsInSet(selectedWorkouts);
+  const averageMetrics = buildWorkoutAverageMetrics(selectedWorkouts, fields, measurements, averageSetsPerSession);
 
   return {
     sessionsLogged,
@@ -1115,6 +1240,10 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
     lastPerformed,
     bestMetricLabel: bestMetric.label,
     bestMetricValue: bestMetric.value,
+    secondaryBestMetricLabel: secondaryBestMetric.label,
+    secondaryBestMetricValue: secondaryBestMetric.value,
+    mostRepsInSet,
+    averageMetrics,
     performanceTrend: buildPerformanceTrend(selectedWorkouts, fields, measurements),
     setVolumeTrend: selectedWorkouts.slice(-12).map((workout, index) => ({
       label: `S${index + 1}`,
@@ -1156,21 +1285,26 @@ function classifyWorkout(workout) {
 
 function getBestMetric(workouts, fields, measurements) {
   if (fields.weight) {
-    const bestWeight = Math.max(...workouts.flatMap((workout) => (workout.sets || []).map((set) => Number(set.weight) || 0)));
-    return { label: "Best Weight", value: `${bestWeight || 0} ${formatMeasurementUnit(measurements.weight, "LBs")}` };
-  }
+    const bestSet = workouts.flatMap((workout) => workout.sets || []).reduce((best, set) => {
+      const weight = Number(set.weight) || 0;
+      const reps = Number(set.reps) || 0;
 
-  if (fields.distance && fields.duration) {
-    const paceValues = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
-      const durationSeconds = parseDurationToSeconds(set.duration);
-      const distance = Number(set.distance);
-      if (!durationSeconds || !distance) {
-        return null;
+      if (!best || weight > best.weight || (weight === best.weight && reps > best.reps)) {
+        return { weight, reps };
       }
-      return durationSeconds / distance;
-    }).filter(Boolean));
-    const bestPace = paceValues.length > 0 ? Math.min(...paceValues) : 0;
-    return { label: "Best Pace", value: formatPace(bestPace, measurements.distance) };
+
+      return best;
+    }, null);
+
+    if (!bestSet || bestSet.weight <= 0) {
+      return { label: "Best Weight", value: `0 ${formatMeasurementUnit(measurements.weight, "LBs")}` };
+    }
+
+    const repsSuffix = bestSet.reps > 0 ? ` (${bestSet.reps} rep${bestSet.reps === 1 ? "" : "s"})` : "";
+    return {
+      label: "Best Weight",
+      value: `${bestSet.weight} ${formatMeasurementUnit(measurements.weight, "LBs")}${repsSuffix}`,
+    };
   }
 
   if (fields.distance) {
@@ -1183,7 +1317,109 @@ function getBestMetric(workouts, fields, measurements) {
     return { label: "Best Duration", value: bestDuration === Number.MAX_SAFE_INTEGER ? "N/A" : formatSeconds(bestDuration) };
   }
 
-  return { label: "Sessions", value: String(workouts.length) };
+  return { label: "", value: "" };
+}
+
+function getSecondaryBestMetric(workouts, fields, measurements) {
+  if (fields.distance && fields.duration) {
+    const paceValues = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+      const durationSeconds = parseDurationToSeconds(set.duration);
+      const distance = Number(set.distance);
+      if (!durationSeconds || !distance) {
+        return null;
+      }
+
+      return durationSeconds / distance;
+    }).filter(Boolean));
+
+    const bestPace = paceValues.length > 0 ? Math.min(...paceValues) : 0;
+    return { label: "Best Pace", value: formatPace(bestPace, measurements.distance) };
+  }
+
+  return { label: "", value: "" };
+}
+
+function getMostRepsInSet(workouts) {
+  const repValues = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+    const reps = Number(set.reps);
+    return Number.isFinite(reps) ? reps : null;
+  }).filter((value) => value !== null));
+
+  if (repValues.length === 0) {
+    return "N/A";
+  }
+
+  return String(Math.max(...repValues));
+}
+
+function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsPerSession) {
+  const metrics = [
+    { label: "Average Sets / Session", value: averageSetsPerSession },
+  ];
+
+  if (fields.reps) {
+    const averageReps = getAverageFromSets(workouts, (set) => Number(set.reps));
+    metrics.push({ label: "Average Reps / Set", value: averageReps === null ? "N/A" : formatAverageNumber(averageReps) });
+  }
+
+  if (fields.weight) {
+    const averageWeight = getAverageFromSets(workouts, (set) => Number(set.weight));
+    metrics.push({
+      label: "Average Weight / Set",
+      value: averageWeight === null
+        ? "N/A"
+        : `${formatAverageNumber(averageWeight)} ${formatMeasurementUnit(measurements.weight, "lbs")}`,
+    });
+  }
+
+  if (fields.duration) {
+    const averageDurationSeconds = getAverageFromSets(workouts, (set) => parseDurationToSeconds(set.duration));
+    metrics.push({
+      label: "Average Time / Set",
+      value: averageDurationSeconds === null ? "N/A" : formatSeconds(Math.round(averageDurationSeconds)),
+    });
+  }
+
+  if (fields.distance && fields.duration) {
+    const paceSamples = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+      const durationSeconds = parseDurationToSeconds(set.duration);
+      const distance = Number(set.distance);
+      if (!durationSeconds || !distance) {
+        return null;
+      }
+
+      return durationSeconds / distance;
+    }).filter((value) => value !== null));
+
+    const averagePace = paceSamples.length > 0
+      ? paceSamples.reduce((sum, value) => sum + value, 0) / paceSamples.length
+      : null;
+
+    metrics.push({
+      label: "Average Pace",
+      value: averagePace === null ? "N/A" : formatPace(averagePace, measurements.distance),
+    });
+  }
+
+  return metrics;
+}
+
+function getAverageFromSets(workouts, valueSelector) {
+  const values = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+    const value = valueSelector(set);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }).filter((value) => value !== null));
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatAverageNumber(value) {
+  const roundedValue = Math.round(value * 10) / 10;
+  return Number.isInteger(roundedValue) ? String(roundedValue) : roundedValue.toFixed(1);
 }
 
 function buildPerformanceTrend(workouts, fields, measurements) {
@@ -1325,16 +1561,18 @@ function getWorkoutDayCountMap(workouts) {
 }
 
 function getCurrentStreak(uniqueWorkoutDays) {
-  if (uniqueWorkoutDays.length === 0) {
+  const activeWeeks = getActiveWorkoutWeeks(uniqueWorkoutDays);
+
+  if (activeWeeks.length === 0) {
     return 0;
   }
 
   let streak = 1;
 
-  for (let index = uniqueWorkoutDays.length - 1; index > 0; index -= 1) {
-    const current = parseLocalDate(uniqueWorkoutDays[index]);
-    const previous = parseLocalDate(uniqueWorkoutDays[index - 1]);
-    const difference = Math.round((current - previous) / (1000 * 60 * 60 * 24));
+  for (let index = activeWeeks.length - 1; index > 0; index -= 1) {
+    const current = activeWeeks[index];
+    const previous = activeWeeks[index - 1];
+    const difference = Math.round((current - previous) / (1000 * 60 * 60 * 24 * 7));
 
     if (difference === 1) {
       streak += 1;
@@ -1347,17 +1585,19 @@ function getCurrentStreak(uniqueWorkoutDays) {
 }
 
 function getLongestStreak(uniqueWorkoutDays) {
-  if (uniqueWorkoutDays.length === 0) {
+  const activeWeeks = getActiveWorkoutWeeks(uniqueWorkoutDays);
+
+  if (activeWeeks.length === 0) {
     return 0;
   }
 
   let best = 1;
   let current = 1;
 
-  for (let index = 1; index < uniqueWorkoutDays.length; index += 1) {
-    const previous = parseLocalDate(uniqueWorkoutDays[index - 1]);
-    const next = parseLocalDate(uniqueWorkoutDays[index]);
-    const difference = Math.round((next - previous) / (1000 * 60 * 60 * 24));
+  for (let index = 1; index < activeWeeks.length; index += 1) {
+    const previous = activeWeeks[index - 1];
+    const next = activeWeeks[index];
+    const difference = Math.round((next - previous) / (1000 * 60 * 60 * 24 * 7));
 
     if (difference === 1) {
       current += 1;
@@ -1368,6 +1608,16 @@ function getLongestStreak(uniqueWorkoutDays) {
   }
 
   return best;
+}
+
+function getActiveWorkoutWeeks(uniqueWorkoutDays) {
+  return Array.from(
+    new Set(
+      uniqueWorkoutDays.map((dateValue) => formatDateValue(getWeekStart(parseLocalDate(dateValue))))
+    )
+  )
+    .sort()
+    .map((dateValue) => parseLocalDate(dateValue));
 }
 
 function getWeekSpan(uniqueWorkoutDays) {
