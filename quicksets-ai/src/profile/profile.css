@@ -140,6 +140,24 @@
     gap: 0.35rem;
 }
 
+button.metric-card {
+    width: 100%;
+    text-align: left;
+}
+
+.metric-card.is-clickable {
+    cursor: pointer;
+    transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.metric-card.is-clickable:hover,
+.metric-card.is-clickable:focus-visible {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--selected-workout-color, var(--accent)) 34%, transparent);
+    box-shadow: var(--shadow-inline-strong);
+    outline: none;
+}
+
 .profile-meta-card span,
 .metric-card span {
     font-size: 0.82rem;
@@ -389,6 +407,18 @@
 
 .workout-focus-detail-header {
     margin-bottom: 0.85rem;
+}
+
+.workout-focus-history-row {
+    margin-top: 0.95rem;
+}
+
+.workout-focus-history-card {
+    gap: 0.85rem;
+}
+
+.workout-focus-history-header {
+    margin-bottom: 0.15rem;
 }
 
 .workout-page-size {

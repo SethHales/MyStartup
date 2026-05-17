@@ -9,6 +9,7 @@ export const workoutColorPalette = [
   "#8b5e3c",
   "#94a3b8",
 ];
+
 const legacyWorkoutColorMap = {
   "#4da3ff": "#3b82f6",
   "#27d7c3": "#3b82f6",
@@ -21,6 +22,61 @@ const legacyWorkoutColorMap = {
   "#f59e0b": "#f97316",
   "#22c55e": "#22c55e",
 };
+
+export function resolveWorkoutColorPreferences(rawPreferences, legacyLabels = {}) {
+  const safePreferences = rawPreferences && typeof rawPreferences === "object" && !Array.isArray(rawPreferences)
+    ? rawPreferences
+    : {};
+  const safeLegacyLabels = legacyLabels && typeof legacyLabels === "object" && !Array.isArray(legacyLabels)
+    ? legacyLabels
+    : {};
+
+  return workoutColorPalette.reduce((preferences, slotColor) => {
+    const rawEntry = safePreferences[slotColor];
+    const label = typeof rawEntry?.label === "string" && rawEntry.label.trim()
+      ? rawEntry.label.trim()
+      : typeof safeLegacyLabels[slotColor] === "string" && safeLegacyLabels[slotColor].trim()
+        ? safeLegacyLabels[slotColor].trim()
+        : "";
+    const preferredColor = normalizeColorHex(rawEntry?.color);
+
+    return {
+      ...preferences,
+      [slotColor]: {
+        label,
+        color: preferredColor || slotColor,
+      },
+    };
+  }, {});
+}
+
+export function getWorkoutColorPreferenceLabel(slotColor, preferences) {
+  return preferences?.[slotColor]?.label || "";
+}
+
+export function getWorkoutColorPreferenceValue(slotColor, preferences) {
+  return preferences?.[slotColor]?.color || slotColor;
+}
+
+export function findWorkoutColorSlot(color, preferences) {
+  const normalizedColor = normalizeStoredWorkoutColor(color);
+  if (!normalizedColor) {
+    return workoutColorPalette[0];
+  }
+
+  const matchedSlot = workoutColorPalette.find(
+    (slotColor) => getWorkoutColorPreferenceValue(slotColor, preferences) === normalizedColor
+  );
+  if (matchedSlot) {
+    return matchedSlot;
+  }
+
+  if (workoutColorPalette.includes(normalizedColor)) {
+    return normalizedColor;
+  }
+
+  return findNearestWorkoutPaletteColor(normalizedColor) || workoutColorPalette[0];
+}
 
 export function getWorkoutColor(workoutOrName, explicitColor = "") {
   const color = typeof workoutOrName === "object"
@@ -43,8 +99,16 @@ function isHexColor(value) {
   return typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
 }
 
+function normalizeColorHex(value) {
+  return isHexColor(value) ? `${value}`.toLowerCase() : "";
+}
+
 function normalizeStoredWorkoutColor(color) {
-  const normalizedColor = `${color}`.toLowerCase();
+  const normalizedColor = normalizeColorHex(color);
+  if (!normalizedColor) {
+    return "";
+  }
+
   if (workoutColorPalette.includes(normalizedColor)) {
     return normalizedColor;
   }
@@ -53,7 +117,7 @@ function normalizeStoredWorkoutColor(color) {
     return legacyWorkoutColorMap[normalizedColor];
   }
 
-  return findNearestWorkoutPaletteColor(normalizedColor) || workoutColorPalette[0];
+  return normalizedColor;
 }
 
 function findNearestWorkoutPaletteColor(color) {

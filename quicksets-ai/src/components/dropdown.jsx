@@ -304,8 +304,15 @@ export function Dropdown({
                     aria-hidden="true"
                   />
                 )}
-                <span>{option.label}</span>
-                {option.badge && <span className="qs-dropdown-badge">{option.badge}</span>}
+                <span className="qs-dropdown-option-label">{option.label}</span>
+                {option.badge && (
+                  <span
+                    className="qs-dropdown-badge"
+                    style={option.badgeColor ? { "--qs-badge-color": option.badgeColor } : undefined}
+                  >
+                    {option.badge}
+                  </span>
+                )}
               </button>
             ))
           ) : (

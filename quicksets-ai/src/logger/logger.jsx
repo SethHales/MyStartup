@@ -6,7 +6,14 @@ import { DatePicker } from "../components/datePicker";
 import { WheelPicker } from "../components/wheelPicker";
 import { TimeCaptureModal } from "../components/timeCaptureModal";
 import { playTimerPing, primeTimerAudio, vibrate } from "../utils/timerFeedback";
-import { getWorkoutColor, workoutColorPalette } from "../utils/workoutColors";
+import {
+  findWorkoutColorSlot,
+  getWorkoutColor,
+  getWorkoutColorPreferenceLabel,
+  getWorkoutColorPreferenceValue,
+  resolveWorkoutColorPreferences,
+  workoutColorPalette,
+} from "../utils/workoutColors";
 
 const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
 const MIXED_WORKOUT_TEMPLATE_ID = "__mixed_workout__";
@@ -185,8 +192,8 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
   const [newTemplateMeasurements, setNewTemplateMeasurements] = React.useState(defaultTemplateMeasurements);
   const [showColorPickerModal, setShowColorPickerModal] = React.useState(false);
-  const [editingColorLabel, setEditingColorLabel] = React.useState("");
-  const [colorLabelDraft, setColorLabelDraft] = React.useState("");
+  const [editingColorSlot, setEditingColorSlot] = React.useState("");
+  const [colorPreferenceDraft, setColorPreferenceDraft] = React.useState({ label: "", color: "" });
   const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
   const [restTimerSeconds, setRestTimerSeconds] = React.useState(null);
   const [isRestTimerActive, setIsRestTimerActive] = React.useState(false);
@@ -197,10 +204,22 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   const templateActionsRef = React.useRef(null);
   const setMenuRef = React.useRef(null);
   const templateNameInputRef = React.useRef(null);
-  const workoutColorLabels = React.useMemo(
-    () => normalizeWorkoutColorLabels(currentUser?.workoutColorLabels),
-    [currentUser?.workoutColorLabels]
+  const workoutColorPreferences = React.useMemo(
+    () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
+    [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
   );
+  const buildWorkoutOption = React.useCallback((template) => {
+    const color = getWorkoutColor(template);
+    const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+    const badge = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+
+    return {
+      value: template.id,
+      label: template.name,
+      color,
+      ...(badge ? { badge, badgeColor: color } : {}),
+    };
+  }, [workoutColorPreferences]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -463,7 +482,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setShowTemplateActions(false);
     setIsEditingTemplate(true);
     setNewTemplateName(selectedTemplate.name);
-    setNewTemplateColor(selectedTemplate.color || workoutColorPalette[0]);
+    setNewTemplateColor(findWorkoutColorSlot(selectedTemplate.color || workoutColorPalette[0], workoutColorPreferences));
     setNewTemplateUsesRestTimer(Boolean(selectedTemplate.usesRestTimer));
     setNewTemplateRestDuration(normalizeRestDuration(selectedTemplate.restDuration));
     setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
@@ -476,14 +495,14 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
   const closeColorPickerModal = () => {
     setShowColorPickerModal(false);
-    setEditingColorLabel("");
-    setColorLabelDraft("");
+    setEditingColorSlot("");
+    setColorPreferenceDraft({ label: "", color: "" });
   };
 
   const openColorPickerModal = () => {
     setShowColorPickerModal(true);
-    setEditingColorLabel("");
-    setColorLabelDraft("");
+    setEditingColorSlot("");
+    setColorPreferenceDraft({ label: "", color: "" });
   };
 
   const handleDeleteTemplate = async () => {
@@ -704,7 +723,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: newTemplateName,
-          color: newTemplateColor,
+          color: getWorkoutColorPreferenceValue(newTemplateColor, workoutColorPreferences),
           usesRestTimer: newTemplateUsesRestTimer,
           restDuration: normalizeRestDuration(newTemplateRestDuration),
           fields: newTemplateFields,
@@ -815,53 +834,104 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
   };
 
-  const startEditingColorLabel = (color) => {
-    setEditingColorLabel(color);
-    setColorLabelDraft(workoutColorLabels[color] || "");
+  const startEditingColorPreference = (slotColor) => {
+    setEditingColorSlot(slotColor);
+    setColorPreferenceDraft({
+      label: getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences),
+      color: getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences),
+    });
   };
 
-  const handleSaveColorLabel = async (color) => {
+  const handleSaveColorPreference = async (slotColor) => {
     if (!setCurrentUser) {
       return;
     }
 
-    const nextLabels = {
-      ...workoutColorLabels,
-      ...(colorLabelDraft.trim()
-        ? { [color]: colorLabelDraft.trim() }
-        : {}),
-    };
+    const trimmedLabel = colorPreferenceDraft.label.trim();
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(colorPreferenceDraft.color)
+      ? colorPreferenceDraft.color.toLowerCase()
+      : getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences);
+    const nextPreferences = workoutColorPalette.reduce((preferences, paletteSlot) => ({
+      ...preferences,
+      [paletteSlot]: {
+        ...workoutColorPreferences[paletteSlot],
+        ...(paletteSlot === slotColor
+          ? {
+            label: trimmedLabel,
+            color: normalizedColor,
+          }
+          : {}),
+      },
+    }), {});
+    const colorValues = workoutColorPalette.map((paletteSlot) => nextPreferences[paletteSlot].color);
 
-    if (!colorLabelDraft.trim()) {
-      delete nextLabels[color];
+    if (new Set(colorValues).size !== colorValues.length) {
+      alert('Each workout color needs to stay unique.');
+      return;
     }
 
     try {
-      const response = await fetch('/api/user/color-labels', {
+      const response = await fetch('/api/user/color-preferences', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ workoutColorLabels: nextLabels }),
+        body: JSON.stringify({ workoutColorPreferences: nextPreferences }),
       });
 
       const body = await response.json();
       if (!response.ok) {
-        alert(body.msg || 'Failed to save color label');
+        alert(body.msg || 'Failed to save workout colors');
         return;
+      }
+
+      const colorUpdates = workoutColorPalette
+        .map((paletteSlot) => ({
+          previousColor: getWorkoutColorPreferenceValue(paletteSlot, workoutColorPreferences),
+          nextColor: getWorkoutColorPreferenceValue(
+            paletteSlot,
+            resolveWorkoutColorPreferences(body?.workoutColorPreferences, body?.workoutColorLabels)
+          ),
+        }))
+        .filter(({ previousColor, nextColor }) => previousColor !== nextColor);
+
+      const remapColor = (colorValue) => {
+        const matchedUpdate = colorUpdates.find(({ previousColor }) => previousColor === colorValue);
+        return matchedUpdate ? matchedUpdate.nextColor : colorValue;
+      };
+
+      if (colorUpdates.length > 0) {
+        setTemplates((currentTemplates) =>
+          currentTemplates.map((template) => ({
+            ...template,
+            color: remapColor(template.color),
+          }))
+        );
+        setSavedWorkouts((currentWorkouts) =>
+          currentWorkouts.map((workout) => ({
+            ...workout,
+            color: workout.isMixed ? workout.color : remapColor(workout.color),
+            sets: Array.isArray(workout.sets)
+              ? workout.sets.map((set) => ({
+                ...set,
+                color: set?.color ? remapColor(set.color) : set.color,
+              }))
+              : workout.sets,
+          }))
+        );
       }
 
       setCurrentUser((current) => ({
         ...(current || {}),
         ...body,
       }));
-      setEditingColorLabel("");
-      setColorLabelDraft("");
+      setEditingColorSlot("");
+      setColorPreferenceDraft({ label: "", color: "" });
     } catch (err) {
-      console.error('Failed to save color label:', err);
+      console.error('Failed to save workout colors:', err);
     }
   };
 
-  const selectedTemplateColorLabel = getWorkoutColorLabel(newTemplateColor, workoutColorLabels);
+  const selectedTemplateColorLabel = getWorkoutColorPreferenceLabel(newTemplateColor, workoutColorPreferences) || UNLABELED_COLOR_COPY;
 
   const openSetMenuEntry = React.useMemo(() => {
     if (!openSetMenu) {
@@ -1035,8 +1105,8 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 options={[
                   { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
                   { value: "", label: "Select a workout", disabled: true },
-                  { value: MIXED_WORKOUT_TEMPLATE_ID, label: MIXED_WORKOUT_NAME, badge: "New", color: "#f4b95e" },
-                  ...templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) })),
+                  { value: MIXED_WORKOUT_TEMPLATE_ID, label: MIXED_WORKOUT_NAME, badge: "New", badgeColor: "#f4b95e", color: "#f4b95e" },
+                  ...templates.map(buildWorkoutOption),
                 ]}
                 ariaLabel="Workout"
               />
@@ -1226,10 +1296,13 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                   onClick={openColorPickerModal}
                 >
                   <span className="template-color-picker-preview">
-                    <span className="template-color-swatch" style={{ "--template-color": newTemplateColor }} aria-hidden="true" />
+                    <span
+                      className="template-color-swatch"
+                      style={{ "--template-color": getWorkoutColorPreferenceValue(newTemplateColor, workoutColorPreferences) }}
+                      aria-hidden="true"
+                    />
                     <span className="template-color-picker-copy">
                       <strong>{selectedTemplateColorLabel}</strong>
-                      <span>{formatColorHexLabel(newTemplateColor)}</span>
                     </span>
                   </span>
                   <span className="template-color-picker-action">Change</span>
@@ -1337,7 +1410,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                         searchPlaceholder="Search workouts"
                         options={[
                           { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
-                          ...templates.map((template) => ({ value: template.id, label: template.name, color: getWorkoutColor(template) })),
+                          ...templates.map(buildWorkoutOption),
                         ]}
                         ariaLabel="Set workout"
                       />
@@ -1413,54 +1486,89 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
             <div className="template-modal-form">
               <section className="template-color-panel">
                 <div className="template-color-list" role="list" aria-label="Workout colors">
-                  {workoutColorPalette.map((color) => {
-                    const isSelected = newTemplateColor === color;
-                    const isEditing = editingColorLabel === color;
-                    const label = workoutColorLabels[color] || UNLABELED_COLOR_COPY;
+                  {workoutColorPalette.map((slotColor) => {
+                    const isSelected = newTemplateColor === slotColor;
+                    const isEditing = editingColorSlot === slotColor;
+                    const rawLabel = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+                    const label = rawLabel || UNLABELED_COLOR_COPY;
+                    const isUnlabeled = !rawLabel;
+                    const displayColor = getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences);
 
                     return (
                       <div
-                        key={color}
+                        key={slotColor}
                         className={isSelected ? "template-color-row is-selected" : "template-color-row"}
-                        style={{ "--template-color": color }}
+                        style={{ "--template-color": displayColor }}
                         role="listitem"
                       >
                         <button
                           type="button"
                           className="template-color-row-main"
-                          onClick={() => setNewTemplateColor(color)}
+                          onClick={() => setNewTemplateColor(slotColor)}
                         >
-                          <span className="template-color-swatch" style={{ "--template-color": color }} aria-hidden="true" />
-                          <span className="template-color-row-copy">
+                          <span className="template-color-swatch" style={{ "--template-color": displayColor }} aria-hidden="true" />
+                          <span className={isUnlabeled ? "template-color-row-copy is-unlabeled" : "template-color-row-copy"}>
                             <strong>{label}</strong>
-                            <span>{formatColorHexLabel(color)}</span>
                           </span>
-                          {isSelected && <span className="template-color-selected-pill">Selected</span>}
                         </button>
                         <div className="template-color-row-actions">
                           <button
                             type="button"
-                            className="template-color-label-button"
-                            onClick={() => startEditingColorLabel(color)}
+                            className="template-color-icon-button"
+                            aria-label={`Edit ${label} color`}
+                            onClick={() => startEditingColorPreference(slotColor)}
                           >
-                            {workoutColorLabels[color] ? "Edit label" : "Add label"}
+                            ✎
                           </button>
                         </div>
                         {isEditing && (
                           <div className="template-color-label-editor">
+                            <label className="template-color-editor-row">
+                              <span>Color</span>
+                              <div className="template-color-editor-input">
+                                <input
+                                  type="color"
+                                  value={colorPreferenceDraft.color || displayColor}
+                                  onChange={(event) => setColorPreferenceDraft((currentDraft) => ({
+                                    ...currentDraft,
+                                    color: event.target.value.toLowerCase(),
+                                  }))}
+                                />
+                                <input
+                                  type="text"
+                                  value={colorPreferenceDraft.color || displayColor}
+                                  onChange={(event) => setColorPreferenceDraft((currentDraft) => ({
+                                    ...currentDraft,
+                                    color: event.target.value,
+                                  }))}
+                                  placeholder="#3b82f6"
+                                  maxLength={7}
+                                />
+                              </div>
+                            </label>
                             <input
                               type="text"
-                              value={colorLabelDraft}
+                              value={colorPreferenceDraft.label}
                               placeholder="Upper Body, Push, Cardio..."
-                              onChange={(event) => setColorLabelDraft(event.target.value)}
+                              onChange={(event) => setColorPreferenceDraft((currentDraft) => ({
+                                ...currentDraft,
+                                label: event.target.value,
+                              }))}
                               maxLength={32}
                             />
                             <div className="template-color-label-actions">
-                              <button type="button" className="template-close-button" onClick={() => { setEditingColorLabel(""); setColorLabelDraft(""); }}>
+                              <button
+                                type="button"
+                                className="template-close-button"
+                                onClick={() => {
+                                  setEditingColorSlot("");
+                                  setColorPreferenceDraft({ label: "", color: "" });
+                                }}
+                              >
                                 Cancel
                               </button>
-                              <button type="button" className="btn btn-primary" onClick={() => handleSaveColorLabel(color)}>
-                                Save label
+                              <button type="button" className="btn btn-primary" onClick={() => handleSaveColorPreference(slotColor)}>
+                                Save
                               </button>
                             </div>
                           </div>
@@ -1747,22 +1855,6 @@ function formatTemplatePreview(name, fields, measurements = defaultTemplateMeasu
 
 function normalizeSetType(value) {
   return ["regular", "warmup", "max"].includes(value) ? value : "regular";
-}
-
-function normalizeWorkoutColorLabels(colorLabels) {
-  if (!colorLabels || typeof colorLabels !== "object") {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(colorLabels)
-      .filter(([color, label]) => workoutColorPalette.includes(color) && `${label ?? ""}`.trim())
-      .map(([color, label]) => [color, `${label}`.trim()])
-  );
-}
-
-function getWorkoutColorLabel(color, workoutColorLabels) {
-  return workoutColorLabels[color] || UNLABELED_COLOR_COPY;
 }
 
 function formatColorHexLabel(color) {

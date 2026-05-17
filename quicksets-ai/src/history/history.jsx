@@ -3,7 +3,12 @@ import { createPortal } from 'react-dom';
 import { Dropdown } from '../components/dropdown';
 import { MultiSelectDropdown } from '../components/multiSelectDropdown';
 import "./history.css";
-import { getWorkoutColor } from "../utils/workoutColors";
+import {
+  findWorkoutColorSlot,
+  getWorkoutColor,
+  getWorkoutColorPreferenceLabel,
+  resolveWorkoutColorPreferences,
+} from "../utils/workoutColors";
 
 const setFieldColumns = [
   { key: 'reps', label: 'Reps', inputType: 'number', placeholder: '10' },
@@ -27,7 +32,7 @@ const monthNames = [
   'December',
 ];
 
-export function History() {
+export function History({ currentUser = null }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
@@ -39,7 +44,18 @@ export function History() {
   const [monthFilters, setMonthFilters] = React.useState([]);
   const [yearFilters, setYearFilters] = React.useState([]);
   const [starredOnly, setStarredOnly] = React.useState(false);
+  const [showImportModal, setShowImportModal] = React.useState(false);
+  const [importFile, setImportFile] = React.useState(null);
+  const [importPastedText, setImportPastedText] = React.useState('');
+  const [importNotes, setImportNotes] = React.useState('');
+  const [importPreview, setImportPreview] = React.useState(null);
+  const [isPreviewingImport, setIsPreviewingImport] = React.useState(false);
+  const [isImportingWorkouts, setIsImportingWorkouts] = React.useState(false);
   const filterMenuRef = React.useRef(null);
+  const workoutColorPreferences = React.useMemo(
+    () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
+    [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
+  );
 
   React.useEffect(() => {
     loadWorkouts();
@@ -341,6 +357,121 @@ export function History() {
     setStarredOnly(false);
   };
 
+  const closeImportModal = React.useCallback(() => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportPastedText('');
+    setImportNotes('');
+    setImportPreview(null);
+    setIsPreviewingImport(false);
+    setIsImportingWorkouts(false);
+  }, []);
+
+  const handleImportFileChange = React.useCallback(async (event) => {
+    const [file] = Array.from(event.target.files || []);
+
+    if (!file) {
+      setImportFile(null);
+      setImportPreview(null);
+      return;
+    }
+
+    try {
+      if (file.name.toLowerCase().endsWith('.xlsx')) {
+        const buffer = await file.arrayBuffer();
+        setImportFile({
+          name: file.name,
+          type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          content: arrayBufferToBase64(buffer),
+        });
+      } else {
+        const text = await file.text();
+        setImportFile({
+          name: file.name,
+          type: file.type || 'text/plain',
+          content: btoa(unescape(encodeURIComponent(text))),
+        });
+      }
+      setImportPreview(null);
+    } catch (err) {
+      console.error('Error reading import file:', err);
+      alert('Could not read that file.');
+    } finally {
+      event.target.value = '';
+    }
+  }, []);
+
+  const handlePreviewImport = React.useCallback(async () => {
+    if (!importFile && !importPastedText.trim()) {
+      alert('Attach a file or paste workout text first.');
+      return;
+    }
+
+    setIsPreviewingImport(true);
+
+    try {
+      const response = await fetch('/api/workouts/import/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          fileName: importFile?.name || '',
+          fileMimeType: importFile?.type || '',
+          fileContent: importFile?.content || '',
+          pastedText: importPastedText,
+          notes: importNotes,
+        }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to preview imported workouts');
+        return;
+      }
+
+      setImportPreview(body);
+    } catch (err) {
+      console.error('Error previewing imported workouts:', err);
+      alert('Failed to preview imported workouts');
+    } finally {
+      setIsPreviewingImport(false);
+    }
+  }, [importFile, importNotes, importPastedText]);
+
+  const handleConfirmImport = React.useCallback(async () => {
+    if (!importPreview) {
+      return;
+    }
+
+    setIsImportingWorkouts(true);
+
+    try {
+      const response = await fetch('/api/workouts/import/commit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(importPreview),
+      });
+
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to import workouts');
+        return;
+      }
+
+      await loadWorkouts();
+      closeImportModal();
+      alert(`Imported ${body.importedWorkouts?.length || 0} workouts${(body.importedTemplates?.length || 0) > 0 ? ` and created ${body.importedTemplates.length} templates` : ''}.`);
+    } catch (err) {
+      console.error('Error importing workouts:', err);
+      alert('Failed to import workouts');
+    } finally {
+      setIsImportingWorkouts(false);
+    }
+  }, [closeImportModal, importPreview]);
+
   return (
     <main>
       <section className="main-formatting">
@@ -350,82 +481,91 @@ export function History() {
             <h2>{filteredWorkouts.length} workout{filteredWorkouts.length === 1 ? "" : "s"}</h2>
             <p className="history-summary">{groupedWorkouts.length} month{groupedWorkouts.length === 1 ? "" : "s"}</p>
           </div>
-          <div className="history-filter-actions" ref={filterMenuRef}>
+          <div className="history-toolbar-actions">
             <button
               type="button"
-              className="history-filter-trigger"
-              aria-expanded={showFilterMenu}
-              onClick={() => setShowFilterMenu((current) => !current)}
+              className="history-import-trigger"
+              onClick={() => setShowImportModal(true)}
             >
-              {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+              Import workouts
             </button>
-            {showFilterMenu && (
-              <div className="history-filter-popover">
-                <div className="history-filter-section">
-                  <div className="history-filter-section-header">
-                    <span>Workout</span>
-                    {workoutFilters.length > 0 && (
-                      <button type="button" className="history-filter-clear" onClick={() => setWorkoutFilters([])}>
-                        Clear
-                      </button>
-                    )}
+            <div className="history-filter-actions" ref={filterMenuRef}>
+              <button
+                type="button"
+                className="history-filter-trigger"
+                aria-expanded={showFilterMenu}
+                onClick={() => setShowFilterMenu((current) => !current)}
+              >
+                {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+              </button>
+              {showFilterMenu && (
+                <div className="history-filter-popover">
+                  <div className="history-filter-section">
+                    <div className="history-filter-section-header">
+                      <span>Workout</span>
+                      {workoutFilters.length > 0 && (
+                        <button type="button" className="history-filter-clear" onClick={() => setWorkoutFilters([])}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <MultiSelectDropdown
+                      values={workoutFilters}
+                      onChange={setWorkoutFilters}
+                      options={workoutOptions.map((option) => ({ value: option, label: option }))}
+                      placeholder="All workouts"
+                      ariaLabel="Filter by workout"
+                    />
                   </div>
-                  <MultiSelectDropdown
-                    values={workoutFilters}
-                    onChange={setWorkoutFilters}
-                    options={workoutOptions.map((option) => ({ value: option, label: option }))}
-                    placeholder="All workouts"
-                    ariaLabel="Filter by workout"
-                  />
-                </div>
-                <div className="history-filter-section">
-                  <div className="history-filter-section-header">
-                    <span>Month</span>
-                    {monthFilters.length > 0 && (
-                      <button type="button" className="history-filter-clear" onClick={() => setMonthFilters([])}>
-                        Clear
-                      </button>
-                    )}
+                  <div className="history-filter-section">
+                    <div className="history-filter-section-header">
+                      <span>Month</span>
+                      {monthFilters.length > 0 && (
+                        <button type="button" className="history-filter-clear" onClick={() => setMonthFilters([])}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <MultiSelectDropdown
+                      values={monthFilters}
+                      onChange={setMonthFilters}
+                      options={monthNames.map((month, index) => ({ value: String(index), label: month }))}
+                      placeholder="All months"
+                      ariaLabel="Filter by month"
+                    />
                   </div>
-                  <MultiSelectDropdown
-                    values={monthFilters}
-                    onChange={setMonthFilters}
-                    options={monthNames.map((month, index) => ({ value: String(index), label: month }))}
-                    placeholder="All months"
-                    ariaLabel="Filter by month"
-                  />
-                </div>
-                <div className="history-filter-section">
-                  <div className="history-filter-section-header">
-                    <span>Year</span>
-                    {yearFilters.length > 0 && (
-                      <button type="button" className="history-filter-clear" onClick={() => setYearFilters([])}>
-                        Clear
-                      </button>
-                    )}
+                  <div className="history-filter-section">
+                    <div className="history-filter-section-header">
+                      <span>Year</span>
+                      {yearFilters.length > 0 && (
+                        <button type="button" className="history-filter-clear" onClick={() => setYearFilters([])}>
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <MultiSelectDropdown
+                      values={yearFilters}
+                      onChange={setYearFilters}
+                      options={yearOptions.map((option) => ({ value: option, label: option }))}
+                      placeholder="All years"
+                      ariaLabel="Filter by year"
+                    />
                   </div>
-                  <MultiSelectDropdown
-                    values={yearFilters}
-                    onChange={setYearFilters}
-                    options={yearOptions.map((option) => ({ value: option, label: option }))}
-                    placeholder="All years"
-                    ariaLabel="Filter by year"
-                  />
+                  <div className="history-filter-popover-actions">
+                    <button
+                      type="button"
+                      className={starredOnly ? "history-filter-toggle is-active" : "history-filter-toggle"}
+                      onClick={() => setStarredOnly((current) => !current)}
+                    >
+                      Starred only
+                    </button>
+                    <button type="button" className="history-filter-clear-all" onClick={clearAllFilters}>
+                      Clear all
+                    </button>
+                  </div>
                 </div>
-                <div className="history-filter-popover-actions">
-                  <button
-                    type="button"
-                    className={starredOnly ? "history-filter-toggle is-active" : "history-filter-toggle"}
-                    onClick={() => setStarredOnly((current) => !current)}
-                  >
-                    Starred only
-                  </button>
-                  <button type="button" className="history-filter-clear-all" onClick={clearAllFilters}>
-                    Clear all
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </section>
 
@@ -544,9 +684,9 @@ export function History() {
                                 onChange={(nextValue) => handleDraftSetChange(set.id, 'templateId', nextValue)}
                                 searchable
                                 searchPlaceholder="Search workouts"
-                                options={getMixedWorkoutTemplateOptions(workouts)}
-                                ariaLabel={`Set ${set.id} workout`}
-                              />
+                                 options={getMixedWorkoutTemplateOptions(workouts, workoutColorPreferences)}
+                                 ariaLabel={`Set ${set.id} workout`}
+                               />
                             </label>
                           )}
                           <label>
@@ -603,11 +743,34 @@ export function History() {
           </div>
         </div>
       )}
+
+      {showImportModal && (
+        <ImportWorkoutsModal
+          importFile={importFile}
+          importPastedText={importPastedText}
+          importNotes={importNotes}
+          importPreview={importPreview}
+          isPreviewingImport={isPreviewingImport}
+          isImportingWorkouts={isImportingWorkouts}
+          onClose={closeImportModal}
+          onFileChange={handleImportFileChange}
+          onPastedTextChange={(value) => {
+            setImportPastedText(value);
+            setImportPreview(null);
+          }}
+          onNotesChange={(value) => {
+            setImportNotes(value);
+            setImportPreview(null);
+          }}
+          onPreview={handlePreviewImport}
+          onConfirm={handleConfirmImport}
+        />
+      )}
     </main>
   );
 
-  function loadWorkouts() {
-    fetch('/api/workouts', {
+  async function loadWorkouts() {
+    return fetch('/api/workouts', {
       method: 'GET',
       credentials: 'include',
     })
@@ -630,6 +793,227 @@ export function History() {
         setIsLoading(false);
       });
   }
+}
+
+function ImportWorkoutsModal({
+  importFile,
+  importPastedText,
+  importNotes,
+  importPreview,
+  isPreviewingImport,
+  isImportingWorkouts,
+  onClose,
+  onFileChange,
+  onPastedTextChange,
+  onNotesChange,
+  onPreview,
+  onConfirm,
+}) {
+  const previewWorkoutCount = importPreview?.workouts?.length || 0;
+  const previewTemplateCount = importPreview?.templates?.length || 0;
+  const skippedCount = importPreview?.skipped?.length || 0;
+
+  return (
+    <div className="history-modal-backdrop" role="presentation">
+      <div className="history-modal history-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-workouts-title">
+        <button type="button" className="history-close-button is-icon" onClick={onClose} aria-label="Close import workouts">
+          ×
+        </button>
+        <div className="history-modal-header">
+          <div>
+            <p className="history-modal-eyebrow">Import Workouts</p>
+            <h2 id="import-workouts-title">Bring workouts into QuickSets</h2>
+          </div>
+          <div className="modal-header-actions">
+            {importPreview && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onConfirm}
+                disabled={isImportingWorkouts || previewWorkoutCount === 0}
+              >
+                {isImportingWorkouts ? 'Importing...' : 'Confirm import'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="history-modal-form history-import-layout">
+          <section className="history-modal-panel history-import-source-panel">
+            <div className="history-modal-panel-header">
+              <h3>Source</h3>
+              {importFile && <span className="history-import-file-name">{importFile.name}</span>}
+            </div>
+
+            <label className="history-import-upload">
+              <span>Attach a `.csv`, `.xlsx`, or text file</span>
+              <div className="history-import-upload-row">
+                <span className="history-import-upload-button">Choose file</span>
+                <span className={importFile ? "history-import-upload-name has-file" : "history-import-upload-name"}>
+                  {importFile?.name || 'No file selected'}
+                </span>
+              </div>
+              <input
+                type="file"
+                accept=".csv,.xlsx,.txt,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={onFileChange}
+              />
+            </label>
+
+            <label>
+              Pasted text
+              <textarea
+                rows="8"
+                value={importPastedText}
+                onChange={(event) => onPastedTextChange(event.target.value)}
+                placeholder="Paste workout notes, exported rows, or copied sheet content here."
+              />
+            </label>
+
+            <label>
+              Additional notes for ChatGPT
+              <textarea
+                rows="4"
+                value={importNotes}
+                onChange={(event) => onNotesChange(event.target.value)}
+                placeholder="Optional context, like unit assumptions or naming preferences."
+              />
+            </label>
+
+            <p className="import-hint">
+              We’ll send your file/text, notes, current templates, and last 200 workouts to the backend AI importer. Nothing saves until you confirm the preview.
+            </p>
+          </section>
+
+          <section className="history-modal-panel history-import-preview-panel">
+            <div className="history-modal-panel-header">
+              <h3>Preview</h3>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={onPreview}
+                disabled={isPreviewingImport}
+              >
+                {isPreviewingImport ? 'Analyzing...' : 'Preview import'}
+              </button>
+            </div>
+
+            {importPreview ? (
+              <div className="history-import-preview">
+                <div className="history-import-summary-grid">
+                  <div className="history-import-summary-card">
+                    <span>Workouts</span>
+                    <strong>{previewWorkoutCount}</strong>
+                  </div>
+                  <div className="history-import-summary-card">
+                    <span>Templates</span>
+                    <strong>{previewTemplateCount}</strong>
+                  </div>
+                  <div className="history-import-summary-card">
+                    <span>Skipped</span>
+                    <strong>{skippedCount}</strong>
+                  </div>
+                </div>
+
+                {importPreview.warnings?.length > 0 && (
+                  <section className="history-import-section">
+                    <h4>Warnings</h4>
+                    <ul className="history-import-list">
+                      {importPreview.warnings.map((warning, index) => (
+                        <li key={`${warning}-${index}`}>{warning}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {importPreview.templates?.length > 0 && (
+                  <section className="history-import-section">
+                    <h4>Templates to create or match</h4>
+                    <div className="history-import-template-list">
+                      {importPreview.templates.map((template) => (
+                        <article key={template.name} className="history-import-template-card">
+                          <div>
+                            <strong>{template.name}</strong>
+                            <p>{formatImportedTemplateMeta(template)}</p>
+                          </div>
+                          <span>{template.usesRestTimer ? `Rest ${template.restDuration}` : 'No rest timer'}</span>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {importPreview.workouts?.length > 0 ? (
+                  <section className="history-import-section">
+                    <h4>Workouts to import</h4>
+                    <div className="history-import-workout-list">
+                      {importPreview.workouts.map((workout, index) => (
+                        <article key={`${workout.date}-${workout.templateName}-${index}`} className="history-import-workout-card">
+                          <div className="history-import-workout-head">
+                            <div>
+                              <strong>{workout.templateName}</strong>
+                              <p>{formatImportedWorkoutDate(workout.date)}</p>
+                            </div>
+                            <span>{workout.sets.length} set{workout.sets.length === 1 ? '' : 's'}</span>
+                          </div>
+                          {workout.notes && <p className="history-import-workout-notes">{workout.notes}</p>}
+                          <div className="history-import-set-list">
+                            {workout.sets.map((set, setIndex) => (
+                              <span key={`${workout.templateName}-${workout.date}-${setIndex}`} className="history-import-set-chip">
+                                {formatImportedSet(set, setIndex)}
+                              </span>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                ) : (
+                  <section className="history-empty-state">
+                    <p>No new workouts were found to import.</p>
+                  </section>
+                )}
+
+                {importPreview.skipped?.length > 0 && (
+                  <section className="history-import-section">
+                    <h4>Skipped items</h4>
+                    <div className="history-import-skipped-list">
+                      {importPreview.skipped.map((entry, index) => (
+                        <article key={`${entry.sourceReference}-${index}`} className="history-import-skipped-card">
+                          <strong>{entry.sourceReference || 'Skipped entry'}</strong>
+                          <p>{entry.reason}</p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            ) : (
+              <section className="history-empty-state">
+                <p>Preview your import here before anything gets saved.</p>
+              </section>
+            )}
+          </section>
+        </div>
+
+        <div className="history-modal-actions">
+          <button type="button" className="history-close-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={importPreview ? onConfirm : onPreview}
+            disabled={isPreviewingImport || isImportingWorkouts}
+          >
+            {importPreview
+              ? (isImportingWorkouts ? 'Importing...' : 'Confirm import')
+              : (isPreviewingImport ? 'Analyzing...' : 'Preview import')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getVisibleFields(workout, setOverride = null) {
@@ -1098,13 +1482,21 @@ function getWorkoutMeasurements(workout, setOverride = null) {
   return workout?.measurements || {};
 }
 
-function getMixedWorkoutTemplateOptions(workouts) {
+function getMixedWorkoutTemplateOptions(workouts, workoutColorPreferences = {}) {
   const templateMap = new Map();
 
   workouts.forEach((workout) => {
     (workout.sets || []).forEach((set) => {
       if (set.templateId && set.templateName && !templateMap.has(set.templateId)) {
-        templateMap.set(set.templateId, { value: set.templateId, label: set.templateName, color: getWorkoutColor(set) });
+        const color = getWorkoutColor(set);
+        const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+        const badge = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+        templateMap.set(set.templateId, {
+          value: set.templateId,
+          label: set.templateName,
+          color,
+          ...(badge ? { badge, badgeColor: color } : {}),
+        });
       }
     });
   });
@@ -1178,5 +1570,71 @@ function getFieldUnitSuffix(field, measurements) {
   }
 
   return '';
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+
+  return btoa(binary);
+}
+
+function formatImportedTemplateMeta(template) {
+  const enabledFields = [
+    template.fields?.reps ? 'reps' : null,
+    template.fields?.weight ? `weight (${template.measurements?.weight === 'kgs' ? 'kg' : 'lbs'})` : null,
+    template.fields?.duration ? 'time' : null,
+    template.fields?.distance ? `distance (${formatMeasurementLabel(template.measurements?.distance, 'mi')})` : null,
+  ].filter(Boolean);
+
+  return enabledFields.join(' • ');
+}
+
+function formatImportedWorkoutDate(dateValue) {
+  const date = parseLocalDate(dateValue);
+  return date.toLocaleString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatImportedSet(set, index) {
+  const parts = [];
+  const label = getImportedSetLabel(set, index);
+
+  if (set.reps) {
+    parts.push(`${set.reps} reps`);
+  }
+
+  if (set.weight) {
+    parts.push(`${set.weight} wt`);
+  }
+
+  if (set.duration) {
+    parts.push(`${set.duration} time`);
+  }
+
+  if (set.distance) {
+    parts.push(`${set.distance} dist`);
+  }
+
+  return `${label}: ${parts.join(' • ')}`;
+}
+
+function getImportedSetLabel(set, index) {
+  if (set.setType === 'warmup') {
+    return 'Warmup';
+  }
+
+  if (set.setType === 'max') {
+    return 'Max';
+  }
+
+  return `Set ${index + 1}`;
 }
 

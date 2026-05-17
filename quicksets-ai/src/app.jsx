@@ -202,7 +202,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
                     path="/history"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <History />
+                            <History currentUser={currentUser} />
                         </ProtectedRoute>
                     }
                 />

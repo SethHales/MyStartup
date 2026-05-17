@@ -1,8 +1,14 @@
 import React from 'react';
 import "./profile.css";
 import { Dropdown } from "../components/dropdown";
+import { WorkoutHistoryPreview } from "../components/workoutHistoryPreview";
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getWorkoutColor } from "../utils/workoutColors";
+import {
+  findWorkoutColorSlot,
+  getWorkoutColor,
+  getWorkoutColorPreferenceLabel,
+  resolveWorkoutColorPreferences,
+} from "../utils/workoutColors";
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -12,6 +18,11 @@ export function Analytics({ currentUser }) {
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
   const [workoutPageSize, setWorkoutPageSize] = React.useState("5");
   const [workoutPage, setWorkoutPage] = React.useState(1);
+  const [sessionFocusRequest, setSessionFocusRequest] = React.useState(null);
+  const workoutColorPreferences = React.useMemo(
+    () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
+    [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
+  );
 
   React.useEffect(() => {
     fetch('/api/workouts', {
@@ -66,6 +77,12 @@ export function Analytics({ currentUser }) {
 
   const selectedWorkoutStats = React.useMemo(
     () => buildSelectedWorkoutStats(analyticsWorkouts, selectedWorkoutName),
+    [analyticsWorkouts, selectedWorkoutName]
+  );
+  const selectedWorkoutSessions = React.useMemo(
+    () => selectedWorkoutName
+      ? analyticsWorkouts.filter((workout) => (workout.templateName || workout.exercise) === selectedWorkoutName)
+      : [],
     [analyticsWorkouts, selectedWorkoutName]
   );
   const workoutExplorerItems = React.useMemo(
@@ -285,6 +302,7 @@ export function Analytics({ currentUser }) {
                         value: name,
                         label: name,
                         color: getWorkoutColorByName(analyticsWorkouts, name),
+                        ...buildWorkoutGroupBadge(getWorkoutColorByName(analyticsWorkouts, name), workoutColorPreferences),
                       }))}
                       ariaLabel="Profile workout selector"
                     />
@@ -294,14 +312,43 @@ export function Analytics({ currentUser }) {
                 {selectedWorkoutStats ? (
                   <>
                     <div className="metric-grid">
-                      <MetricCard label="Last Performed" value={selectedWorkoutStats.lastPerformed} />
+                      <MetricCard
+                        label="Last Performed"
+                        value={selectedWorkoutStats.lastPerformed}
+                        onClick={selectedWorkoutStats.lastPerformedWorkoutId
+                          ? () => setSessionFocusRequest({
+                            workoutId: selectedWorkoutStats.lastPerformedWorkoutId,
+                            token: Date.now(),
+                          })
+                          : undefined}
+                      />
                       {selectedWorkoutStats.bestMetricLabel && selectedWorkoutStats.bestMetricValue ? (
-                        <MetricCard label={selectedWorkoutStats.bestMetricLabel} value={selectedWorkoutStats.bestMetricValue} accent />
+                        <MetricCard
+                          label={selectedWorkoutStats.bestMetricLabel}
+                          value={selectedWorkoutStats.bestMetricValue}
+                          accent
+                          onClick={selectedWorkoutStats.bestMetricWorkoutId
+                            ? () => setSessionFocusRequest({
+                              workoutId: selectedWorkoutStats.bestMetricWorkoutId,
+                              token: Date.now(),
+                            })
+                            : undefined}
+                        />
                       ) : null}
                       {selectedWorkoutStats.secondaryBestMetricLabel && selectedWorkoutStats.secondaryBestMetricValue ? (
                         <MetricCard label={selectedWorkoutStats.secondaryBestMetricLabel} value={selectedWorkoutStats.secondaryBestMetricValue} accent />
                       ) : null}
-                      <MetricCard label="Highest Reps" value={selectedWorkoutStats.mostRepsInSet} accent />
+                      <MetricCard
+                        label="Highest Reps"
+                        value={selectedWorkoutStats.mostRepsInSet}
+                        accent
+                        onClick={selectedWorkoutStats.mostRepsWorkoutId
+                          ? () => setSessionFocusRequest({
+                            workoutId: selectedWorkoutStats.mostRepsWorkoutId,
+                            token: Date.now(),
+                          })
+                          : undefined}
+                      />
                     </div>
 
                     <WorkoutAveragesTable
@@ -334,6 +381,28 @@ export function Analytics({ currentUser }) {
                   <p className="panel-empty">Select a workout to see trends and stats.</p>
                 )}
               </div>
+            </div>
+          </div>
+          <div className="workout-focus-history-row">
+            <div className="workout-focus-card workout-focus-history-card">
+              <div className="panel-header workout-focus-history-header">
+                <div>
+                  <p className="panel-kicker">Sessions</p>
+                  <h3>{selectedWorkoutName || "Workout Sessions"}</h3>
+                </div>
+                <p className="panel-muted">
+                  {selectedWorkoutSessions.length} session{selectedWorkoutSessions.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              {selectedWorkoutName ? (
+                <WorkoutHistoryPreview
+                  workouts={selectedWorkoutSessions}
+                  emptyMessage="No sessions logged for this workout yet."
+                  focusRequest={sessionFocusRequest}
+                />
+              ) : (
+                <p className="panel-empty">Select a workout to see its sessions.</p>
+              )}
             </div>
           </div>
         </section>
@@ -663,9 +732,23 @@ export function Account({ currentUser, setCurrentUser }) {
   );
 }
 
-function MetricCard({ label, value, accent = false }) {
+function MetricCard({ label, value, accent = false, onClick = undefined }) {
+  const className = [
+    accent ? "metric-card metric-card-accent" : "metric-card",
+    onClick ? "is-clickable" : "",
+  ].filter(Boolean).join(" ");
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </button>
+    );
+  }
+
   return (
-    <div className={accent ? "metric-card metric-card-accent" : "metric-card"}>
+    <div className={className}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -1159,6 +1242,15 @@ function getWorkoutColorByName(workouts, workoutName) {
   return matchedWorkout ? getWorkoutColor(matchedWorkout) : getWorkoutColor(workoutName);
 }
 
+function buildWorkoutGroupBadge(color, workoutColorPreferences) {
+  const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+  const badge = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+
+  return badge
+    ? { badge, badgeColor: color }
+    : {};
+}
+
 function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
   const today = stripTime(new Date());
   const minimumHeatmapStart = addDays(getWeekStart(today), -49);
@@ -1228,7 +1320,8 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
   const averageSetsPerSession = (
     selectedWorkouts.reduce((sum, workout) => sum + (workout.sets?.length || 0), 0) / sessionsLogged
   ).toFixed(1);
-  const lastPerformed = formatReadableDate(selectedWorkouts[selectedWorkouts.length - 1].date);
+  const lastPerformedWorkout = selectedWorkouts[selectedWorkouts.length - 1];
+  const lastPerformed = formatReadableDate(lastPerformedWorkout.date);
   const bestMetric = getBestMetric(selectedWorkouts, fields, measurements);
   const secondaryBestMetric = getSecondaryBestMetric(selectedWorkouts, fields, measurements);
   const mostRepsInSet = getMostRepsInSet(selectedWorkouts);
@@ -1238,11 +1331,14 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
     sessionsLogged,
     averageSetsPerSession,
     lastPerformed,
+    lastPerformedWorkoutId: lastPerformedWorkout.id,
     bestMetricLabel: bestMetric.label,
     bestMetricValue: bestMetric.value,
+    bestMetricWorkoutId: bestMetric.workoutId || "",
     secondaryBestMetricLabel: secondaryBestMetric.label,
     secondaryBestMetricValue: secondaryBestMetric.value,
-    mostRepsInSet,
+    mostRepsInSet: mostRepsInSet.value,
+    mostRepsWorkoutId: mostRepsInSet.workoutId || "",
     averageMetrics,
     performanceTrend: buildPerformanceTrend(selectedWorkouts, fields, measurements),
     setVolumeTrend: selectedWorkouts.slice(-12).map((workout, index) => ({
@@ -1285,39 +1381,76 @@ function classifyWorkout(workout) {
 
 function getBestMetric(workouts, fields, measurements) {
   if (fields.weight) {
-    const bestSet = workouts.flatMap((workout) => workout.sets || []).reduce((best, set) => {
-      const weight = Number(set.weight) || 0;
-      const reps = Number(set.reps) || 0;
+    const bestSet = workouts.reduce((bestWorkoutSet, workout) => {
+      const workoutBestSet = (workout.sets || []).reduce((bestSetForWorkout, set) => {
+        const weight = Number(set.weight) || 0;
+        const reps = Number(set.reps) || 0;
 
-      if (!best || weight > best.weight || (weight === best.weight && reps > best.reps)) {
-        return { weight, reps };
+        if (!bestSetForWorkout || weight > bestSetForWorkout.weight || (weight === bestSetForWorkout.weight && reps > bestSetForWorkout.reps)) {
+          return { weight, reps, workoutId: workout.id };
+        }
+
+        return bestSetForWorkout;
+      }, null);
+
+      if (!workoutBestSet) {
+        return bestWorkoutSet;
       }
 
-      return best;
+      if (!bestWorkoutSet || workoutBestSet.weight > bestWorkoutSet.weight || (workoutBestSet.weight === bestWorkoutSet.weight && workoutBestSet.reps > bestWorkoutSet.reps)) {
+        return workoutBestSet;
+      }
+
+      return bestWorkoutSet;
     }, null);
 
     if (!bestSet || bestSet.weight <= 0) {
-      return { label: "Best Weight", value: `0 ${formatMeasurementUnit(measurements.weight, "LBs")}` };
+      return { label: "Best Weight", value: `0 ${formatMeasurementUnit(measurements.weight, "LBs")}`, workoutId: "" };
     }
 
     const repsSuffix = bestSet.reps > 0 ? ` (${bestSet.reps} rep${bestSet.reps === 1 ? "" : "s"})` : "";
     return {
       label: "Best Weight",
       value: `${bestSet.weight} ${formatMeasurementUnit(measurements.weight, "LBs")}${repsSuffix}`,
+      workoutId: bestSet.workoutId,
     };
   }
 
   if (fields.distance) {
-    const bestDistance = Math.max(...workouts.flatMap((workout) => (workout.sets || []).map((set) => Number(set.distance) || 0)));
-    return { label: "Best Distance", value: `${bestDistance.toFixed(1)} ${formatMeasurementUnit(measurements.distance, "Miles")}` };
+    const bestDistance = workouts.reduce((bestWorkoutDistance, workout) => {
+      const workoutBestDistance = Math.max(...(workout.sets || []).map((set) => Number(set.distance) || 0));
+
+      if (!bestWorkoutDistance || workoutBestDistance > bestWorkoutDistance.distance) {
+        return { distance: workoutBestDistance, workoutId: workout.id };
+      }
+
+      return bestWorkoutDistance;
+    }, null);
+    return {
+      label: "Best Distance",
+      value: `${(bestDistance?.distance || 0).toFixed(1)} ${formatMeasurementUnit(measurements.distance, "Miles")}`,
+      workoutId: bestDistance?.workoutId || "",
+    };
   }
 
   if (fields.duration) {
-    const bestDuration = Math.min(...workouts.flatMap((workout) => (workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || Number.MAX_SAFE_INTEGER)));
-    return { label: "Best Duration", value: bestDuration === Number.MAX_SAFE_INTEGER ? "N/A" : formatSeconds(bestDuration) };
+    const bestDuration = workouts.reduce((bestWorkoutDuration, workout) => {
+      const workoutBestDuration = Math.min(...(workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || Number.MAX_SAFE_INTEGER));
+
+      if (!bestWorkoutDuration || workoutBestDuration < bestWorkoutDuration.duration) {
+        return { duration: workoutBestDuration, workoutId: workout.id };
+      }
+
+      return bestWorkoutDuration;
+    }, null);
+    return {
+      label: "Best Duration",
+      value: !bestDuration || bestDuration.duration === Number.MAX_SAFE_INTEGER ? "N/A" : formatSeconds(bestDuration.duration),
+      workoutId: bestDuration?.workoutId || "",
+    };
   }
 
-  return { label: "", value: "" };
+  return { label: "", value: "", workoutId: "" };
 }
 
 function getSecondaryBestMetric(workouts, fields, measurements) {
@@ -1340,16 +1473,36 @@ function getSecondaryBestMetric(workouts, fields, measurements) {
 }
 
 function getMostRepsInSet(workouts) {
-  const repValues = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
-    const reps = Number(set.reps);
-    return Number.isFinite(reps) ? reps : null;
-  }).filter((value) => value !== null));
+  const bestRepSet = workouts.reduce((bestWorkoutReps, workout) => {
+    const workoutBestReps = (workout.sets || []).reduce((bestRepsForWorkout, set) => {
+      const reps = Number(set.reps);
+      if (!Number.isFinite(reps)) {
+        return bestRepsForWorkout;
+      }
 
-  if (repValues.length === 0) {
-    return "N/A";
+      if (!bestRepsForWorkout || reps > bestRepsForWorkout.reps) {
+        return { reps, workoutId: workout.id };
+      }
+
+      return bestRepsForWorkout;
+    }, null);
+
+    if (!workoutBestReps) {
+      return bestWorkoutReps;
+    }
+
+    if (!bestWorkoutReps || workoutBestReps.reps > bestWorkoutReps.reps) {
+      return workoutBestReps;
+    }
+
+    return bestWorkoutReps;
+  }, null);
+
+  if (!bestRepSet) {
+    return { value: "N/A", workoutId: "" };
   }
 
-  return String(Math.max(...repValues));
+  return { value: String(bestRepSet.reps), workoutId: bestRepSet.workoutId };
 }
 
 function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsPerSession) {

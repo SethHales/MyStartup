@@ -613,10 +613,11 @@
     border: 1px solid var(--border-subtle);
     border-radius: 16px;
     background: var(--bg-surface-soft);
-    padding: 0.7rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
+    padding: 0.55rem 0.65rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem 0.7rem;
+    align-items: center;
 }
 
 .template-color-row.is-selected {
@@ -636,6 +637,11 @@
     text-align: left;
 }
 
+.template-color-row-main,
+.template-color-row-actions {
+    min-width: 0;
+}
+
 .template-color-row-actions,
 .template-color-label-actions {
     display: flex;
@@ -643,27 +649,68 @@
     gap: 0.55rem;
 }
 
-.template-color-selected-pill,
-.template-color-label-button {
-    border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-subtle));
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
-    color: var(--text-main);
-    padding: 0.45rem 0.8rem;
-    font-size: 0.76rem;
-    font-weight: 800;
+.template-color-row-actions {
+    align-items: center;
 }
 
-.template-color-selected-pill {
-    margin-left: auto;
+.template-color-icon-button {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid color-mix(in srgb, var(--template-color, var(--accent)) 24%, var(--border-subtle));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--template-color, var(--accent)) 10%, transparent);
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    font-weight: 800;
+    line-height: 1;
 }
 
 .template-color-label-editor {
+    grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
     border-top: 1px solid var(--border-soft);
     padding-top: 0.65rem;
+}
+
+.template-color-row-copy {
+    min-width: 0;
+}
+
+.template-color-row-copy strong {
+    display: block;
+}
+
+.template-color-row-copy.is-unlabeled strong {
+    color: var(--text-soft);
+    opacity: 0.72;
+}
+
+.template-color-editor-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.82rem;
+    color: var(--text-soft);
+}
+
+.template-color-editor-input {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.template-color-editor-input input[type="color"] {
+    width: 54px;
+    height: 42px;
+    padding: 0.2rem;
+    border-radius: 12px;
+    cursor: pointer;
 }
 
 .template-color-option {
