@@ -1,0 +1,180 @@
+.qs-date-picker {
+    position: relative;
+    width: 100%;
+}
+
+.qs-date-picker-trigger {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 4%, transparent), color-mix(in srgb, var(--text-on-accent) 1%, transparent)),
+        var(--bg-surface);
+    color: var(--text-main);
+    padding: 0.68rem 2.7rem 0.68rem 0.8rem;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    box-shadow:
+        var(--shadow-inner-highlight),
+        var(--shadow-inline);
+}
+
+.qs-date-picker-trigger:hover {
+    border-color: var(--border-accent);
+}
+
+.qs-date-picker-trigger:focus,
+.qs-date-picker-trigger:focus-visible,
+.qs-date-picker.is-open .qs-date-picker-trigger {
+    outline: none;
+    border-color: var(--border-accent-strong);
+    box-shadow:
+        var(--shadow-inner-strong),
+        0 0 0 1px var(--accent-ring),
+        var(--shadow-inline-strong);
+}
+
+.qs-date-picker-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.qs-date-picker-caret {
+    position: absolute;
+    right: 0.85rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: transform 0.18s ease, color 0.18s ease;
+}
+
+.qs-date-picker.is-open .qs-date-picker-caret {
+    transform: translateY(-50%) rotate(180deg);
+    color: var(--text-main);
+}
+
+.qs-date-picker-popover {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    left: 0;
+    width: min(320px, 100%);
+    padding: 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+    border-radius: 18px;
+    background: var(--bg-popover);
+    box-shadow: var(--shadow-overlay);
+    backdrop-filter: blur(16px);
+    z-index: 60;
+}
+
+.qs-date-picker-header,
+.qs-date-picker-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.qs-date-picker-header {
+    margin-bottom: 0.8rem;
+}
+
+.qs-date-picker-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    text-align: center;
+    flex: 1;
+}
+
+.qs-date-nav,
+.qs-date-footer-action {
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-row-hover);
+    color: var(--text-main);
+    border-radius: 10px;
+}
+
+.qs-date-nav {
+    width: 36px;
+    height: 36px;
+    font-size: 0.95rem;
+}
+
+.qs-date-picker-weekdays,
+.qs-date-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.32rem;
+}
+
+.qs-date-picker-weekdays {
+    margin-bottom: 0.42rem;
+}
+
+.qs-date-picker-weekdays span {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-soft);
+    text-align: center;
+}
+
+.qs-date-day {
+    min-height: 38px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--bg-input-hover);
+    color: var(--text-main);
+    font-size: 0.86rem;
+}
+
+.qs-date-day:hover {
+    background: var(--bg-row-strong);
+}
+
+.qs-date-day.is-outside-month {
+    color: var(--text-soft);
+    background: var(--bg-row-soft);
+}
+
+.qs-date-day.is-today {
+    border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.qs-date-day.is-selected {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    color: var(--text-on-accent);
+    box-shadow: var(--shadow-glow);
+}
+
+.qs-date-picker-footer {
+    margin-top: 0.7rem;
+    justify-content: flex-end;
+}
+
+.qs-date-footer-action {
+    padding: 0.48rem 0.7rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+@media (max-width: 700px) {
+    .qs-date-picker-popover {
+        width: 100%;
+        padding: 0.62rem;
+        border-radius: 16px;
+    }
+
+    .qs-date-day {
+        min-height: 36px;
+        font-size: 0.82rem;
+    }
+}

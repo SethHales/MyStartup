@@ -4,6 +4,12 @@ import { Dropdown } from "../components/dropdown";
 import { WorkoutHistoryPreview } from "../components/workoutHistoryPreview";
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  formatMeasurementLabel,
+  normalizeSetType,
+  parseDurationToSeconds,
+  parseLocalDate,
+} from "../utils/workoutDomain";
+import {
   findWorkoutColorSlot,
   getWorkoutColor,
   getWorkoutColorPreferenceLabel,
@@ -361,7 +367,16 @@ export function Analytics({ currentUser }) {
                         title={selectedWorkoutStats.performanceTrend.title}
                         subtitle={selectedWorkoutStats.performanceTrend.shortSubtitle || selectedWorkoutStats.performanceTrend.subtitle}
                       >
-                        <LineTrendChart points={selectedWorkoutStats.performanceTrend.points} />
+                        <LineTrendChart
+                          points={selectedWorkoutStats.performanceTrend.points}
+                          yTickFormatter={selectedWorkoutStats.performanceTrend.yTickFormatter}
+                          tickMode={selectedWorkoutStats.performanceTrend.tickMode}
+                          startAtZero={selectedWorkoutStats.performanceTrend.startAtZero}
+                          onPointClick={(workoutId) => setSessionFocusRequest({
+                            workoutId,
+                            token: Date.now(),
+                          })}
+                        />
                       </TrendCard>
                       <TrendCard
                         title="Set Volume Trend"
@@ -877,30 +892,192 @@ function buildWorkoutExplorerItems(workouts) {
     }));
 }
 
-function LineTrendChart({ points }) {
+function getNiceNumber(value, round) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 1;
+  }
+
+  const exponent = Math.floor(Math.log10(value));
+  const fraction = value / (10 ** exponent);
+  let niceFraction;
+
+  if (round) {
+    if (fraction < 1.5) niceFraction = 1;
+    else if (fraction < 3) niceFraction = 2;
+    else if (fraction < 7) niceFraction = 5;
+    else niceFraction = 10;
+  } else if (fraction <= 1) niceFraction = 1;
+  else if (fraction <= 2) niceFraction = 2;
+  else if (fraction <= 5) niceFraction = 5;
+  else niceFraction = 10;
+
+  return niceFraction * (10 ** exponent);
+}
+
+function getDurationTickStep(maxValue) {
+  const candidates = [15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  const targetStep = Math.max(maxValue / 3, 1);
+  return candidates.find((candidate) => candidate >= targetStep) || 3600;
+}
+
+function getLineChartScale(values, { startAtZero = false, tickMode }) {
+  const rawMinValue = Math.min(...values);
+  const rawMaxValue = Math.max(...values);
+
+  if (!tickMode) {
+    return {
+      minValue: startAtZero ? 0 : rawMinValue,
+      maxValue: rawMaxValue,
+      ticks: [],
+    };
+  }
+
+  if (rawMaxValue <= 0) {
+    return {
+      minValue: 0,
+      maxValue: 1,
+      ticks: [0, 1],
+    };
+  }
+
+  if (startAtZero) {
+    const step = tickMode === "duration"
+      ? getDurationTickStep(rawMaxValue)
+      : getNiceNumber(rawMaxValue / 3, true);
+    const maxValue = Math.max(step, Math.ceil(rawMaxValue / step) * step);
+    const ticks = [];
+
+    for (let value = 0; value <= maxValue + step * 0.001; value += step) {
+      ticks.push(value);
+    }
+
+    return { minValue: 0, maxValue, ticks };
+  }
+
+  if (tickMode === "numeric") {
+    const rawRange = rawMaxValue - rawMinValue || Math.max(rawMaxValue * 0.15, 5);
+    const step = Math.max(5, Math.ceil(getNiceNumber(rawRange / 3, true) / 5) * 5);
+    const buffer = Math.max(5, Math.ceil(Math.max(rawRange * 0.12, step * 0.5) / 5) * 5);
+    const minValue = Math.max(0, Math.floor((rawMinValue - buffer) / 5) * 5);
+    const maxValue = Math.ceil((rawMaxValue + buffer) / 5) * 5;
+    const ticks = [];
+
+    for (let value = minValue; value <= maxValue + step * 0.001; value += step) {
+      ticks.push(value);
+    }
+
+    return { minValue, maxValue, ticks };
+  }
+
+  const range = getNiceNumber(rawMaxValue - rawMinValue || rawMaxValue || 1, false);
+  const step = getNiceNumber(range / 3, true);
+  const minValue = Math.floor(rawMinValue / step) * step;
+  const maxValue = Math.ceil(rawMaxValue / step) * step;
+  const ticks = [];
+
+  for (let value = minValue; value <= maxValue + step * 0.001; value += step) {
+    ticks.push(value);
+  }
+
+  return { minValue, maxValue, ticks };
+}
+
+function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false, onPointClick }) {
   if (!points || points.length === 0) {
     return <p className="chart-empty">Not enough data yet.</p>;
   }
 
+  const hideDotsUntilHover = points.length > 20;
   const values = points.map((point) => point.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  const scale = getLineChartScale(values, { startAtZero, tickMode });
+  const minValue = scale.minValue;
+  const maxValue = scale.maxValue;
   const width = 320;
   const height = 140;
-  const padding = 14;
+  const paddingTop = 14;
+  const paddingBottom = 14;
+  const paddingLeft = yTickFormatter ? 42 : 14;
+  const paddingRight = 14;
   const valueRange = maxValue - minValue || 1;
+  const yTicks = scale.ticks.map((tickValue, index) => ({
+    key: `${index}-${tickValue}`,
+    label: yTickFormatter(tickValue),
+    y: height - paddingBottom - ((tickValue - minValue) / valueRange) * (height - paddingTop - paddingBottom),
+  }));
 
-  const path = points.map((point, index) => {
-    const x = padding + (index * (width - padding * 2)) / Math.max(points.length - 1, 1);
-    const y = height - padding - ((point.value - minValue) / valueRange) * (height - padding * 2);
-    return `${index === 0 ? "M" : "L"} ${x} ${y}`;
-  }).join(" ");
+  const chartPoints = points.map((point, index) => {
+    const x = paddingLeft + (index * (width - paddingLeft - paddingRight)) / Math.max(points.length - 1, 1);
+    const y = height - paddingBottom - ((point.value - minValue) / valueRange) * (height - paddingTop - paddingBottom);
+    return {
+      ...point,
+      x,
+      y,
+    };
+  });
+
+  const path = chartPoints.map((point, index) => (
+    `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`
+  )).join(" ");
 
   return (
     <div className="line-chart-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="line-chart" role="img" aria-label="Workout trend line">
-        <path d={path} className="line-chart-path" />
-      </svg>
+      <div className="line-chart-area">
+        <svg viewBox={`0 0 ${width} ${height}`} className="line-chart" role="img" aria-label="Workout trend line">
+          {yTicks.map((tick) => (
+            <g key={tick.key}>
+              <line
+                x1={paddingLeft}
+                x2={width - paddingRight}
+                y1={tick.y}
+                y2={tick.y}
+                className="line-chart-grid-line"
+              />
+              <text
+                x={paddingLeft - 6}
+                y={tick.y}
+                textAnchor="end"
+                dominantBaseline="middle"
+                className="line-chart-tick-label"
+              >
+                {tick.label}
+              </text>
+            </g>
+          ))}
+          <path d={path} className="line-chart-path" />
+          {chartPoints.map((point) => (
+            <g key={`${point.workoutId || point.label}-${point.label}`}>
+              {point.ariaLabel ? <title>{point.ariaLabel}</title> : null}
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="8"
+                className={point.workoutId && onPointClick ? "line-chart-hit-dot is-clickable" : "line-chart-hit-dot"}
+                onClick={point.workoutId && onPointClick ? () => onPointClick(point.workoutId) : undefined}
+                onKeyDown={point.workoutId && onPointClick ? (event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onPointClick(point.workoutId);
+                  }
+                } : undefined}
+                role={point.workoutId && onPointClick ? "button" : undefined}
+                tabIndex={point.workoutId && onPointClick ? 0 : undefined}
+                aria-label={point.ariaLabel || undefined}
+              />
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="4.2"
+                className={
+                  point.workoutId && onPointClick
+                    ? `line-chart-dot is-clickable${hideDotsUntilHover ? " is-hidden-until-hover" : ""}`
+                    : `line-chart-dot${hideDotsUntilHover ? " is-hidden-until-hover" : ""}`
+                }
+                onClick={point.workoutId && onPointClick ? () => onPointClick(point.workoutId) : undefined}
+              />
+            </g>
+          ))}
+        </svg>
+      </div>
       <div className="chart-axis-labels">
         <span>{points[0].label}</span>
         <span>{points[points.length - 1].label}</span>
@@ -1472,6 +1649,165 @@ function getSecondaryBestMetric(workouts, fields, measurements) {
   return { label: "", value: "" };
 }
 
+function getWorkoutTrendMetric(workout, metricKey) {
+  const sets = workout.sets || [];
+  const regularSets = sets.filter((set) => normalizeSetType(set?.setType) === "regular");
+  const nonWarmupSets = sets.filter((set) => normalizeSetType(set?.setType) !== "warmup");
+  const candidateSets = regularSets.length > 0
+    ? regularSets
+    : (nonWarmupSets.length > 0 ? nonWarmupSets : sets);
+
+  const getAverageMetric = (valueSelector) => {
+    const values = candidateSets
+      .map((set) => valueSelector(set))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (values.length === 0) {
+      return null;
+    }
+
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+
+  if (metricKey === "weight") {
+    const averageWeight = getAverageMetric((set) => Number(set.weight));
+    return averageWeight === null ? null : { value: averageWeight };
+  }
+
+  if (metricKey === "distance") {
+    const averageDistance = getAverageMetric((set) => Number(set.distance));
+    return averageDistance === null ? null : { value: averageDistance };
+  }
+
+  if (metricKey === "pace") {
+    const paceSamples = candidateSets
+      .map((set) => {
+        const durationSeconds = parseDurationToSeconds(set.duration);
+        const distance = Number(set.distance);
+        if (!durationSeconds || !distance) {
+          return null;
+        }
+
+        return durationSeconds / distance;
+      })
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (paceSamples.length === 0) {
+      return null;
+    }
+
+    return {
+      value: paceSamples.reduce((sum, value) => sum + value, 0) / paceSamples.length,
+    };
+  }
+
+  if (metricKey === "duration") {
+    const averageDuration = getAverageMetric((set) => parseDurationToSeconds(set.duration));
+    return averageDuration === null ? null : { value: averageDuration };
+  }
+
+  if (metricKey === "reps") {
+    const averageReps = getAverageMetric((set) => Number(set.reps));
+    return averageReps === null ? null : { value: averageReps };
+  }
+
+  return null;
+}
+
+function formatTrendMetricValue(metricKey, metric, measurements) {
+  if (!metric) {
+    return "N/A";
+  }
+
+  if (metricKey === "weight") {
+    return `${formatAverageNumber(metric.value)} ${formatMeasurementUnit(measurements.weight, "LBs")}`;
+  }
+
+  if (metricKey === "distance") {
+    return `${formatAverageNumber(metric.value)} ${formatMeasurementUnit(measurements.distance, "Miles")}`;
+  }
+
+  if (metricKey === "pace") {
+    return formatPace(metric.value, measurements.distance);
+  }
+
+  if (metricKey === "duration") {
+    return formatSeconds(Math.round(metric.value));
+  }
+
+  if (metricKey === "reps") {
+    const roundedReps = Math.round(metric.value * 10) / 10;
+    const repsText = Number.isInteger(roundedReps) ? String(roundedReps) : roundedReps.toFixed(1);
+    return `${repsText} reps`;
+  }
+
+  return String(metric.value);
+}
+
+function getPerformanceTrendConfig(fields, measurements) {
+  if (fields.weight) {
+    return {
+      metricKey: "weight",
+      title: "Average Weight Trend",
+      subtitle: "Average working-set weight by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => String(Math.round(value)),
+      tickMode: "numeric",
+      startAtZero: false,
+    };
+  }
+
+  if (fields.distance && fields.duration) {
+    return {
+      metricKey: "pace",
+      title: "Average Pace Trend",
+      subtitle: `Average working-set pace by session`,
+      shortSubtitle: "Working-set average",
+      yTickFormatter: null,
+      tickMode: null,
+      startAtZero: false,
+    };
+  }
+
+  if (fields.distance) {
+    return {
+      metricKey: "distance",
+      title: "Working Distance Trend",
+      subtitle: `Average working-set ${formatMeasurementUnit(measurements.distance, "Miles")} by session`,
+      shortSubtitle: "Working-set average",
+      yTickFormatter: null,
+      tickMode: null,
+      startAtZero: false,
+    };
+  }
+
+  if (fields.duration) {
+    return {
+      metricKey: "duration",
+      title: "Working Duration Trend",
+      subtitle: "Average working-set time by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => formatSeconds(Math.round(value)),
+      tickMode: "duration",
+      startAtZero: true,
+    };
+  }
+
+  if (fields.reps) {
+    return {
+      metricKey: "reps",
+      title: "Working Reps Trend",
+      subtitle: "Average working-set reps by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => String(Math.round(value)),
+      tickMode: "numeric",
+      startAtZero: false,
+    };
+  }
+
+  return null;
+}
+
 function getMostRepsInSet(workouts) {
   const bestRepSet = workouts.reduce((bestWorkoutReps, workout) => {
     const workoutBestReps = (workout.sets || []).reduce((bestRepsForWorkout, set) => {
@@ -1576,53 +1912,31 @@ function formatAverageNumber(value) {
 }
 
 function buildPerformanceTrend(workouts, fields, measurements) {
-  const recentWorkouts = workouts.slice(-12);
+  const recentWorkouts = workouts;
+  const trendConfig = getPerformanceTrendConfig(fields, measurements);
 
-  if (fields.weight) {
+  if (trendConfig) {
     return {
-      title: "Top Weight Trend",
-      subtitle: "Best set from each recent session",
-      shortSubtitle: "Best set",
-      points: recentWorkouts.map((workout) => ({
-        label: shortDateLabel(workout.date),
-        value: Math.max(...(workout.sets || []).map((set) => Number(set.weight) || 0), 0),
-      })),
-    };
-  }
+      title: trendConfig.title,
+      subtitle: trendConfig.subtitle,
+      shortSubtitle: trendConfig.shortSubtitle,
+      yTickFormatter: trendConfig.yTickFormatter,
+      tickMode: trendConfig.tickMode,
+      startAtZero: trendConfig.startAtZero,
+      points: recentWorkouts.map((workout) => {
+        const sessionMetric = getWorkoutTrendMetric(workout, trendConfig.metricKey);
 
-  if (fields.distance && fields.duration) {
-    return {
-      title: "Pace Trend",
-      subtitle: `Lower ${formatMeasurementUnit(measurements.distance, "Miles")} pace is better`,
-      shortSubtitle: "Lower is better",
-      points: recentWorkouts.map((workout) => ({
-        label: shortDateLabel(workout.date),
-        value: getWorkoutBestPace(workout),
-      })).filter((point) => point.value > 0),
-    };
-  }
+        if (!sessionMetric) {
+          return null;
+        }
 
-  if (fields.distance) {
-    return {
-      title: "Distance Trend",
-      subtitle: "Longest distance per recent session",
-      shortSubtitle: "Longest set",
-      points: recentWorkouts.map((workout) => ({
-        label: shortDateLabel(workout.date),
-        value: Math.max(...(workout.sets || []).map((set) => Number(set.distance) || 0), 0),
-      })),
-    };
-  }
-
-  if (fields.duration) {
-    return {
-      title: "Duration Trend",
-      subtitle: "Best time from recent sessions",
-      shortSubtitle: "Best time",
-      points: recentWorkouts.map((workout) => ({
-        label: shortDateLabel(workout.date),
-        value: Math.min(...(workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || Number.MAX_SAFE_INTEGER)),
-      })).filter((point) => point.value < Number.MAX_SAFE_INTEGER),
+        return {
+          label: shortDateLabel(workout.date),
+          value: sessionMetric.value,
+          workoutId: workout.id,
+          ariaLabel: `${formatReadableDate(workout.date)}: ${formatTrendMetricValue(trendConfig.metricKey, sessionMetric, measurements)}`,
+        };
+      }).filter(Boolean),
     };
   }
 
@@ -1808,10 +2122,6 @@ function sortWorkoutsAscending(workouts) {
   return [...workouts].sort((left, right) => parseLocalDate(left.date) - parseLocalDate(right.date));
 }
 
-function parseLocalDate(dateValue) {
-  return new Date(`${dateValue}T00:00:00`);
-}
-
 function stripTime(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
@@ -1864,27 +2174,6 @@ function formatDateValue(date) {
   return `${year}-${month}-${day}`;
 }
 
-function parseDurationToSeconds(duration) {
-  if (!duration) {
-    return 0;
-  }
-
-  const parts = `${duration}`.split(":").map(Number);
-  if (parts.some((part) => Number.isNaN(part))) {
-    return 0;
-  }
-
-  if (parts.length === 2) {
-    return parts[0] * 60 + parts[1];
-  }
-
-  if (parts.length === 3) {
-    return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  }
-
-  return 0;
-}
-
 function formatPace(secondsPerUnit, distanceMeasurement = 'miles') {
   if (!secondsPerUnit || !Number.isFinite(secondsPerUnit)) {
     return "N/A";
@@ -1909,20 +2198,5 @@ function normalizeMeasurements(measurements) {
 }
 
 function formatMeasurementUnit(value, fallback) {
-  switch (value) {
-    case 'kgs':
-      return 'kg';
-    case 'kms':
-      return 'km';
-    case 'meters':
-      return 'm';
-    case 'feet':
-      return 'ft';
-    case 'miles':
-      return 'mi';
-    case 'lbs':
-      return 'lbs';
-    default:
-      return fallback;
-  }
+  return formatMeasurementLabel(value, fallback);
 }

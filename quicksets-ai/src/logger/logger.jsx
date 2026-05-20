@@ -3,8 +3,27 @@ import { createPortal } from 'react-dom';
 import "./logger.css";
 import { Dropdown } from "../components/dropdown";
 import { DatePicker } from "../components/datePicker";
-import { WheelPicker } from "../components/wheelPicker";
 import { TimeCaptureModal } from "../components/timeCaptureModal";
+import {
+  copyTrackedFields,
+  formatColorHexLabel,
+  formatSignedDuration,
+  formatTemplatePreview,
+  getDefaultSetValues,
+  getFieldLabel,
+  getFieldUnitSuffix,
+  getLoggerVisibleFields,
+  getSetDisplayLabel,
+  getSetMeasurements,
+  getSetRestDuration,
+  getSetTemplateFields,
+  MobileSetField,
+  normalizeRestDuration,
+  parseDurationToSeconds,
+  shouldShowSetField,
+  shouldUseEnterShortcut,
+  shouldUseSetRestTimer,
+} from "./loggerHelpers";
 import { playTimerPing, primeTimerAudio, vibrate } from "../utils/timerFeedback";
 import {
   findWorkoutColorSlot,
@@ -129,7 +148,7 @@ function normalizeTemplate(template) {
     ...template,
     color: getWorkoutColor(template),
     usesRestTimer: Boolean(template?.usesRestTimer),
-    restDuration: normalizeRestDuration(template?.restDuration),
+    restDuration: normalizeRestDuration(template?.restDuration, DEFAULT_REST_DURATION),
     fields: {
       reps: Boolean(template?.fields?.reps),
       weight: Boolean(template?.fields?.weight),
@@ -396,9 +415,9 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     );
   }, [selectedTemplateId, date, notes, starred, sets]);
 
-  const activeSetFields = getLoggerVisibleFields(selectedTemplate, sets);
+  const activeSetFields = getLoggerVisibleFields(selectedTemplate, sets, templateFieldOptions);
   const pendingSetFields = selectedTemplate?.isMixed
-    ? templateFieldOptions.filter((field) => getSetTemplateFields(selectedTemplate, pendingSet, templates)[field.key])
+    ? templateFieldOptions.filter((field) => getSetTemplateFields(selectedTemplate, pendingSet, templates, defaultTemplateFields)[field.key])
     : activeSetFields;
   const canSubmitWorkout = Boolean(selectedTemplate && date && sets.length > 0);
 
@@ -484,7 +503,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setNewTemplateName(selectedTemplate.name);
     setNewTemplateColor(findWorkoutColorSlot(selectedTemplate.color || workoutColorPalette[0], workoutColorPreferences));
     setNewTemplateUsesRestTimer(Boolean(selectedTemplate.usesRestTimer));
-    setNewTemplateRestDuration(normalizeRestDuration(selectedTemplate.restDuration));
+    setNewTemplateRestDuration(normalizeRestDuration(selectedTemplate.restDuration, DEFAULT_REST_DURATION));
     setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
     setNewTemplateMeasurements({
       ...defaultTemplateMeasurements,
@@ -552,7 +571,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
 
     const nextId = sets.length + 1;
-    const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates);
+    const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates, defaultTemplateFields, defaultTemplateMeasurements, buildEmptySet);
     setEditingSetId(null);
     setOpenSetMenu(null);
     setPendingSet({
@@ -569,7 +588,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setOpenSetMenu(null);
     setPendingSet({
       id: setToEdit.id,
-      ...copyTrackedFields(setToEdit, getSetTemplateFields(selectedTemplate, setToEdit, templates)),
+      ...copyTrackedFields(setToEdit, getSetTemplateFields(selectedTemplate, setToEdit, templates, defaultTemplateFields)),
     });
     setTimeCaptureMode(null);
     setShowSetModal(true);
@@ -580,7 +599,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setEditingSetId(null);
     setTimeCaptureMode(null);
     setOpenSetMenu(null);
-    setPendingSet(getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates));
+    setPendingSet(getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates, defaultTemplateFields, defaultTemplateMeasurements, buildEmptySet));
   };
 
   const handlePendingSetChange = (field, value) => {
@@ -633,12 +652,12 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   const handleConfirmAddSet = (event) => {
     event.preventDefault();
     const shouldStartRestTimer = editingSetId === null;
-    const restDuration = getSetRestDuration(selectedTemplate, pendingSet, templates);
+    const restDuration = getSetRestDuration(selectedTemplate, pendingSet, templates, DEFAULT_REST_DURATION);
     if (editingSetId !== null) {
       setSets((prevSets) =>
         prevSets.map((set) =>
           set.id === editingSetId
-            ? { ...set, ...copyTrackedFields(pendingSet, getSetTemplateFields(selectedTemplate, pendingSet, templates)) }
+            ? { ...set, ...copyTrackedFields(pendingSet, getSetTemplateFields(selectedTemplate, pendingSet, templates, defaultTemplateFields)) }
             : set
         )
       );
@@ -725,7 +744,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
           name: newTemplateName,
           color: getWorkoutColorPreferenceValue(newTemplateColor, workoutColorPreferences),
           usesRestTimer: newTemplateUsesRestTimer,
-          restDuration: normalizeRestDuration(newTemplateRestDuration),
+          restDuration: normalizeRestDuration(newTemplateRestDuration, DEFAULT_REST_DURATION),
           fields: newTemplateFields,
           measurements: newTemplateMeasurements,
         }),
@@ -1066,7 +1085,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
   };
 
-  const restTimerDisplaySeconds = restTimerSeconds ?? parseDurationToSeconds(selectedTemplate?.restDuration || DEFAULT_REST_DURATION);
+  const restTimerDisplaySeconds = restTimerSeconds ?? parseDurationToSeconds(selectedTemplate?.restDuration || DEFAULT_REST_DURATION, parseDurationToSeconds(DEFAULT_REST_DURATION, 30));
   const restTimerStatus = restTimerDisplaySeconds <= 0
     ? "is-expired"
     : restTimerDisplaySeconds <= 5
@@ -1330,7 +1349,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                     placeholder={DEFAULT_REST_DURATION}
                     disabled={!newTemplateUsesRestTimer}
                     onChange={(event) => setNewTemplateRestDuration(event.target.value)}
-                    onBlur={() => setNewTemplateRestDuration((currentValue) => normalizeRestDuration(currentValue))}
+                    onBlur={() => setNewTemplateRestDuration((currentValue) => normalizeRestDuration(currentValue, DEFAULT_REST_DURATION))}
                   />
                 </label>
               </section>
@@ -1426,13 +1445,13 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                     />
                   </label>
                   {pendingSetFields.map((field) => (
-                    shouldShowSetField(field.key, selectedTemplate, pendingSet)
+                    shouldShowSetField(field.key, selectedTemplate, pendingSet, defaultTemplateFields)
                       ? (
                     <label key={field.key}>
-                      {getFieldLabel(field, getSetMeasurements(selectedTemplate, pendingSet))}
+                      {getFieldLabel(field, getSetMeasurements(selectedTemplate, pendingSet, defaultTemplateMeasurements))}
                       <MobileSetField
                         field={field}
-                        measurements={getSetMeasurements(selectedTemplate, pendingSet)}
+                        measurements={getSetMeasurements(selectedTemplate, pendingSet, defaultTemplateMeasurements)}
                         value={pendingSet[field.key] ?? ""}
                         onChange={(nextValue) => handlePendingSetChange(field.key, nextValue)}
                       />
@@ -1638,517 +1657,4 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       )}
     </main>
   );
-}
-
-function getDefaultSetValues(selectedTemplate, currentSets, savedWorkouts, templates = []) {
-  if (!selectedTemplate) {
-    return {};
-  }
-
-  if (selectedTemplate.isMixed) {
-    const lastCurrentMixedSet = currentSets.length > 0 ? currentSets[currentSets.length - 1] : null;
-    if (lastCurrentMixedSet) {
-      const sourceTemplate = templates.find((template) => template.id === lastCurrentMixedSet.templateId) || null;
-      return {
-        ...copyTrackedFields(lastCurrentMixedSet, getSetTemplateFields(selectedTemplate, lastCurrentMixedSet, templates)),
-        templateId: lastCurrentMixedSet.templateId || sourceTemplate?.id || templates[0]?.id || "",
-        templateName: lastCurrentMixedSet.templateName || sourceTemplate?.name || templates[0]?.name || "",
-        fields: sourceTemplate?.fields || lastCurrentMixedSet.fields || templates[0]?.fields || defaultTemplateFields,
-        measurements: sourceTemplate?.measurements || lastCurrentMixedSet.measurements || templates[0]?.measurements || defaultTemplateMeasurements,
-      };
-    }
-
-    const fallbackTemplate = templates[0] || null;
-    if (!fallbackTemplate) {
-      return buildEmptySet(defaultTemplateFields, 1);
-    }
-
-    return {
-      ...getMixedTemplateDefaultSet(fallbackTemplate, currentSets, savedWorkouts),
-      templateId: fallbackTemplate.id,
-      templateName: fallbackTemplate.name,
-      fields: fallbackTemplate.fields,
-      measurements: fallbackTemplate.measurements,
-      setType: "regular",
-    };
-  }
-
-  if (currentSets.length > 0) {
-    const lastCurrentSet = currentSets[currentSets.length - 1];
-    return copyTrackedFields(lastCurrentSet, selectedTemplate.fields);
-  }
-
-  const previousSet = findLastSavedSet(savedWorkouts, selectedTemplate);
-  if (previousSet) {
-    return copyTrackedFields(previousSet, selectedTemplate.fields);
-  }
-
-  return buildEmptySet(selectedTemplate.fields, 1);
-}
-
-function getMixedTemplateDefaultSet(template, currentSets, savedWorkouts) {
-  const currentMatchingSet = [...currentSets].reverse().find((set) => set.templateId === template.id);
-  if (currentMatchingSet) {
-    return copyTrackedFields(currentMatchingSet, template.fields);
-  }
-
-  const previousSet = findLastSavedSet(savedWorkouts, template);
-  if (previousSet) {
-    return copyTrackedFields(previousSet, template.fields);
-  }
-
-  return buildEmptySet(template.fields, 1);
-}
-
-function MobileSetField({ field, measurements, value, onChange }) {
-  if (field.key === "duration") {
-    const durationParts = parseDurationParts(value);
-    const minuteOptions = buildIntegerWheelOptions(0, 59);
-    const secondOptions = buildIntegerWheelOptions(0, 59);
-    const selectedMinutes = getClosestWheelValue(minuteOptions, durationParts.minutes, "0");
-    const selectedSeconds = getClosestWheelValue(secondOptions, durationParts.seconds, "0");
-
-    return (
-      <div className="mobile-duration-picker">
-        <div className="mobile-wheel-field">
-          <WheelPicker
-            value={selectedMinutes}
-            options={minuteOptions}
-            onChange={(nextMinutes) => onChange(formatDurationValue(nextMinutes, selectedSeconds))}
-            ariaLabel="Minutes"
-          />
-          <span className="input-unit">min</span>
-        </div>
-        <div className="mobile-wheel-field">
-          <WheelPicker
-            value={selectedSeconds}
-            options={secondOptions}
-            onChange={(nextSeconds) => onChange(formatDurationValue(selectedMinutes, nextSeconds))}
-            ariaLabel="Seconds"
-          />
-          <span className="input-unit">sec</span>
-        </div>
-      </div>
-    );
-  }
-
-  const wheelOptions = buildFieldWheelOptions(field, measurements);
-  const selectedValue = getClosestWheelValue(wheelOptions, value, wheelOptions[0]?.value || "0");
-
-  return (
-    <div className="mobile-wheel-field">
-      <WheelPicker
-        value={selectedValue}
-        options={wheelOptions}
-        onChange={onChange}
-        ariaLabel={field.label}
-      />
-      {getFieldUnitSuffix(field, measurements) && (
-        <span className="input-unit">
-          {getFieldUnitSuffix(field, measurements)}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function findLastSavedSet(savedWorkouts, selectedTemplate) {
-  for (let index = savedWorkouts.length - 1; index >= 0; index -= 1) {
-    const workout = savedWorkouts[index];
-    const mixedSetMatch = Array.isArray(workout.sets)
-      ? [...workout.sets].reverse().find((set) => set.templateId === selectedTemplate.id || set.templateName === selectedTemplate.name)
-      : null;
-    const isMatchingWorkout = workout.templateId === selectedTemplate.id
-      || workout.templateName === selectedTemplate.name
-      || workout.exercise === selectedTemplate.name;
-
-    if (mixedSetMatch) {
-      return mixedSetMatch;
-    }
-
-    if (!isMatchingWorkout || !Array.isArray(workout.sets) || workout.sets.length === 0) {
-      continue;
-    }
-
-    return workout.sets[workout.sets.length - 1];
-  }
-
-  return null;
-}
-
-function copyTrackedFields(sourceSet, fields) {
-  return {
-    setType: normalizeSetType(sourceSet?.setType),
-    ...(sourceSet?.templateId ? { templateId: sourceSet.templateId } : {}),
-    ...(sourceSet?.templateName ? { templateName: sourceSet.templateName } : {}),
-    ...(sourceSet?.fields ? { fields: sourceSet.fields } : {}),
-    ...(sourceSet?.measurements ? { measurements: sourceSet.measurements } : {}),
-    ...(fields.reps ? { reps: sourceSet?.reps ?? "" } : {}),
-    ...(fields.weight ? { weight: sourceSet?.weight ?? "" } : {}),
-    ...(fields.duration ? { duration: sourceSet?.duration ?? "" } : {}),
-    ...(fields.distance ? { distance: sourceSet?.distance ?? "" } : {}),
-  };
-}
-
-function getLoggerVisibleFields(selectedTemplate, sets) {
-  if (!selectedTemplate) {
-    return [];
-  }
-
-  if (!selectedTemplate.isMixed) {
-    return templateFieldOptions.filter((field) => selectedTemplate?.fields?.[field.key]);
-  }
-
-  const visibleKeys = new Set();
-  sets.forEach((set) => {
-    const fields = set.fields || {};
-    Object.keys(fields).forEach((key) => {
-      if (fields[key]) {
-        visibleKeys.add(key);
-      }
-    });
-  });
-
-  if (visibleKeys.size === 0) {
-    templateFieldOptions.forEach((field) => visibleKeys.add(field.key));
-  }
-
-  return templateFieldOptions.filter((field) => visibleKeys.has(field.key));
-}
-
-function getSetTemplateFields(selectedTemplate, set, templates = []) {
-  if (!selectedTemplate?.isMixed) {
-    return selectedTemplate?.fields || defaultTemplateFields;
-  }
-
-  const matchedTemplate = templates.find((template) => template.id === set?.templateId) || null;
-  return matchedTemplate?.fields || set?.fields || defaultTemplateFields;
-}
-
-function getSetMeasurements(selectedTemplate, set) {
-  if (!selectedTemplate?.isMixed) {
-    return selectedTemplate?.measurements || defaultTemplateMeasurements;
-  }
-
-  return set?.measurements || defaultTemplateMeasurements;
-}
-
-function shouldShowSetField(fieldKey, selectedTemplate, set) {
-  if (!selectedTemplate?.isMixed) {
-    return Boolean(selectedTemplate?.fields?.[fieldKey]);
-  }
-
-  return Boolean(getSetTemplateFields(selectedTemplate, set)[fieldKey]);
-}
-
-function formatTemplatePreview(name, fields, measurements = defaultTemplateMeasurements) {
-  const selectedFields = [
-    fields.reps && "reps",
-    fields.weight && `weight (${formatMeasurementLabel(measurements.weight)})`,
-    fields.duration && "duration",
-    fields.distance && `distance (${formatMeasurementLabel(measurements.distance)})`,
-    "notes",
-  ].filter(Boolean);
-
-  return `${name.trim() || "Your new workout"} will save ${selectedFields.join(", ")}.`;
-}
-
-function normalizeSetType(value) {
-  return ["regular", "warmup", "max"].includes(value) ? value : "regular";
-}
-
-function formatColorHexLabel(color) {
-  return `${color}`.toUpperCase();
-}
-
-function getSetDisplayLabel(set, sets, index) {
-  const setType = normalizeSetType(set?.setType);
-
-  if (setType === "warmup") {
-    return "Warmup";
-  }
-
-  if (setType === "max") {
-    return "Max";
-  }
-
-  const regularIndex = sets
-    .slice(0, index + 1)
-    .filter((currentSet) => normalizeSetType(currentSet?.setType) === "regular")
-    .length;
-
-  return regularIndex;
-}
-
-function getFieldLabel(field, measurements = defaultTemplateMeasurements) {
-  if (field.key === "weight") {
-    return `Weight (${formatMeasurementLabel(measurements?.weight)})`;
-  }
-
-  if (field.key === "distance") {
-    return `Distance (${formatMeasurementLabel(measurements?.distance)})`;
-  }
-
-  if (field.key === "duration") {
-    return "Time";
-  }
-
-  return field.label;
-}
-
-function formatMeasurementLabel(value) {
-  switch (value) {
-    case "lbs":
-      return "lbs";
-    case "kgs":
-      return "kg";
-    case "kms":
-      return "km";
-    case "meters":
-      return "m";
-    case "feet":
-      return "ft";
-    case "miles":
-      return "mi";
-    default:
-      return value || "default";
-  }
-}
-
-function getFieldUnitSuffix(field, measurements = defaultTemplateMeasurements) {
-  if (field.key === "weight") {
-    return formatMeasurementLabel(measurements?.weight);
-  }
-
-  if (field.key === "distance") {
-    return formatMeasurementLabel(measurements?.distance);
-  }
-
-  return "";
-}
-
-function parseDurationParts(duration) {
-  if (!duration) {
-    return { minutes: "", seconds: "" };
-  }
-
-  const parts = `${duration}`.split(":").map((part) => Number(part));
-  if (parts.some((part) => Number.isNaN(part))) {
-    return { minutes: "", seconds: "" };
-  }
-
-  if (parts.length === 2) {
-    return {
-      minutes: String(parts[0]),
-      seconds: String(parts[1]),
-    };
-  }
-
-  if (parts.length === 3) {
-    return {
-      minutes: String(parts[0] * 60 + parts[1]),
-      seconds: String(parts[2]),
-    };
-  }
-
-  return { minutes: "", seconds: "" };
-}
-
-function parseDurationToSeconds(duration) {
-  if (!duration) {
-    return parseDurationToSeconds(DEFAULT_REST_DURATION);
-  }
-
-  const parts = `${duration}`.split(":").map((part) => Number(part));
-  if (parts.some((part) => Number.isNaN(part) || part < 0)) {
-    return parseDurationToSeconds(DEFAULT_REST_DURATION);
-  }
-
-  if (parts.length === 2) {
-    return Math.floor(parts[0] * 60 + parts[1]);
-  }
-
-  if (parts.length === 3) {
-    return Math.floor(parts[0] * 3600 + parts[1] * 60 + parts[2]);
-  }
-
-  const seconds = Number(duration);
-  return Number.isNaN(seconds) ? parseDurationToSeconds(DEFAULT_REST_DURATION) : Math.max(0, Math.floor(seconds));
-}
-
-function normalizeRestDuration(duration) {
-  return formatDuration(parseDurationToSeconds(duration));
-}
-
-function formatDuration(totalSeconds) {
-  const safeSeconds = Math.max(0, Math.floor(Math.abs(totalSeconds)));
-  const minutes = Math.floor(safeSeconds / 60);
-  const seconds = safeSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-function formatSignedDuration(totalSeconds) {
-  const prefix = totalSeconds < 0 ? "-" : "";
-  return `${prefix}${formatDuration(totalSeconds)}`;
-}
-
-function getSetRestDuration(selectedTemplate, set, templates = []) {
-  if (selectedTemplate?.isMixed) {
-    const setTemplate = templates.find((template) => template.id === set?.templateId);
-    return setTemplate?.restDuration || DEFAULT_REST_DURATION;
-  }
-
-  return selectedTemplate?.restDuration || DEFAULT_REST_DURATION;
-}
-
-function shouldUseSetRestTimer(selectedTemplate, set, templates = []) {
-  if (selectedTemplate?.isMixed) {
-    const setTemplate = templates.find((template) => template.id === set?.templateId);
-    return Boolean(setTemplate?.usesRestTimer);
-  }
-
-  return Boolean(selectedTemplate?.usesRestTimer);
-}
-
-function clampDurationPart(value, max) {
-  if (value === "") {
-    return "";
-  }
-
-  const parsedValue = Number(value);
-  if (Number.isNaN(parsedValue)) {
-    return "";
-  }
-
-  return String(Math.max(0, Math.min(max, parsedValue)));
-}
-
-function formatDurationValue(minutes, seconds) {
-  if (minutes === "" && seconds === "") {
-    return "";
-  }
-
-  const safeMinutes = minutes === "" ? "0" : minutes;
-  const safeSeconds = seconds === "" ? "0" : seconds;
-
-  return `${String(safeMinutes).padStart(2, "0")}:${String(safeSeconds).padStart(2, "0")}`;
-}
-
-function buildFieldWheelOptions(field, measurements) {
-  if (field.key === "reps") {
-    return buildIntegerWheelOptions(0, 40);
-  }
-
-  if (field.key === "weight") {
-    return measurements?.weight === "kgs"
-      ? buildDecimalWheelOptions(0, 250, 2.5)
-      : buildIntegerWheelOptions(0, 500, 5);
-  }
-
-  if (field.key === "distance") {
-    if (measurements?.distance === "meters" || measurements?.distance === "feet") {
-      return buildIntegerWheelOptions(0, 10000, 100);
-    }
-
-    return buildDecimalWheelOptions(0, 20, 0.1);
-  }
-
-  return buildIntegerWheelOptions(0, 30);
-}
-
-function buildIntegerWheelOptions(start, end, step = 1) {
-  const options = [];
-
-  for (let current = start; current <= end; current += step) {
-    options.push({
-      value: String(current),
-      label: String(current),
-    });
-  }
-
-  return options;
-}
-
-function buildDecimalWheelOptions(start, end, step) {
-  const options = [];
-  const decimalPlaces = getStepDecimals(step);
-
-  for (let current = start; current <= end + step / 2; current += step) {
-    const roundedValue = current.toFixed(decimalPlaces);
-    options.push({
-      value: trimTrailingZeroes(roundedValue),
-      label: trimTrailingZeroes(roundedValue),
-    });
-  }
-
-  return options;
-}
-
-function getClosestWheelValue(options, currentValue, fallbackValue) {
-  if (!options.length) {
-    return fallbackValue;
-  }
-
-  if (!currentValue) {
-    return fallbackValue;
-  }
-
-  const exactMatch = options.find((option) => option.value === `${currentValue}`);
-  if (exactMatch) {
-    return exactMatch.value;
-  }
-
-  const parsedValue = Number(currentValue);
-  if (Number.isNaN(parsedValue)) {
-    return fallbackValue;
-  }
-
-  let closestOption = options[0];
-  let smallestDistance = Math.abs(Number(closestOption.value) - parsedValue);
-
-  options.forEach((option) => {
-    const optionDistance = Math.abs(Number(option.value) - parsedValue);
-    if (optionDistance < smallestDistance) {
-      closestOption = option;
-      smallestDistance = optionDistance;
-    }
-  });
-
-  return closestOption.value;
-}
-
-function getStepDecimals(step) {
-  const stepValue = `${step}`;
-  const decimalPart = stepValue.split(".")[1];
-  return decimalPart ? decimalPart.length : 0;
-}
-
-function trimTrailingZeroes(value) {
-  return `${Number(value)}`;
-}
-
-function shouldUseEnterShortcut(event) {
-  if (
-    event.key !== "Enter"
-    || event.defaultPrevented
-    || event.shiftKey
-    || event.altKey
-    || event.ctrlKey
-    || event.metaKey
-  ) {
-    return false;
-  }
-
-  const target = event.target;
-  const tagName = target?.tagName?.toLowerCase();
-
-  if (tagName === "textarea" || tagName === "button") {
-    return false;
-  }
-
-  if (target?.closest?.(".qs-dropdown.is-open") || target?.closest?.(".qs-date-picker.is-open")) {
-    return false;
-  }
-
-  return true;
 }

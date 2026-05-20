@@ -349,6 +349,29 @@
     text-align: left;
     position: relative;
     padding-left: 2.5rem !important;
+    width: 34%;
+}
+
+.history-notes-cell {
+    width: 48%;
+    min-width: 220px;
+    text-align: left !important;
+}
+
+.history-notes-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+}
+
+.history-notes-text.is-expanded {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    text-overflow: unset;
 }
 
 .history-workout-leading {
@@ -440,6 +463,8 @@
     text-align: right;
     position: relative;
     overflow: visible;
+    width: 1%;
+    white-space: nowrap;
 }
 
 .workout-actions-cell-placeholder {
@@ -1020,6 +1045,15 @@
 
     .history-month-group {
         padding: 0.65rem;
+    }
+
+    .history-workout-cell {
+        width: 30%;
+    }
+
+    .history-notes-cell {
+        width: auto;
+        min-width: 0;
     }
 
     .workout-menu-trigger {

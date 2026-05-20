@@ -1,5 +1,10 @@
 import React from 'react';
 import "../history/history.css";
+import {
+  formatMeasurementLabel,
+  getSetDisplayLabel,
+  parseLocalDate,
+} from "../utils/workoutDomain";
 import { getWorkoutColor } from "../utils/workoutColors";
 
 const setFieldColumns = [
@@ -123,7 +128,11 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
             {workoutName}
           </span>
         </td>
-        <td>{workout.notes}</td>
+        <td className="history-notes-cell">
+          <span className={isExpanded ? "history-notes-text is-expanded" : "history-notes-text"}>
+            {workout.notes}
+          </span>
+        </td>
         <td className="workout-actions-cell workout-actions-cell-placeholder" aria-hidden="true" />
       </tr>
       {shouldRenderDetails && (
@@ -207,27 +216,6 @@ function getWorkoutMeasurements(workout, setOverride = null) {
   return workout?.measurements || {};
 }
 
-function getSetDisplayLabel(set, sets, index) {
-  const setType = normalizeSetType(set?.setType);
-
-  if (setType === 'warmup') {
-    return 'Warmup';
-  }
-
-  if (setType === 'max') {
-    return 'Max';
-  }
-
-  return sets
-    .slice(0, index + 1)
-    .filter((currentSet) => normalizeSetType(currentSet?.setType) === 'regular')
-    .length;
-}
-
-function normalizeSetType(value) {
-  return ['regular', 'warmup', 'max'].includes(value) ? value : 'regular';
-}
-
 function getFieldLabel(field, measurements) {
   if (field.key === 'weight') {
     return `Weight (${formatMeasurementLabel(measurements?.weight, 'LBs')})`;
@@ -242,25 +230,6 @@ function getFieldLabel(field, measurements) {
   }
 
   return field.label;
-}
-
-function formatMeasurementLabel(value, fallback) {
-  switch (value) {
-    case 'kgs':
-      return 'kg';
-    case 'kms':
-      return 'km';
-    case 'meters':
-      return 'm';
-    case 'feet':
-      return 'ft';
-    case 'miles':
-      return 'mi';
-    case 'lbs':
-      return 'lbs';
-    default:
-      return fallback;
-  }
 }
 
 function sortWorkouts(workouts) {
@@ -309,8 +278,4 @@ function formatWorkoutListDate(dateValue) {
     day: 'numeric',
     ...(includeYear ? { year: 'numeric' } : {}),
   });
-}
-
-function parseLocalDate(dateValue) {
-  return new Date(`${dateValue}T00:00:00`);
 }

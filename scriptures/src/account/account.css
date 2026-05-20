@@ -1,0 +1,96 @@
+.account-hero-card,
+.account-panel,
+.account-status {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel-gradient);
+  border-radius: 18px;
+  box-shadow: var(--shadow-inline);
+}
+
+.account-hero-card,
+.account-panel {
+  padding: 1.2rem;
+}
+
+.account-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-bottom: 0.4rem;
+}
+
+.account-hero-card h2,
+.account-panel-header h3 {
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.account-hero-copy {
+  color: var(--text-muted);
+  margin-top: 0.45rem;
+}
+
+.account-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.account-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.account-input-block {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.account-input-block > span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.account-input-block input {
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  padding: 0.9rem 1rem;
+}
+
+.account-input-block input:focus {
+  outline: none;
+  border-color: var(--border-accent-strong);
+  box-shadow: 0 0 0 1px var(--accent-ring);
+}
+
+.account-input-block input:disabled {
+  color: var(--text-soft);
+  opacity: 1;
+}
+
+.account-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.account-status {
+  padding: 0.95rem 1rem;
+}
+
+.account-status.success {
+  color: var(--text-success);
+}
+
+.account-status.error {
+  color: #ffb3b3;
+}
+
+@media (max-width: 720px) {
+  .account-actions button {
+    width: 100%;
+  }
+}

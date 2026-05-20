@@ -2,6 +2,12 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../components/dropdown';
 import { MultiSelectDropdown } from '../components/multiSelectDropdown';
+import {
+  formatMeasurementLabel,
+  getSetDisplayLabel,
+  normalizeSetType,
+  parseLocalDate,
+} from '../utils/workoutDomain';
 import "./history.css";
 import {
   findWorkoutColorSlot,
@@ -1187,7 +1193,11 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
             {workoutName}
           </span>
         </td>
-        <td>{workout.notes}</td>
+        <td className="history-notes-cell">
+          <span className={isExpanded ? "history-notes-text is-expanded" : "history-notes-text"}>
+            {workout.notes}
+          </span>
+        </td>
         <td
           className="workout-actions-cell"
           onClick={(event) => event.stopPropagation()}
@@ -1384,10 +1394,6 @@ function formatWorkoutDate(dateValue) {
   return `${weekday} the ${day}${getOrdinalSuffix(day)}`;
 }
 
-function parseLocalDate(dateValue) {
-  return new Date(`${dateValue}T00:00:00`);
-}
-
 function getOrdinalSuffix(day) {
   if (day >= 11 && day <= 13) {
     return 'th';
@@ -1504,27 +1510,6 @@ function getMixedWorkoutTemplateOptions(workouts, workoutColorPreferences = {}) 
   return Array.from(templateMap.values()).sort((left, right) => left.label.localeCompare(right.label));
 }
 
-function normalizeSetType(value) {
-  return ['regular', 'warmup', 'max'].includes(value) ? value : 'regular';
-}
-
-function getSetDisplayLabel(set, sets, index) {
-  const setType = normalizeSetType(set?.setType);
-
-  if (setType === 'warmup') {
-    return 'Warmup';
-  }
-
-  if (setType === 'max') {
-    return 'Max';
-  }
-
-  return sets
-    .slice(0, index + 1)
-    .filter((currentSet) => normalizeSetType(currentSet?.setType) === 'regular')
-    .length;
-}
-
 function getFieldLabel(field, measurements) {
   if (field.key === 'weight') {
     return `Weight (${formatMeasurementLabel(measurements?.weight, 'LBs')})`;
@@ -1539,25 +1524,6 @@ function getFieldLabel(field, measurements) {
   }
 
   return field.label;
-}
-
-function formatMeasurementLabel(value, fallback) {
-  switch (value) {
-    case 'kgs':
-      return 'kg';
-    case 'kms':
-      return 'km';
-    case 'meters':
-      return 'm';
-    case 'feet':
-      return 'ft';
-    case 'miles':
-      return 'mi';
-    case 'lbs':
-      return 'lbs';
-    default:
-      return fallback;
-  }
 }
 
 function getFieldUnitSuffix(field, measurements) {
