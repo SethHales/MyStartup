@@ -37,6 +37,11 @@ const legacyWorkoutColorMap = {
   '#f59e0b': '#f97316',
   '#22c55e': '#22c55e',
 };
+const explorerPreferenceKeys = {
+  statCards: ['lastPerformed', 'bestWeight', 'highestReps', 'farthestDistance', 'longestDuration', 'shortestDuration', 'bestPace', 'estimatedOneRepMax'],
+  averages: ['averageSetsPerSession', 'averageRepsPerSet', 'averageWeightPerSet', 'averageTimePerSet', 'averagePace'],
+  charts: ['performanceTrend', 'estimatedOneRepMaxTrend', 'setVolumeTrend', 'monthlyFrequency'],
+};
 
 const authCookieName = 'token';
 
@@ -489,6 +494,7 @@ apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
       color: normalizedColor || getFallbackWorkoutColor(template.name),
       usesRestTimer: Boolean(template.usesRestTimer),
       restDuration: sanitizeRestDuration(template.restDuration),
+      ...(template.explorerPreferences ? { explorerPreferences: sanitizeExplorerPreferences(template.explorerPreferences) } : {}),
     };
   }));
   res.send(templates);
@@ -532,6 +538,7 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
     restDuration,
     fields,
     measurements,
+    ...(req.body.explorerPreferences ? { explorerPreferences: sanitizeExplorerPreferences(req.body.explorerPreferences) } : {}),
   };
 
   await workoutTemplateCollection.insertOne(template);
@@ -586,11 +593,25 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
     restDuration,
     fields,
     measurements,
+    explorerPreferences: req.body.explorerPreferences
+      ? sanitizeExplorerPreferences(req.body.explorerPreferences)
+      : existingTemplate.explorerPreferences,
   };
 
   await workoutTemplateCollection.updateOne(
     { id: existingTemplate.id, userEmail: req.user.email },
-    { $set: { name, normalizedName: name.toLowerCase(), color: updatedTemplate.color, usesRestTimer, restDuration, fields, measurements } }
+    {
+      $set: {
+        name,
+        normalizedName: name.toLowerCase(),
+        color: updatedTemplate.color,
+        usesRestTimer,
+        restDuration,
+        fields,
+        measurements,
+        ...(updatedTemplate.explorerPreferences ? { explorerPreferences: updatedTemplate.explorerPreferences } : {}),
+      },
+    }
   );
 
   await workoutCollection.updateMany(
@@ -655,6 +676,33 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   );
 
   res.send(updatedTemplate);
+});
+
+apiRouter.put('/workout-templates/:id/explorer-preferences', verifyAuth, async (req, res) => {
+  const existingTemplate = await workoutTemplateCollection.findOne({
+    id: req.params.id,
+    userEmail: req.user.email,
+  });
+
+  if (!existingTemplate) {
+    res.status(404).send({ msg: 'Workout template not found' });
+    return;
+  }
+
+  const explorerPreferences = sanitizeExplorerPreferences(req.body);
+
+  await workoutTemplateCollection.updateOne(
+    { id: existingTemplate.id, userEmail: req.user.email },
+    { $set: { explorerPreferences } }
+  );
+
+  res.send({
+    ...existingTemplate,
+    color: normalizeStoredWorkoutColor(existingTemplate.color, existingTemplate.name) || getFallbackWorkoutColor(existingTemplate.name),
+    usesRestTimer: Boolean(existingTemplate.usesRestTimer),
+    restDuration: sanitizeRestDuration(existingTemplate.restDuration),
+    explorerPreferences,
+  });
 });
 
 apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
@@ -908,6 +956,53 @@ function sanitizeMeasurements(measurements) {
       : 'miles',
     notes: 'default',
   };
+}
+
+function sanitizeExplorerPreferences(preferences) {
+  const safePreferences = preferences && typeof preferences === 'object' && !Array.isArray(preferences)
+    ? preferences
+    : {};
+
+  return {
+    statCards: sanitizeExplorerPreferenceSection(safePreferences.statCards, explorerPreferenceKeys.statCards),
+    averages: sanitizeExplorerPreferenceSection(safePreferences.averages, explorerPreferenceKeys.averages),
+    charts: sanitizeExplorerPreferenceSection(safePreferences.charts, explorerPreferenceKeys.charts),
+    statCardOrder: sanitizeExplorerPreferenceOrder(safePreferences.statCardOrder, explorerPreferenceKeys.statCards),
+    averageOrder: sanitizeExplorerPreferenceOrder(safePreferences.averageOrder, explorerPreferenceKeys.averages),
+    chartOrder: sanitizeExplorerPreferenceOrder(safePreferences.chartOrder, explorerPreferenceKeys.charts),
+  };
+}
+
+function sanitizeExplorerPreferenceSection(section, allowedKeys) {
+  const safeSection = section && typeof section === 'object' && !Array.isArray(section)
+    ? section
+    : {};
+
+  return allowedKeys.reduce((normalizedSection, key) => {
+    if (typeof safeSection[key] !== 'boolean') {
+      return normalizedSection;
+    }
+
+    return {
+      ...normalizedSection,
+      [key]: safeSection[key],
+    };
+  }, {});
+}
+
+function sanitizeExplorerPreferenceOrder(order, allowedKeys) {
+  if (!Array.isArray(order)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return order.filter((key) => {
+    if (typeof key !== 'string' || !allowedKeys.includes(key) || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function sanitizeRestDuration(duration) {

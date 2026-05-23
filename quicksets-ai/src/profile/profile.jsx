@@ -1,6 +1,8 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import "./profile.css";
 import { Dropdown } from "../components/dropdown";
+import { ExplorerPreferenceCard } from "../components/explorerPreferenceCard";
 import { WorkoutHistoryPreview } from "../components/workoutHistoryPreview";
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -17,36 +19,83 @@ import {
 } from "../utils/workoutColors";
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+const defaultExplorerPreferences = {
+  statCards: {
+    lastPerformed: true,
+    bestWeight: true,
+    highestReps: true,
+    farthestDistance: true,
+    longestDuration: true,
+    shortestDuration: true,
+    bestPace: true,
+    estimatedOneRepMax: true,
+  },
+  averages: {
+    averageSetsPerSession: true,
+    averageRepsPerSet: true,
+    averageWeightPerSet: true,
+    averageTimePerSet: true,
+    averagePace: true,
+  },
+  charts: {
+    performanceTrend: true,
+    estimatedOneRepMaxTrend: true,
+    setVolumeTrend: true,
+    monthlyFrequency: true,
+  },
+  statCardOrder: [],
+  averageOrder: [],
+  chartOrder: [],
+};
 
 export function Analytics({ currentUser }) {
   const [workouts, setWorkouts] = React.useState([]);
+  const [templates, setTemplates] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
   const [workoutPageSize, setWorkoutPageSize] = React.useState("5");
   const [workoutPage, setWorkoutPage] = React.useState(1);
   const [sessionFocusRequest, setSessionFocusRequest] = React.useState(null);
+  const [showExplorerEditModal, setShowExplorerEditModal] = React.useState(false);
+  const [showMobileWorkoutPicker, setShowMobileWorkoutPicker] = React.useState(false);
+  const [explorerPreferencesDraft, setExplorerPreferencesDraft] = React.useState(defaultExplorerPreferences);
+  const [isSavingExplorerPreferences, setIsSavingExplorerPreferences] = React.useState(false);
+  const [dragState, setDragState] = React.useState(null);
+  const dragStateRef = React.useRef(null);
+  const explorerCardRefs = React.useRef(new Map());
+  const explorerModalRef = React.useRef(null);
+  const mobileWorkoutPickerRefs = React.useRef(new Map());
+  const previousExplorerCardPositions = React.useRef(new Map());
   const workoutColorPreferences = React.useMemo(
     () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
     [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
   );
 
   React.useEffect(() => {
-    fetch('/api/workouts', {
-      method: 'GET',
-      credentials: 'include',
-    })
-      .then((response) => {
-        if (!response.ok) {
-          if (response.status === 401) {
-            return [];
-          }
-          throw new Error('Failed to fetch workouts');
-        }
-        return response.json();
+    Promise.all([
+      fetch('/api/workouts', {
+        method: 'GET',
+        credentials: 'include',
+      }),
+      fetch('/api/workout-templates', {
+        method: 'GET',
+        credentials: 'include',
+      }),
+    ])
+      .then(async ([workoutsResponse, templatesResponse]) => {
+        const workoutPayload = workoutsResponse.ok
+          ? await workoutsResponse.json()
+          : (workoutsResponse.status === 401 ? [] : Promise.reject(new Error('Failed to fetch workouts')));
+        const templatePayload = templatesResponse.ok
+          ? await templatesResponse.json()
+          : (templatesResponse.status === 401 ? [] : Promise.reject(new Error('Failed to fetch workout templates')));
+
+        return { workoutPayload, templatePayload };
       })
-      .then((userWorkouts) => {
-        const sortedWorkouts = sortWorkoutsAscending(userWorkouts);
+      .then(({ workoutPayload, templatePayload }) => {
+        const sortedWorkouts = sortWorkoutsAscending(workoutPayload);
         setWorkouts(sortedWorkouts);
+        setTemplates(templatePayload);
         const expandedWorkouts = expandAnalyticsWorkouts(sortedWorkouts);
         const mostUsedWorkoutName = getMostUsedWorkoutName(expandedWorkouts);
         if (mostUsedWorkoutName && mostUsedWorkoutName !== "None yet") {
@@ -54,7 +103,7 @@ export function Analytics({ currentUser }) {
         }
       })
       .catch((err) => {
-        console.error('Error loading workouts:', err);
+        console.error('Error loading analytics data:', err);
       })
       .finally(() => {
         setIsLoading(false);
@@ -101,6 +150,51 @@ export function Analytics({ currentUser }) {
       : getWorkoutColor("QuickSets"),
     [analyticsWorkouts, selectedWorkoutName]
   );
+  const selectedWorkoutExplorerItem = React.useMemo(
+    () => workoutExplorerItems.find((workout) => workout.name === selectedWorkoutName) || null,
+    [selectedWorkoutName, workoutExplorerItems]
+  );
+  const selectedWorkoutGroupLabel = React.useMemo(
+    () => getWorkoutColorPreferenceLabel(selectedWorkoutColor, workoutColorPreferences) || "",
+    [selectedWorkoutColor, workoutColorPreferences]
+  );
+  const selectedWorkoutTemplate = React.useMemo(
+    () => {
+      if (!selectedWorkoutStats) {
+        return null;
+      }
+
+      return templates.find((template) =>
+        template.id === selectedWorkoutStats.templateId
+        || template.name === selectedWorkoutName
+      ) || null;
+    },
+    [selectedWorkoutName, selectedWorkoutStats, templates]
+  );
+  const selectedExplorerPreferences = React.useMemo(
+    () => normalizeExplorerPreferences(selectedWorkoutTemplate?.explorerPreferences, selectedWorkoutStats),
+    [selectedWorkoutTemplate?.explorerPreferences, selectedWorkoutStats]
+  );
+  const visibleStatCards = React.useMemo(
+    () => buildSelectedWorkoutStatCards(
+      selectedWorkoutStats,
+      selectedExplorerPreferences,
+      (workoutId) => setSessionFocusRequest({ workoutId, token: Date.now() })
+    ),
+    [selectedWorkoutStats, selectedExplorerPreferences]
+  );
+  const visibleAverageMetrics = React.useMemo(
+    () => buildVisibleAverageMetrics(selectedWorkoutStats?.averageMetrics, selectedExplorerPreferences),
+    [selectedWorkoutStats?.averageMetrics, selectedExplorerPreferences]
+  );
+  const visibleCharts = React.useMemo(
+    () => buildSelectedWorkoutCharts(selectedWorkoutStats, selectedExplorerPreferences),
+    [selectedWorkoutStats, selectedExplorerPreferences]
+  );
+  const explorerEditSections = React.useMemo(
+    () => buildExplorerEditSections(selectedWorkoutStats),
+    [selectedWorkoutStats]
+  );
   const pageSize = Number(workoutPageSize) || 5;
   const totalWorkoutPages = Math.max(1, Math.ceil(workoutExplorerItems.length / pageSize));
   const activeWorkoutPage = Math.min(workoutPage, totalWorkoutPages);
@@ -122,6 +216,322 @@ export function Analytics({ currentUser }) {
     const nextPage = Math.floor(selectedIndex / pageSize) + 1;
     setWorkoutPage((currentPage) => currentPage === nextPage ? currentPage : nextPage);
   }, [pageSize, selectedWorkoutName, workoutExplorerItems]);
+
+  const openExplorerEditModal = React.useCallback(() => {
+    setExplorerPreferencesDraft(selectedExplorerPreferences);
+    setDragState(null);
+    dragStateRef.current = null;
+    previousExplorerCardPositions.current = new Map();
+    setShowExplorerEditModal(true);
+  }, [selectedExplorerPreferences]);
+
+  const selectExplorerWorkout = React.useCallback((workoutName) => {
+    setSelectedWorkoutName(workoutName);
+    setShowMobileWorkoutPicker(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!showMobileWorkoutPicker || !selectedWorkoutName) {
+      return;
+    }
+
+    const scrollTimer = window.setTimeout(() => {
+      const selectedRow = mobileWorkoutPickerRefs.current.get(selectedWorkoutName);
+      selectedRow?.scrollIntoView({ block: "center" });
+    }, 0);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [showMobileWorkoutPicker, selectedWorkoutName]);
+
+  const handleExplorerPreferenceToggle = React.useCallback((sectionKey, optionKey) => {
+    setExplorerPreferencesDraft((currentPreferences) => ({
+      ...currentPreferences,
+      [sectionKey]: {
+        ...currentPreferences[sectionKey],
+        [optionKey]: !currentPreferences[sectionKey][optionKey],
+      },
+    }));
+  }, []);
+
+  const handleSaveExplorerPreferences = React.useCallback(async () => {
+    if (!selectedWorkoutTemplate) {
+      return;
+    }
+
+    setIsSavingExplorerPreferences(true);
+
+    try {
+      const response = await fetch(`/api/workout-templates/${selectedWorkoutTemplate.id}/explorer-preferences`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(explorerPreferencesDraft),
+      });
+
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        alert(body?.msg || 'Failed to save workout explorer settings');
+        return;
+      }
+
+      setTemplates((currentTemplates) =>
+        currentTemplates.map((template) =>
+          template.id === body.id ? body : template
+        )
+      );
+      setShowExplorerEditModal(false);
+    } catch (err) {
+      console.error('Error saving workout explorer settings:', err);
+      alert('Failed to save workout explorer settings');
+    } finally {
+      setIsSavingExplorerPreferences(false);
+    }
+  }, [explorerPreferencesDraft, selectedWorkoutTemplate]);
+
+  const commitExplorerDragOrder = React.useCallback((sectionKey, draggedKey, targetIndex, sourceOrderKeys = []) => {
+    if (!draggedKey || !Number.isFinite(targetIndex)) {
+      return;
+    }
+
+    setExplorerPreferencesDraft((currentPreferences) => {
+      const orderKey = getExplorerOrderKey(sectionKey);
+      const sectionOptionKeys = getExplorerSectionOptionKeys(sectionKey, selectedWorkoutStats);
+      const fallbackOrder = applyExplorerKeyOrder(sectionOptionKeys, currentPreferences[orderKey]);
+      const sourceOrder = Array.isArray(sourceOrderKeys) && sourceOrderKeys.length > 0
+        ? sourceOrderKeys.filter((key) => sectionOptionKeys.includes(key))
+        : [];
+      const currentOrder = sourceOrder.length > 0
+        ? [
+            ...sourceOrder,
+            ...fallbackOrder.filter((key) => !sourceOrder.includes(key)),
+          ]
+        : fallbackOrder;
+      const nextOrder = moveExplorerKeyToIndex(currentOrder, draggedKey, targetIndex);
+
+      if (nextOrder === currentOrder || arraysEqual(nextOrder, fallbackOrder)) {
+        return currentPreferences;
+      }
+
+      return {
+        ...currentPreferences,
+        [orderKey]: nextOrder,
+      };
+    });
+  }, [selectedWorkoutStats]);
+
+  const setExplorerCardRef = React.useCallback((sectionKey, optionKey, element) => {
+    const mapKey = `${sectionKey}:${optionKey}`;
+
+    if (element) {
+      explorerCardRefs.current.set(mapKey, element);
+    } else {
+      explorerCardRefs.current.delete(mapKey);
+    }
+  }, []);
+
+  const getExplorerOrderedOptions = React.useCallback((sectionKey) => {
+    const section = explorerEditSections.find((item) => item.key === sectionKey);
+    if (!section) {
+      return [];
+    }
+
+    return applyExplorerOrder(section.options, explorerPreferencesDraft[getExplorerOrderKey(sectionKey)]);
+  }, [explorerEditSections, explorerPreferencesDraft]);
+
+  const beginExplorerDrag = React.useCallback((event, sectionKey, option) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    const cardElement = explorerCardRefs.current.get(`${sectionKey}:${option.key}`);
+    if (!cardElement) {
+      return;
+    }
+
+    const rect = cardElement.getBoundingClientRect();
+    const orderedOptions = getExplorerOrderedOptions(sectionKey);
+    const sourceIndex = orderedOptions.findIndex((item) => item.key === option.key);
+    const slotRects = orderedOptions.map((orderedOption, index) => {
+      const element = explorerCardRefs.current.get(`${sectionKey}:${orderedOption.key}`);
+      const optionRect = element?.getBoundingClientRect();
+
+      return optionRect
+        ? {
+            index,
+            key: orderedOption.key,
+            left: optionRect.left,
+            right: optionRect.right,
+            top: optionRect.top,
+            bottom: optionRect.bottom,
+            centerX: optionRect.left + optionRect.width / 2,
+            centerY: optionRect.top + optionRect.height / 2,
+          }
+        : null;
+    }).filter(Boolean);
+
+    const nextDragState = {
+      sectionKey,
+      key: option.key,
+      label: option.label,
+      option,
+      width: rect.width,
+      height: rect.height,
+      sourceOrderKeys: orderedOptions.map((orderedOption) => orderedOption.key),
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      sourceIndex,
+      targetIndex: sourceIndex,
+      slotRects,
+    };
+
+    dragStateRef.current = nextDragState;
+    setDragState(nextDragState);
+  }, [getExplorerOrderedOptions]);
+
+  React.useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
+  React.useEffect(() => {
+    if (!dragState) {
+      return undefined;
+    }
+
+    const handlePointerMove = (event) => {
+      const currentDragState = dragStateRef.current;
+      if (!currentDragState) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const nextClientX = event.clientX;
+      const nextClientY = event.clientY;
+      const nextTargetIndex = getExplorerDragTargetIndex(
+        currentDragState.slotRects,
+        nextClientX,
+        nextClientY
+      );
+
+      const nextDragState = {
+        ...currentDragState,
+        clientX: nextClientX,
+        clientY: nextClientY,
+        targetIndex: nextTargetIndex,
+      };
+
+      dragStateRef.current = nextDragState;
+      setDragState(nextDragState);
+    };
+
+    const handlePointerUp = (event) => {
+      const currentDragState = dragStateRef.current;
+      if (currentDragState) {
+        const finalTargetIndex = Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)
+          ? getExplorerDragTargetIndex(
+              currentDragState.slotRects,
+              event.clientX,
+              event.clientY
+            )
+          : currentDragState.targetIndex;
+
+        commitExplorerDragOrder(
+          currentDragState.sectionKey,
+          currentDragState.key,
+          finalTargetIndex,
+          currentDragState.sourceOrderKeys
+        );
+      }
+
+      setDragState(null);
+      dragStateRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [!!dragState, commitExplorerDragOrder]);
+
+  React.useLayoutEffect(() => {
+    if (!showExplorerEditModal || dragState) {
+      previousExplorerCardPositions.current = new Map();
+      return;
+    }
+
+    const nextPositions = new Map();
+
+    explorerCardRefs.current.forEach((element, key) => {
+      if (!element?.isConnected) {
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      nextPositions.set(key, rect);
+
+      const previousRect = previousExplorerCardPositions.current.get(key);
+      if (!previousRect) {
+        return;
+      }
+
+      if (dragState && key === `${dragState.sectionKey}:${dragState.key}`) {
+        return;
+      }
+
+      const deltaX = previousRect.left - rect.left;
+      const deltaY = previousRect.top - rect.top;
+
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+        return;
+      }
+
+      element.getAnimations?.().forEach((animation) => animation.cancel());
+      element.animate(
+        [
+          { transform: `translate(${deltaX}px, ${deltaY}px)` },
+          { transform: "translate(0px, 0px)" },
+        ],
+        {
+          duration: 180,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        }
+      );
+    });
+
+    previousExplorerCardPositions.current = nextPositions;
+  }, [explorerPreferencesDraft, showExplorerEditModal, dragState]);
+
+  React.useEffect(() => {
+    if (!showExplorerEditModal) {
+      return undefined;
+    }
+
+    const modalElement = explorerModalRef.current;
+    if (!modalElement) {
+      return undefined;
+    }
+
+    const resetExplorerPositionCache = () => {
+      previousExplorerCardPositions.current = new Map();
+    };
+
+    modalElement.addEventListener("scroll", resetExplorerPositionCache, { passive: true });
+    window.addEventListener("scroll", resetExplorerPositionCache, { passive: true, capture: true });
+
+    return () => {
+      modalElement.removeEventListener("scroll", resetExplorerPositionCache);
+      window.removeEventListener("scroll", resetExplorerPositionCache, { capture: true });
+    };
+  }, [showExplorerEditModal]);
 
   return (
     <main>
@@ -241,26 +651,12 @@ export function Analytics({ currentUser }) {
               {visibleWorkoutItems.length > 0 ? (
                 <div className="breakdown-workout-list">
                   {visibleWorkoutItems.map((workout) => (
-                    <button
+                    <WorkoutExplorerPickerRow
                       key={workout.name}
-                      type="button"
-                      className={workout.name === selectedWorkoutName ? "breakdown-workout-row active" : "breakdown-workout-row"}
-                      onClick={() => setSelectedWorkoutName(workout.name)}
-                    >
-                      <span className="breakdown-workout-rank">{workout.rank}</span>
-                      <span className="breakdown-workout-copy">
-                        <strong>
-                          <span
-                            className="breakdown-workout-dot"
-                            style={{ backgroundColor: workout.color || getWorkoutColor(workout.name) }}
-                            aria-hidden="true"
-                          />
-                          {workout.name}
-                        </strong>
-                        <span>{workout.count} sessions</span>
-                      </span>
-                      <span className="breakdown-workout-share">{workout.share}%</span>
-                    </button>
+                      workout={workout}
+                      active={workout.name === selectedWorkoutName}
+                      onSelect={() => setSelectedWorkoutName(workout.name)}
+                    />
                   ))}
                 </div>
               ) : (
@@ -296,6 +692,26 @@ export function Analytics({ currentUser }) {
                   <div>
                     <p className="panel-kicker">Selected Workout</p>
                     <h3>{selectedWorkoutName || "Choose a workout"}</h3>
+                    {selectedWorkoutExplorerItem ? (
+                      <div className="mobile-workout-picker-trigger">
+                        <WorkoutExplorerPickerRow
+                          workout={selectedWorkoutExplorerItem}
+                          active
+                          onSelect={() => setShowMobileWorkoutPicker(true)}
+                          hideRank
+                          rightLabel={selectedWorkoutGroupLabel}
+                          rightLabelColor={selectedWorkoutColor}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="mobile-workout-picker-trigger mobile-workout-picker-empty-trigger"
+                        onClick={() => setShowMobileWorkoutPicker(true)}
+                      >
+                        Choose a workout
+                      </button>
+                    )}
                   </div>
                   <label className="workout-select">
                     Workout
@@ -318,79 +734,58 @@ export function Analytics({ currentUser }) {
                 {selectedWorkoutStats ? (
                   <>
                     <div className="metric-grid">
-                      <MetricCard
-                        label="Last Performed"
-                        value={selectedWorkoutStats.lastPerformed}
-                        onClick={selectedWorkoutStats.lastPerformedWorkoutId
-                          ? () => setSessionFocusRequest({
-                            workoutId: selectedWorkoutStats.lastPerformedWorkoutId,
-                            token: Date.now(),
-                          })
-                          : undefined}
-                      />
-                      {selectedWorkoutStats.bestMetricLabel && selectedWorkoutStats.bestMetricValue ? (
+                      {visibleStatCards.map((card) => (
                         <MetricCard
-                          label={selectedWorkoutStats.bestMetricLabel}
-                          value={selectedWorkoutStats.bestMetricValue}
-                          accent
-                          onClick={selectedWorkoutStats.bestMetricWorkoutId
-                            ? () => setSessionFocusRequest({
-                              workoutId: selectedWorkoutStats.bestMetricWorkoutId,
-                              token: Date.now(),
-                            })
-                            : undefined}
+                          key={card.key}
+                          label={card.label}
+                          value={card.value}
+                          accent={card.accent}
+                          onClick={card.onClick}
                         />
-                      ) : null}
-                      {selectedWorkoutStats.secondaryBestMetricLabel && selectedWorkoutStats.secondaryBestMetricValue ? (
-                        <MetricCard label={selectedWorkoutStats.secondaryBestMetricLabel} value={selectedWorkoutStats.secondaryBestMetricValue} accent />
-                      ) : null}
-                      <MetricCard
-                        label="Highest Reps"
-                        value={selectedWorkoutStats.mostRepsInSet}
-                        accent
-                        onClick={selectedWorkoutStats.mostRepsWorkoutId
-                          ? () => setSessionFocusRequest({
-                            workoutId: selectedWorkoutStats.mostRepsWorkoutId,
-                            token: Date.now(),
-                          })
-                          : undefined}
-                      />
+                      ))}
                     </div>
 
                     <WorkoutAveragesTable
                       workoutName={selectedWorkoutName}
-                      metrics={selectedWorkoutStats.averageMetrics}
+                      metrics={visibleAverageMetrics}
                     />
 
                     <div className="trend-grid">
-                      <TrendCard
-                        title={selectedWorkoutStats.performanceTrend.title}
-                        subtitle={selectedWorkoutStats.performanceTrend.shortSubtitle || selectedWorkoutStats.performanceTrend.subtitle}
-                      >
-                        <LineTrendChart
-                          points={selectedWorkoutStats.performanceTrend.points}
-                          yTickFormatter={selectedWorkoutStats.performanceTrend.yTickFormatter}
-                          tickMode={selectedWorkoutStats.performanceTrend.tickMode}
-                          startAtZero={selectedWorkoutStats.performanceTrend.startAtZero}
-                          onPointClick={(workoutId) => setSessionFocusRequest({
-                            workoutId,
-                            token: Date.now(),
-                          })}
-                        />
-                      </TrendCard>
-                      <TrendCard
-                        title="Set Volume Trend"
-                        subtitle="Last 12 sessions"
-                      >
-                        <BarTrendChart points={selectedWorkoutStats.setVolumeTrend} />
-                      </TrendCard>
-                      <TrendCard
-                        title="Monthly Frequency"
-                        subtitle="Recent months"
-                      >
-                        <BarTrendChart points={selectedWorkoutStats.monthlyFrequency} />
-                      </TrendCard>
+                      {visibleCharts.map((chart) => (
+                        <TrendCard
+                          key={chart.key}
+                          title={chart.title}
+                          subtitle={chart.subtitle}
+                        >
+                          {chart.type === "line" ? (
+                            <LineTrendChart
+                              points={chart.points}
+                              yTickFormatter={chart.yTickFormatter}
+                              tickMode={chart.tickMode}
+                              startAtZero={chart.startAtZero}
+                              onPointClick={(workoutId) => setSessionFocusRequest({
+                                workoutId,
+                                token: Date.now(),
+                              })}
+                            />
+                          ) : (
+                            <BarTrendChart points={chart.points} />
+                          )}
+                        </TrendCard>
+                      ))}
                     </div>
+                    {selectedWorkoutTemplate ? (
+                      <div className="workout-explorer-actions">
+                        <button
+                          type="button"
+                          className="workout-explorer-edit-button"
+                          onClick={openExplorerEditModal}
+                        >
+                          <span aria-hidden="true">✎</span>
+                          Customize {selectedWorkoutTemplate.name}
+                        </button>
+                      </div>
+                    ) : null}
                   </>
                 ) : (
                   <p className="panel-empty">Select a workout to see trends and stats.</p>
@@ -421,6 +816,154 @@ export function Analytics({ currentUser }) {
             </div>
           </div>
         </section>
+
+          {showExplorerEditModal && selectedWorkoutTemplate && typeof document !== "undefined"
+            ? createPortal(
+            <div className="explorer-modal-backdrop" onClick={() => setShowExplorerEditModal(false)}>
+              <div
+                className="explorer-modal"
+                ref={explorerModalRef}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="explorer-modal-header">
+                  <div>
+                    <p className="panel-kicker">Workout Explorer</p>
+                    <h3>Customize {selectedWorkoutTemplate.name}</h3>
+                  </div>
+                  <button
+                    type="button"
+                    className="explorer-modal-close"
+                    onClick={() => setShowExplorerEditModal(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="explorer-modal-sections">
+                  {explorerEditSections.map((section) => (
+                    <section key={section.key} className="explorer-modal-section">
+                      <div className="trend-card-header">
+                        <h4>{section.title}</h4>
+                        <p>{section.subtitle}</p>
+                      </div>
+                      <div className="explorer-toggle-grid">
+                        {getExplorerDisplayOptions(
+                          applyExplorerOrder(section.options, explorerPreferencesDraft[getExplorerOrderKey(section.key)]),
+                          dragState,
+                          section.key
+                        ).map((option) => (
+                          <ExplorerPreferenceCard
+                            key={option.key}
+                            cardRef={(element) => setExplorerCardRef(section.key, option.key, element)}
+                            label={option.label}
+                            active={explorerPreferencesDraft[section.key][option.key]}
+                            onClick={() => handleExplorerPreferenceToggle(section.key, option.key)}
+                            onHandlePointerDown={(event) => beginExplorerDrag(event, section.key, option)}
+                            isDragging={dragState?.sectionKey === section.key && dragState?.key === option.key}
+                          >
+                            {renderExplorerOptionPreview(option)}
+                          </ExplorerPreferenceCard>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+
+                <div className="explorer-modal-actions">
+                  <button
+                    type="button"
+                    className="btn btn-outline-light"
+                    onClick={() => setShowExplorerEditModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSaveExplorerPreferences}
+                    disabled={isSavingExplorerPreferences}
+                  >
+                    {isSavingExplorerPreferences ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+          : null}
+
+          {showMobileWorkoutPicker && typeof document !== "undefined"
+            ? createPortal(
+              <div
+                className="mobile-workout-picker-backdrop"
+                style={{ "--selected-workout-color": selectedWorkoutColor }}
+                onClick={() => setShowMobileWorkoutPicker(false)}
+              >
+                <div className="mobile-workout-picker-modal" onClick={(event) => event.stopPropagation()}>
+                  <div className="mobile-workout-picker-header">
+                    <div>
+                      <p className="panel-kicker">Workout Explorer</p>
+                      <h3>Choose Workout</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="explorer-modal-close"
+                      onClick={() => setShowMobileWorkoutPicker(false)}
+                      aria-label="Close workout picker"
+                    >
+                      ×
+                    </button>
+                  </div>
+
+                  <div className="mobile-workout-picker-list">
+                    {workoutExplorerItems.length > 0 ? (
+                      workoutExplorerItems.map((workout) => (
+                        <WorkoutExplorerPickerRow
+                          key={workout.name}
+                          workout={workout}
+                          active={workout.name === selectedWorkoutName}
+                          onSelect={() => selectExplorerWorkout(workout.name)}
+                          rowRef={(element) => {
+                            if (element) {
+                              mobileWorkoutPickerRefs.current.set(workout.name, element);
+                            } else {
+                              mobileWorkoutPickerRefs.current.delete(workout.name);
+                            }
+                          }}
+                        />
+                      ))
+                    ) : (
+                      <p className="panel-empty">No workouts logged yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )
+            : null}
+
+          {showExplorerEditModal && dragState
+            ? createPortal(
+              <div
+                className="explorer-drag-preview"
+                style={{
+                  width: `${dragState.width}px`,
+                  left: `${dragState.clientX - dragState.offsetX}px`,
+                  top: `${dragState.clientY - dragState.offsetY}px`,
+                }}
+              >
+                <ExplorerPreferenceCard
+                  label={dragState.option.label}
+                  active={explorerPreferencesDraft[dragState.sectionKey][dragState.option.key]}
+                  isDragging
+                  isGhost
+                >
+                  {renderExplorerOptionPreview(dragState.option)}
+                </ExplorerPreferenceCard>
+              </div>,
+              document.body
+            )
+            : null}
 
           </>
         )}
@@ -793,9 +1336,9 @@ function WorkoutAveragesTable({ workoutName, metrics }) {
         <h4>Averages</h4>
         <p>Session and set-level benchmarks for {workoutName}.</p>
       </div>
-      <div className="workout-averages-table" role="table" aria-label="Workout averages">
-        {metrics.map((metric) => (
-          <div key={metric.label} className="workout-averages-row" role="row">
+        <div className="workout-averages-table" role="table" aria-label="Workout averages">
+          {metrics.map((metric) => (
+          <div key={metric.key || metric.label} className="workout-averages-row" role="row">
             <span className="workout-averages-label" role="cell">{metric.label}</span>
             <strong className="workout-averages-value" role="cell">{metric.value}</strong>
           </div>
@@ -803,6 +1346,554 @@ function WorkoutAveragesTable({ workoutName, metrics }) {
       </div>
     </div>
   );
+}
+
+function WorkoutExplorerPickerRow({
+  workout,
+  active,
+  onSelect,
+  rowRef = undefined,
+  hideRank = false,
+  rightLabel = undefined,
+  rightLabelColor = undefined,
+}) {
+  const hasRightLabel = rightLabel !== undefined && rightLabel !== "";
+
+  return (
+    <button
+      ref={rowRef}
+      type="button"
+      className={[
+        active ? "breakdown-workout-row active" : "breakdown-workout-row",
+        hideRank ? "without-rank" : "",
+      ].filter(Boolean).join(" ")}
+      onClick={onSelect}
+    >
+      {hideRank ? null : <span className="breakdown-workout-rank">{workout.rank}</span>}
+      <span className="breakdown-workout-copy">
+        <strong>
+          <span
+            className="breakdown-workout-dot"
+            style={{ backgroundColor: workout.color || getWorkoutColor(workout.name) }}
+            aria-hidden="true"
+          />
+          {workout.name}
+        </strong>
+        <span>{workout.count} sessions</span>
+      </span>
+      {rightLabel !== undefined ? (
+        hasRightLabel ? (
+          <span
+            className="qs-dropdown-badge workout-picker-group-badge"
+            style={rightLabelColor ? { "--qs-badge-color": rightLabelColor } : undefined}
+          >
+            {rightLabel}
+          </span>
+        ) : null
+      ) : (
+        <span className="breakdown-workout-share">{workout.share}%</span>
+      )}
+    </button>
+  );
+}
+
+function ExplorerMetricPreview({ label, value, accent = false }) {
+  return (
+    <div className={accent ? "explorer-metric-preview explorer-metric-preview-accent" : "explorer-metric-preview"}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ExplorerAveragePreview({ value }) {
+  return (
+    <div className="explorer-average-preview">
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function normalizeExplorerPreferences(preferences, stats = null) {
+  const defaultPreferences = buildDefaultExplorerPreferences(stats);
+  return {
+    statCards: {
+      ...defaultPreferences.statCards,
+      ...(preferences?.statCards || {}),
+    },
+    averages: {
+      ...defaultPreferences.averages,
+      ...(preferences?.averages || {}),
+    },
+    charts: {
+      ...defaultPreferences.charts,
+      ...(preferences?.charts || {}),
+    },
+    statCardOrder: normalizeExplorerOrder(preferences?.statCardOrder),
+    averageOrder: normalizeExplorerOrder(preferences?.averageOrder),
+    chartOrder: normalizeExplorerOrder(preferences?.chartOrder),
+  };
+}
+
+function normalizeExplorerOrder(order) {
+  if (!Array.isArray(order)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return order.filter((key) => {
+    if (typeof key !== "string" || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildDefaultExplorerPreferences(stats) {
+  const defaults = {
+    statCards: {
+      ...defaultExplorerPreferences.statCards,
+      bestWeight: false,
+      highestReps: false,
+      farthestDistance: false,
+      longestDuration: false,
+      shortestDuration: false,
+      bestPace: false,
+      estimatedOneRepMax: false,
+    },
+    averages: {
+      ...defaultExplorerPreferences.averages,
+    },
+    charts: {
+      ...defaultExplorerPreferences.charts,
+      estimatedOneRepMaxTrend: false,
+    },
+  };
+
+  if (!stats) {
+    return defaults;
+  }
+
+  const fields = stats.fields || {};
+
+  if (fields.weight) {
+    defaults.statCards.bestWeight = true;
+  }
+
+  if (fields.reps) {
+    defaults.statCards.highestReps = true;
+  }
+
+  if (fields.weight && fields.reps) {
+    defaults.statCards.estimatedOneRepMax = true;
+    defaults.charts.estimatedOneRepMaxTrend = true;
+  }
+
+  if (fields.distance) {
+    defaults.statCards.farthestDistance = true;
+  }
+
+  if (fields.duration && !fields.weight && !fields.distance) {
+    defaults.statCards.shortestDuration = true;
+  }
+
+  if (fields.distance && fields.duration) {
+    defaults.statCards.bestPace = true;
+  }
+
+  return defaults;
+}
+
+function buildSelectedWorkoutStatCards(stats, preferences, onFocusWorkout) {
+  if (!stats) {
+    return [];
+  }
+
+  return applyExplorerOrder((stats.availableStatCards || []), preferences.statCardOrder)
+    .filter((card) => preferences.statCards[card.key] !== false)
+    .map((card) => ({
+      ...card,
+      onClick: card.workoutId ? () => onFocusWorkout(card.workoutId) : undefined,
+    }));
+}
+
+function buildVisibleAverageMetrics(metrics, preferences) {
+  if (!metrics || metrics.length === 0) {
+    return [];
+  }
+
+  return applyExplorerOrder(metrics, preferences.averageOrder)
+    .filter((metric) => preferences.averages[metric.key] !== false);
+}
+
+function buildSelectedWorkoutCharts(stats, preferences) {
+  if (!stats) {
+    return [];
+  }
+
+  if ((stats.sessionsLogged || 0) < 2) {
+    return [];
+  }
+
+  const charts = [];
+
+  if (preferences.charts.performanceTrend) {
+    charts.push({
+      key: "performanceTrend",
+      type: "line",
+      title: stats.performanceTrend.title,
+      subtitle: stats.performanceTrend.shortSubtitle || stats.performanceTrend.subtitle,
+      points: stats.performanceTrend.points,
+      yTickFormatter: stats.performanceTrend.yTickFormatter,
+      tickMode: stats.performanceTrend.tickMode,
+      startAtZero: stats.performanceTrend.startAtZero,
+    });
+  }
+
+  if (preferences.charts.estimatedOneRepMaxTrend && stats.estimatedOneRepMaxTrend?.points?.length) {
+    charts.push({
+      key: "estimatedOneRepMaxTrend",
+      type: "line",
+      title: stats.estimatedOneRepMaxTrend.title,
+      subtitle: stats.estimatedOneRepMaxTrend.shortSubtitle || stats.estimatedOneRepMaxTrend.subtitle,
+      points: stats.estimatedOneRepMaxTrend.points,
+      yTickFormatter: stats.estimatedOneRepMaxTrend.yTickFormatter,
+      tickMode: stats.estimatedOneRepMaxTrend.tickMode,
+      startAtZero: stats.estimatedOneRepMaxTrend.startAtZero,
+    });
+  }
+
+  if (preferences.charts.setVolumeTrend) {
+    charts.push({
+      key: "setVolumeTrend",
+      type: "bar",
+      title: "Set Volume Trend",
+      subtitle: "Last 12 sessions",
+      points: stats.setVolumeTrend,
+    });
+  }
+
+  if (preferences.charts.monthlyFrequency) {
+    charts.push({
+      key: "monthlyFrequency",
+      type: "bar",
+      title: "Monthly Frequency",
+      subtitle: "Recent months",
+      points: stats.monthlyFrequency,
+    });
+  }
+
+  return applyExplorerOrder(charts, preferences.chartOrder);
+}
+
+function buildExplorerEditSections(stats) {
+  if (!stats) {
+    return [];
+  }
+
+  const sections = [];
+  const statOptions = (stats.availableStatCards || []).map((card) => ({
+    key: card.key,
+    label: card.label,
+    preview: {
+      type: "metric",
+      label: card.label,
+      value: card.value,
+      accent: card.accent,
+    },
+  }));
+  const averageOptions = [];
+  const chartOptions = [];
+  const chartsUnavailable = (stats.sessionsLogged || 0) < 2;
+
+  averageOptions.push(...(stats.averageMetrics || []).map((metric) => ({
+    key: metric.key,
+    label: metric.label,
+    preview: {
+      type: "average",
+      value: metric.value,
+    },
+  })));
+
+  if (stats.performanceTrend?.points?.length) {
+    chartOptions.push({
+      key: "performanceTrend",
+      label: stats.performanceTrend.title,
+      preview: {
+        type: chartsUnavailable ? "emptyChart" : "lineChart",
+        message: "NOT ENOUGH DATA",
+        points: stats.performanceTrend.points,
+        yTickFormatter: stats.performanceTrend.yTickFormatter,
+        tickMode: stats.performanceTrend.tickMode,
+        startAtZero: stats.performanceTrend.startAtZero,
+      },
+    });
+  }
+
+  if (stats.estimatedOneRepMaxTrend?.points?.length) {
+    chartOptions.push({
+      key: "estimatedOneRepMaxTrend",
+      label: stats.estimatedOneRepMaxTrend.title,
+      preview: {
+        type: chartsUnavailable ? "emptyChart" : "lineChart",
+        message: "NOT ENOUGH DATA",
+        points: stats.estimatedOneRepMaxTrend.points,
+        yTickFormatter: stats.estimatedOneRepMaxTrend.yTickFormatter,
+        tickMode: stats.estimatedOneRepMaxTrend.tickMode,
+        startAtZero: stats.estimatedOneRepMaxTrend.startAtZero,
+      },
+    });
+  }
+
+  chartOptions.push({
+    key: "setVolumeTrend",
+    label: "Set Volume Trend",
+    preview: {
+      type: chartsUnavailable ? "emptyChart" : "barChart",
+      message: "NOT ENOUGH DATA",
+      points: stats.setVolumeTrend,
+    },
+  });
+  chartOptions.push({
+    key: "monthlyFrequency",
+    label: "Monthly Frequency",
+    preview: {
+      type: chartsUnavailable ? "emptyChart" : "barChart",
+      message: "NOT ENOUGH DATA",
+      points: stats.monthlyFrequency,
+    },
+  });
+
+  sections.push(
+    {
+      key: "statCards",
+      title: "Stat Cards",
+      subtitle: "Choose which quick-hit cards appear at the top.",
+      options: statOptions,
+    },
+    {
+      key: "averages",
+      title: "Averages",
+      subtitle: "Show or hide the session and set-level averages table rows.",
+      options: averageOptions,
+    },
+    {
+      key: "charts",
+      title: "Charts",
+      subtitle: "Control which trend charts show up for this workout.",
+      options: chartOptions,
+    },
+  );
+
+  return sections.filter((section) => section.options.length > 0);
+}
+
+function getExplorerOrderKey(sectionKey) {
+  if (sectionKey === "statCards") {
+    return "statCardOrder";
+  }
+
+  if (sectionKey === "averages") {
+    return "averageOrder";
+  }
+
+  return "chartOrder";
+}
+
+function getExplorerSectionOptionKeys(sectionKey, stats) {
+  if (!stats) {
+    return [];
+  }
+
+  if (sectionKey === "statCards") {
+    return (stats.availableStatCards || []).map((card) => card.key);
+  }
+
+  if (sectionKey === "averages") {
+    return (stats.averageMetrics || []).map((metric) => metric.key);
+  }
+
+  const keys = [];
+  if (stats.performanceTrend?.points?.length) {
+    keys.push("performanceTrend");
+  }
+  if (stats.estimatedOneRepMaxTrend?.points?.length) {
+    keys.push("estimatedOneRepMaxTrend");
+  }
+  keys.push("setVolumeTrend", "monthlyFrequency");
+  return keys;
+}
+
+function applyExplorerOrder(items, order) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  const itemMap = new Map(items.map((item) => [item.key, item]));
+  const orderedItems = [];
+  const seen = new Set();
+
+  (Array.isArray(order) ? order : []).forEach((key) => {
+    const item = itemMap.get(key);
+    if (!item || seen.has(key)) {
+      return;
+    }
+    orderedItems.push(item);
+    seen.add(key);
+  });
+
+  items.forEach((item) => {
+    if (!seen.has(item.key)) {
+      orderedItems.push(item);
+    }
+  });
+
+  return orderedItems;
+}
+
+function applyExplorerKeyOrder(keys, order) {
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return [];
+  }
+
+  const allowedKeys = new Set(keys);
+  const orderedKeys = [];
+  const seen = new Set();
+
+  (Array.isArray(order) ? order : []).forEach((key) => {
+    if (!allowedKeys.has(key) || seen.has(key)) {
+      return;
+    }
+
+    orderedKeys.push(key);
+    seen.add(key);
+  });
+
+  keys.forEach((key) => {
+    if (!seen.has(key)) {
+      orderedKeys.push(key);
+    }
+  });
+
+  return orderedKeys;
+}
+
+function getExplorerDisplayOptions(options, dragState, sectionKey) {
+  if (!dragState || dragState.sectionKey !== sectionKey) {
+    return options;
+  }
+
+  return moveExplorerOptionToIndex(options, dragState.key, dragState.targetIndex);
+}
+
+function moveExplorerOptionToIndex(items, optionKey, targetIndex) {
+  const currentIndex = items.findIndex((item) => item.key === optionKey);
+  if (currentIndex < 0) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(currentIndex, 1);
+  const normalizedTargetIndex = Math.max(0, Math.min(targetIndex, nextItems.length));
+  nextItems.splice(normalizedTargetIndex, 0, movedItem);
+  return nextItems;
+}
+
+function moveExplorerKeyToIndex(keys, optionKey, targetIndex) {
+  const currentIndex = keys.indexOf(optionKey);
+  if (currentIndex < 0) {
+    return keys;
+  }
+
+  const nextKeys = [...keys];
+  const [movedKey] = nextKeys.splice(currentIndex, 1);
+  const normalizedTargetIndex = Math.max(0, Math.min(targetIndex, nextKeys.length));
+  nextKeys.splice(normalizedTargetIndex, 0, movedKey);
+  return nextKeys;
+}
+
+function arraysEqual(left, right) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function getExplorerDragTargetIndex(slotRects, clientX, clientY) {
+  if (!Array.isArray(slotRects) || slotRects.length === 0) {
+    return 0;
+  }
+
+  const containingSlot = slotRects.find((slot) =>
+    clientX >= slot.left
+    && clientX <= slot.right
+    && clientY >= slot.top
+    && clientY <= slot.bottom
+  );
+
+  if (containingSlot) {
+    return containingSlot.index;
+  }
+
+  return slotRects.reduce((closestSlot, slot) => {
+    const slotDistance = Math.hypot(slot.centerX - clientX, slot.centerY - clientY);
+    const closestDistance = Math.hypot(closestSlot.centerX - clientX, closestSlot.centerY - clientY);
+    return slotDistance < closestDistance ? slot : closestSlot;
+  }, slotRects[0]).index;
+}
+
+function renderExplorerOptionPreview(option) {
+  if (!option.preview) {
+    return null;
+  }
+
+  if (option.preview.type === "metric") {
+    return (
+      <ExplorerMetricPreview
+        label={option.preview.label}
+        value={option.preview.value}
+        accent={option.preview.accent}
+      />
+    );
+  }
+
+  if (option.preview.type === "average") {
+    return <ExplorerAveragePreview value={option.preview.value} />;
+  }
+
+  if (option.preview.type === "lineChart") {
+    return (
+      <div className="explorer-chart-preview">
+        <LineTrendChart
+          points={option.preview.points}
+          yTickFormatter={option.preview.yTickFormatter}
+          tickMode={option.preview.tickMode}
+          startAtZero={option.preview.startAtZero}
+          compact
+        />
+      </div>
+    );
+  }
+
+  if (option.preview.type === "barChart") {
+    return (
+      <div className="explorer-chart-preview">
+        <BarTrendChart points={option.preview.points} compact />
+      </div>
+    );
+  }
+
+  if (option.preview.type === "emptyChart") {
+    return (
+      <div className="explorer-chart-preview explorer-chart-preview-empty">
+        <span>{option.preview.message}</span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function DonutBreakdownChart({ segments, total, activeCategoryKey, onSelectCategory }) {
@@ -982,7 +2073,7 @@ function getLineChartScale(values, { startAtZero = false, tickMode }) {
   return { minValue, maxValue, ticks };
 }
 
-function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false, onPointClick }) {
+function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false, onPointClick, compact = false }) {
   if (!points || points.length === 0) {
     return <p className="chart-empty">Not enough data yet.</p>;
   }
@@ -1020,9 +2111,14 @@ function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false,
   )).join(" ");
 
   return (
-    <div className="line-chart-wrap">
+    <div className={compact ? "line-chart-wrap is-compact" : "line-chart-wrap"}>
       <div className="line-chart-area">
-        <svg viewBox={`0 0 ${width} ${height}`} className="line-chart" role="img" aria-label="Workout trend line">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className={compact ? "line-chart is-compact" : "line-chart"}
+          role="img"
+          aria-label="Workout trend line"
+        >
           {yTicks.map((tick) => (
             <g key={tick.key}>
               <line
@@ -1078,7 +2174,7 @@ function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false,
           ))}
         </svg>
       </div>
-      <div className="chart-axis-labels">
+      <div className={compact ? "chart-axis-labels is-compact" : "chart-axis-labels"}>
         <span>{points[0].label}</span>
         <span>{points[points.length - 1].label}</span>
       </div>
@@ -1086,7 +2182,7 @@ function LineTrendChart({ points, yTickFormatter, tickMode, startAtZero = false,
   );
 }
 
-function BarTrendChart({ points, scrollable = false, defaultToEnd = false }) {
+function BarTrendChart({ points, scrollable = false, defaultToEnd = false, compact = false }) {
   const scrollRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -1103,7 +2199,7 @@ function BarTrendChart({ points, scrollable = false, defaultToEnd = false }) {
 
   const maxValue = Math.max(...points.map((point) => point.value), 1);
   const chart = (
-    <div className={scrollable ? "bar-chart is-scrollable" : "bar-chart"}>
+    <div className={scrollable ? `bar-chart is-scrollable${compact ? " is-compact" : ""}` : `bar-chart${compact ? " is-compact" : ""}`}>
       {points.map((point) => (
         <div key={point.label} className="bar-chart-column">
           <span className="bar-chart-value">{point.value}</span>
@@ -1134,6 +2230,31 @@ function BarTrendChart({ points, scrollable = false, defaultToEnd = false }) {
 
 function CalendarHeatmap({ weeks }) {
   const scrollRef = React.useRef(null);
+  const [cellSize, setCellSize] = React.useState(16);
+  const minimumCellSize = 16;
+  const maximumCellSize = 28;
+
+  React.useLayoutEffect(() => {
+    const scrollElement = scrollRef.current;
+    if (!scrollElement) {
+      return undefined;
+    }
+
+    const updateCellSize = () => {
+      const weekCount = Math.max(weeks.length, 1);
+      const gap = 4;
+      const availableWidth = scrollElement.clientWidth;
+      const nextSize = Math.floor((availableWidth - gap * (weekCount - 1)) / weekCount);
+      setCellSize(Math.max(minimumCellSize, Math.min(maximumCellSize, nextSize)));
+    };
+
+    updateCellSize();
+
+    const resizeObserver = new ResizeObserver(updateCellSize);
+    resizeObserver.observe(scrollElement);
+
+    return () => resizeObserver.disconnect();
+  }, [weeks.length]);
 
   React.useEffect(() => {
     if (!scrollRef.current) {
@@ -1144,7 +2265,10 @@ function CalendarHeatmap({ weeks }) {
   }, [weeks]);
 
   return (
-    <div className="heatmap">
+    <div
+      className="heatmap"
+      style={{ "--heatmap-cell-size": `${cellSize}px` }}
+    >
       <div className="heatmap-days">
         {weekdayLabels.map((label, index) => (
           <span key={`${label}-${index}`}>{label}</span>
@@ -1499,25 +2623,25 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
   ).toFixed(1);
   const lastPerformedWorkout = selectedWorkouts[selectedWorkouts.length - 1];
   const lastPerformed = formatReadableDate(lastPerformedWorkout.date);
-  const bestMetric = getBestMetric(selectedWorkouts, fields, measurements);
-  const secondaryBestMetric = getSecondaryBestMetric(selectedWorkouts, fields, measurements);
-  const mostRepsInSet = getMostRepsInSet(selectedWorkouts);
+  const availableStatCards = buildWorkoutExplorerAvailableStatCards(
+    selectedWorkouts,
+    fields,
+    measurements,
+    lastPerformedWorkout
+  );
   const averageMetrics = buildWorkoutAverageMetrics(selectedWorkouts, fields, measurements, averageSetsPerSession);
 
   return {
+    templateId: representativeWorkout.templateId || "",
+    fields,
     sessionsLogged,
     averageSetsPerSession,
     lastPerformed,
     lastPerformedWorkoutId: lastPerformedWorkout.id,
-    bestMetricLabel: bestMetric.label,
-    bestMetricValue: bestMetric.value,
-    bestMetricWorkoutId: bestMetric.workoutId || "",
-    secondaryBestMetricLabel: secondaryBestMetric.label,
-    secondaryBestMetricValue: secondaryBestMetric.value,
-    mostRepsInSet: mostRepsInSet.value,
-    mostRepsWorkoutId: mostRepsInSet.workoutId || "",
+    availableStatCards,
     averageMetrics,
     performanceTrend: buildPerformanceTrend(selectedWorkouts, fields, measurements),
+    estimatedOneRepMaxTrend: buildEstimatedOneRepMaxTrend(selectedWorkouts, fields, measurements),
     setVolumeTrend: selectedWorkouts.slice(-12).map((workout, index) => ({
       label: `S${index + 1}`,
       value: workout.sets?.length || 0,
@@ -1556,97 +2680,288 @@ function classifyWorkout(workout) {
   return "other";
 }
 
-function getBestMetric(workouts, fields, measurements) {
+function buildWorkoutExplorerAvailableStatCards(workouts, fields, measurements, lastPerformedWorkout) {
+  const cards = [
+    {
+      key: "lastPerformed",
+      label: "Last Performed",
+      value: formatReadableDate(lastPerformedWorkout.date),
+      workoutId: lastPerformedWorkout.id,
+      accent: false,
+    },
+  ];
+
   if (fields.weight) {
-    const bestSet = workouts.reduce((bestWorkoutSet, workout) => {
-      const workoutBestSet = (workout.sets || []).reduce((bestSetForWorkout, set) => {
-        const weight = Number(set.weight) || 0;
-        const reps = Number(set.reps) || 0;
-
-        if (!bestSetForWorkout || weight > bestSetForWorkout.weight || (weight === bestSetForWorkout.weight && reps > bestSetForWorkout.reps)) {
-          return { weight, reps, workoutId: workout.id };
-        }
-
-        return bestSetForWorkout;
-      }, null);
-
-      if (!workoutBestSet) {
-        return bestWorkoutSet;
-      }
-
-      if (!bestWorkoutSet || workoutBestSet.weight > bestWorkoutSet.weight || (workoutBestSet.weight === bestWorkoutSet.weight && workoutBestSet.reps > bestWorkoutSet.reps)) {
-        return workoutBestSet;
-      }
-
-      return bestWorkoutSet;
-    }, null);
-
-    if (!bestSet || bestSet.weight <= 0) {
-      return { label: "Best Weight", value: `0 ${formatMeasurementUnit(measurements.weight, "LBs")}`, workoutId: "" };
+    const bestWeight = getBestWeightMetric(workouts, measurements);
+    if (bestWeight) {
+      cards.push(bestWeight);
     }
+  }
 
-    const repsSuffix = bestSet.reps > 0 ? ` (${bestSet.reps} rep${bestSet.reps === 1 ? "" : "s"})` : "";
-    return {
-      label: "Best Weight",
-      value: `${bestSet.weight} ${formatMeasurementUnit(measurements.weight, "LBs")}${repsSuffix}`,
-      workoutId: bestSet.workoutId,
-    };
+  if (fields.weight && fields.reps) {
+    const estimatedOneRepMax = getEstimatedOneRepMaxMetric(workouts, measurements);
+    if (estimatedOneRepMax) {
+      cards.push(estimatedOneRepMax);
+    }
+  }
+
+  if (fields.reps) {
+    const highestReps = getMostRepsMetric(workouts);
+    if (highestReps) {
+      cards.push(highestReps);
+    }
   }
 
   if (fields.distance) {
-    const bestDistance = workouts.reduce((bestWorkoutDistance, workout) => {
-      const workoutBestDistance = Math.max(...(workout.sets || []).map((set) => Number(set.distance) || 0));
-
-      if (!bestWorkoutDistance || workoutBestDistance > bestWorkoutDistance.distance) {
-        return { distance: workoutBestDistance, workoutId: workout.id };
-      }
-
-      return bestWorkoutDistance;
-    }, null);
-    return {
-      label: "Best Distance",
-      value: `${(bestDistance?.distance || 0).toFixed(1)} ${formatMeasurementUnit(measurements.distance, "Miles")}`,
-      workoutId: bestDistance?.workoutId || "",
-    };
+    const farthestDistance = getFarthestDistanceMetric(workouts, measurements);
+    if (farthestDistance) {
+      cards.push(farthestDistance);
+    }
   }
 
   if (fields.duration) {
-    const bestDuration = workouts.reduce((bestWorkoutDuration, workout) => {
-      const workoutBestDuration = Math.min(...(workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || Number.MAX_SAFE_INTEGER));
+    const longestDuration = getLongestDurationMetric(workouts);
+    if (longestDuration) {
+      cards.push(longestDuration);
+    }
 
-      if (!bestWorkoutDuration || workoutBestDuration < bestWorkoutDuration.duration) {
-        return { duration: workoutBestDuration, workoutId: workout.id };
-      }
-
-      return bestWorkoutDuration;
-    }, null);
-    return {
-      label: "Best Duration",
-      value: !bestDuration || bestDuration.duration === Number.MAX_SAFE_INTEGER ? "N/A" : formatSeconds(bestDuration.duration),
-      workoutId: bestDuration?.workoutId || "",
-    };
+    const shortestDuration = getShortestDurationMetric(workouts);
+    if (shortestDuration) {
+      cards.push(shortestDuration);
+    }
   }
 
-  return { label: "", value: "", workoutId: "" };
+  if (fields.distance && fields.duration) {
+    const bestPace = getBestPaceMetric(workouts, measurements);
+    if (bestPace) {
+      cards.push(bestPace);
+    }
+  }
+
+  return cards;
 }
 
-function getSecondaryBestMetric(workouts, fields, measurements) {
-  if (fields.distance && fields.duration) {
-    const paceValues = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+function getBestWeightMetric(workouts, measurements) {
+  const bestSet = workouts.reduce((bestWorkoutSet, workout) => {
+    const workoutBestSet = (workout.sets || []).reduce((bestSetForWorkout, set) => {
+      const weight = Number(set.weight) || 0;
+      const reps = Number(set.reps) || 0;
+
+      if (!bestSetForWorkout || weight > bestSetForWorkout.weight || (weight === bestSetForWorkout.weight && reps > bestSetForWorkout.reps)) {
+        return { weight, reps, workoutId: workout.id };
+      }
+
+      return bestSetForWorkout;
+    }, null);
+
+    if (!workoutBestSet) {
+      return bestWorkoutSet;
+    }
+
+    if (!bestWorkoutSet || workoutBestSet.weight > bestWorkoutSet.weight || (workoutBestSet.weight === bestWorkoutSet.weight && workoutBestSet.reps > bestWorkoutSet.reps)) {
+      return workoutBestSet;
+    }
+
+    return bestWorkoutSet;
+  }, null);
+
+  if (!bestSet || bestSet.weight <= 0) {
+    return null;
+  }
+
+  const repsSuffix = bestSet.reps > 0 ? ` (${bestSet.reps} rep${bestSet.reps === 1 ? "" : "s"})` : "";
+  return {
+    key: "bestWeight",
+    label: "Best Weight",
+    value: `${bestSet.weight} ${formatMeasurementUnit(measurements.weight, "LBs")}${repsSuffix}`,
+    workoutId: bestSet.workoutId,
+    accent: true,
+  };
+}
+
+function estimateOneRepMax(weight, reps) {
+  if (!Number.isFinite(weight) || !Number.isFinite(reps) || weight <= 0 || reps <= 0) {
+    return null;
+  }
+
+  return weight * (1 + reps / 30);
+}
+
+function getBestEstimatedOneRepMaxSet(workout) {
+  return (workout.sets || []).reduce((bestSet, set) => {
+    const weight = Number(set.weight);
+    const reps = Number(set.reps);
+    const estimatedOneRepMax = estimateOneRepMax(weight, reps);
+
+    if (!estimatedOneRepMax) {
+      return bestSet;
+    }
+
+    if (
+      !bestSet
+      || estimatedOneRepMax > bestSet.estimatedOneRepMax
+      || (estimatedOneRepMax === bestSet.estimatedOneRepMax && weight > bestSet.weight)
+    ) {
+      return {
+        estimatedOneRepMax,
+        weight,
+        reps,
+      };
+    }
+
+    return bestSet;
+  }, null);
+}
+
+function getEstimatedOneRepMaxMetric(workouts, measurements) {
+  const bestSet = workouts.reduce((bestWorkoutSet, workout) => {
+    const workoutBestSet = getBestEstimatedOneRepMaxSet(workout);
+
+    if (!workoutBestSet) {
+      return bestWorkoutSet;
+    }
+
+    if (
+      !bestWorkoutSet
+      || workoutBestSet.estimatedOneRepMax > bestWorkoutSet.estimatedOneRepMax
+      || (
+        workoutBestSet.estimatedOneRepMax === bestWorkoutSet.estimatedOneRepMax
+        && workoutBestSet.weight > bestWorkoutSet.weight
+      )
+    ) {
+      return {
+        ...workoutBestSet,
+        workoutId: workout.id,
+      };
+    }
+
+    return bestWorkoutSet;
+  }, null);
+
+  if (!bestSet) {
+    return null;
+  }
+
+  return {
+    key: "estimatedOneRepMax",
+    label: "Estimated 1RM",
+    value: `${Math.round(bestSet.estimatedOneRepMax)} ${formatMeasurementUnit(measurements.weight, "LBs")}`,
+    workoutId: bestSet.workoutId,
+    accent: true,
+  };
+}
+
+function getFarthestDistanceMetric(workouts, measurements) {
+  const bestDistance = workouts.reduce((bestWorkoutDistance, workout) => {
+    const workoutBestDistance = Math.max(...(workout.sets || []).map((set) => Number(set.distance) || 0));
+
+    if (!bestWorkoutDistance || workoutBestDistance > bestWorkoutDistance.distance) {
+      return { distance: workoutBestDistance, workoutId: workout.id };
+    }
+
+    return bestWorkoutDistance;
+  }, null);
+
+  if (!bestDistance || bestDistance.distance <= 0) {
+    return null;
+  }
+
+  return {
+    key: "farthestDistance",
+    label: "Farthest Distance",
+    value: `${formatAverageNumber(bestDistance.distance)} ${formatMeasurementUnit(measurements.distance, "Miles")}`,
+    workoutId: bestDistance.workoutId,
+    accent: true,
+  };
+}
+
+function getLongestDurationMetric(workouts) {
+  const longestDuration = workouts.reduce((bestWorkoutDuration, workout) => {
+    const workoutLongestDuration = Math.max(...(workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || 0));
+
+    if (!bestWorkoutDuration || workoutLongestDuration > bestWorkoutDuration.duration) {
+      return { duration: workoutLongestDuration, workoutId: workout.id };
+    }
+
+    return bestWorkoutDuration;
+  }, null);
+
+  if (!longestDuration || longestDuration.duration <= 0) {
+    return null;
+  }
+
+  return {
+    key: "longestDuration",
+    label: "Longest Duration",
+    value: formatSeconds(longestDuration.duration),
+    workoutId: longestDuration.workoutId,
+    accent: true,
+  };
+}
+
+function getShortestDurationMetric(workouts) {
+  const shortestDuration = workouts.reduce((bestWorkoutDuration, workout) => {
+    const workoutShortestDuration = Math.min(...(workout.sets || []).map((set) => parseDurationToSeconds(set.duration) || Number.MAX_SAFE_INTEGER));
+
+    if (!bestWorkoutDuration || workoutShortestDuration < bestWorkoutDuration.duration) {
+      return { duration: workoutShortestDuration, workoutId: workout.id };
+    }
+
+    return bestWorkoutDuration;
+  }, null);
+
+  if (!shortestDuration || shortestDuration.duration === Number.MAX_SAFE_INTEGER) {
+    return null;
+  }
+
+  return {
+    key: "shortestDuration",
+    label: "Shortest Duration",
+    value: formatSeconds(shortestDuration.duration),
+    workoutId: shortestDuration.workoutId,
+    accent: true,
+  };
+}
+
+function getBestPaceMetric(workouts, measurements) {
+  const bestPace = workouts.reduce((bestWorkoutPace, workout) => {
+    const workoutBestPace = (workout.sets || []).reduce((bestPaceForWorkout, set) => {
       const durationSeconds = parseDurationToSeconds(set.duration);
       const distance = Number(set.distance);
       if (!durationSeconds || !distance) {
-        return null;
+        return bestPaceForWorkout;
       }
 
-      return durationSeconds / distance;
-    }).filter(Boolean));
+      const pace = durationSeconds / distance;
+      if (!bestPaceForWorkout || pace < bestPaceForWorkout.pace) {
+        return { pace, workoutId: workout.id };
+      }
 
-    const bestPace = paceValues.length > 0 ? Math.min(...paceValues) : 0;
-    return { label: "Best Pace", value: formatPace(bestPace, measurements.distance) };
+      return bestPaceForWorkout;
+    }, null);
+
+    if (!workoutBestPace) {
+      return bestWorkoutPace;
+    }
+
+    if (!bestWorkoutPace || workoutBestPace.pace < bestWorkoutPace.pace) {
+      return workoutBestPace;
+    }
+
+    return bestWorkoutPace;
+  }, null);
+
+  if (!bestPace || !Number.isFinite(bestPace.pace) || bestPace.pace <= 0) {
+    return null;
   }
 
-  return { label: "", value: "" };
+  return {
+    key: "bestPace",
+    label: "Best Pace",
+    value: formatPace(bestPace.pace, measurements.distance),
+    workoutId: bestPace.workoutId,
+    accent: true,
+  };
 }
 
 function getWorkoutTrendMetric(workout, metricKey) {
@@ -1748,7 +3063,7 @@ function getPerformanceTrendConfig(fields, measurements) {
   if (fields.weight) {
     return {
       metricKey: "weight",
-      title: "Average Weight Trend",
+      title: "Weight Trend",
       subtitle: "Average working-set weight by session",
       shortSubtitle: "Working-set average",
       yTickFormatter: (value) => String(Math.round(value)),
@@ -1808,7 +3123,7 @@ function getPerformanceTrendConfig(fields, measurements) {
   return null;
 }
 
-function getMostRepsInSet(workouts) {
+function getMostRepsMetric(workouts) {
   const bestRepSet = workouts.reduce((bestWorkoutReps, workout) => {
     const workoutBestReps = (workout.sets || []).reduce((bestRepsForWorkout, set) => {
       const reps = Number(set.reps);
@@ -1835,25 +3150,32 @@ function getMostRepsInSet(workouts) {
   }, null);
 
   if (!bestRepSet) {
-    return { value: "N/A", workoutId: "" };
+    return null;
   }
 
-  return { value: String(bestRepSet.reps), workoutId: bestRepSet.workoutId };
+  return {
+    key: "highestReps",
+    label: "Highest Reps",
+    value: String(bestRepSet.reps),
+    workoutId: bestRepSet.workoutId,
+    accent: true,
+  };
 }
 
 function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsPerSession) {
   const metrics = [
-    { label: "Average Sets / Session", value: averageSetsPerSession },
+    { key: "averageSetsPerSession", label: "Average Sets / Session", value: averageSetsPerSession },
   ];
 
   if (fields.reps) {
     const averageReps = getAverageFromSets(workouts, (set) => Number(set.reps));
-    metrics.push({ label: "Average Reps / Set", value: averageReps === null ? "N/A" : formatAverageNumber(averageReps) });
+    metrics.push({ key: "averageRepsPerSet", label: "Average Reps / Set", value: averageReps === null ? "N/A" : formatAverageNumber(averageReps) });
   }
 
   if (fields.weight) {
     const averageWeight = getAverageFromSets(workouts, (set) => Number(set.weight));
     metrics.push({
+      key: "averageWeightPerSet",
       label: "Average Weight / Set",
       value: averageWeight === null
         ? "N/A"
@@ -1864,6 +3186,7 @@ function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsP
   if (fields.duration) {
     const averageDurationSeconds = getAverageFromSets(workouts, (set) => parseDurationToSeconds(set.duration));
     metrics.push({
+      key: "averageTimePerSet",
       label: "Average Time / Set",
       value: averageDurationSeconds === null ? "N/A" : formatSeconds(Math.round(averageDurationSeconds)),
     });
@@ -1885,6 +3208,7 @@ function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsP
       : null;
 
     metrics.push({
+      key: "averagePace",
       label: "Average Pace",
       value: averagePace === null ? "N/A" : formatPace(averagePace, measurements.distance),
     });
@@ -1944,6 +3268,37 @@ function buildPerformanceTrend(workouts, fields, measurements) {
     title: "Session Trend",
     subtitle: "Workout frequency over time",
     points: [],
+  };
+}
+
+function buildEstimatedOneRepMaxTrend(workouts, fields, measurements) {
+  if (!fields.weight || !fields.reps) {
+    return null;
+  }
+
+  const points = workouts.map((workout) => {
+    const bestSet = getBestEstimatedOneRepMaxSet(workout);
+
+    if (!bestSet) {
+      return null;
+    }
+
+    return {
+      label: shortDateLabel(workout.date),
+      value: bestSet.estimatedOneRepMax,
+      workoutId: workout.id,
+      ariaLabel: `${formatReadableDate(workout.date)}: ${Math.round(bestSet.estimatedOneRepMax)} ${formatMeasurementUnit(measurements.weight, "LBs")} estimated 1RM`,
+    };
+  }).filter(Boolean);
+
+  return {
+    title: "Estimated 1RM Trend",
+    subtitle: "Best estimated 1RM by session",
+    shortSubtitle: "Best set each session",
+    yTickFormatter: (value) => String(Math.round(value)),
+    tickMode: "numeric",
+    startAtZero: false,
+    points,
   };
 }
 

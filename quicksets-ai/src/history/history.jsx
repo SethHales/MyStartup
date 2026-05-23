@@ -41,7 +41,11 @@ const monthNames = [
 export function History({ currentUser = null }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [historyView, setHistoryView] = React.useState('date');
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
+  const [expandedGroupKeys, setExpandedGroupKeys] = React.useState([]);
+  const [expandedGroupWorkoutKeys, setExpandedGroupWorkoutKeys] = React.useState([]);
+  const [expandedGroupedSessionId, setExpandedGroupedSessionId] = React.useState(null);
   const [editingWorkout, setEditingWorkout] = React.useState(null);
   const [draftWorkout, setDraftWorkout] = React.useState(null);
   const [openWorkoutMenuId, setOpenWorkoutMenuId] = React.useState(null);
@@ -74,12 +78,21 @@ export function History({ currentUser = null }) {
       }
     };
 
+    const handleViewportChange = () => {
+      setShowFilterMenu(false);
+      setOpenWorkoutMenuId(null);
+    };
+
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("resize", handleViewportChange);
 
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", handleViewportChange);
     };
   }, []);
 
@@ -109,11 +122,34 @@ export function History({ currentUser = null }) {
     () => groupWorkoutsByMonth(filteredWorkouts),
     [filteredWorkouts]
   );
+  const groupedByColor = React.useMemo(
+    () => groupWorkoutsByColorGroup(filteredWorkouts, workoutColorPreferences),
+    [filteredWorkouts, workoutColorPreferences]
+  );
   const activeFilterCount = workoutFilters.length + monthFilters.length + yearFilters.length + (starredOnly ? 1 : 0);
 
   const handleRowClick = React.useCallback((id) => {
     setExpandedWorkoutId((current) =>
       current === id ? null : id
+    );
+  }, []);
+  const toggleGroupKey = React.useCallback((groupKey) => {
+    setExpandedGroupKeys((currentKeys) =>
+      currentKeys.includes(groupKey)
+        ? currentKeys.filter((key) => key !== groupKey)
+        : [...currentKeys, groupKey]
+    );
+  }, []);
+  const toggleGroupWorkoutKey = React.useCallback((groupWorkoutKey) => {
+    setExpandedGroupWorkoutKeys((currentKeys) =>
+      currentKeys.includes(groupWorkoutKey)
+        ? currentKeys.filter((key) => key !== groupWorkoutKey)
+        : [...currentKeys, groupWorkoutKey]
+    );
+  }, []);
+  const toggleGroupedSessionId = React.useCallback((workoutId) => {
+    setExpandedGroupedSessionId((currentId) =>
+      currentId === workoutId ? null : workoutId
     );
   }, []);
 
@@ -147,6 +183,7 @@ export function History({ currentUser = null }) {
         currentWorkouts.filter((workout) => workout.id !== workoutId)
       );
       setExpandedWorkoutId((current) => current === workoutId ? null : current);
+      setExpandedGroupedSessionId((currentId) => currentId === workoutId ? null : currentId);
     } catch (err) {
       console.error('Error deleting workout:', err);
     }
@@ -485,25 +522,53 @@ export function History({ currentUser = null }) {
           <div className="history-filter-copy">
             <p className="history-kicker">History</p>
             <h2>{filteredWorkouts.length} workout{filteredWorkouts.length === 1 ? "" : "s"}</h2>
-            <p className="history-summary">{groupedWorkouts.length} month{groupedWorkouts.length === 1 ? "" : "s"}</p>
+            <p className="history-summary">
+              {historyView === 'date'
+                ? `${groupedWorkouts.length} month${groupedWorkouts.length === 1 ? "" : "s"}`
+                : `${groupedByColor.length} group${groupedByColor.length === 1 ? "" : "s"}`}
+            </p>
           </div>
           <div className="history-toolbar-actions">
-            <button
-              type="button"
-              className="history-import-trigger"
-              onClick={() => setShowImportModal(true)}
-            >
-              Import workouts
-            </button>
-            <div className="history-filter-actions" ref={filterMenuRef}>
+            <div className="history-view-toggle" role="tablist" aria-label="History view">
               <button
                 type="button"
-                className="history-filter-trigger"
-                aria-expanded={showFilterMenu}
-                onClick={() => setShowFilterMenu((current) => !current)}
+                className={historyView === 'date' ? "history-view-toggle-button is-active" : "history-view-toggle-button"}
+                role="tab"
+                aria-selected={historyView === 'date'}
+                onClick={() => setHistoryView('date')}
               >
-                {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+                By Date
               </button>
+              <button
+                type="button"
+                className={historyView === 'group' ? "history-view-toggle-button is-active" : "history-view-toggle-button"}
+                role="tab"
+                aria-selected={historyView === 'group'}
+                onClick={() => setHistoryView('group')}
+              >
+                By Group
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="history-controls-bar">
+          <button
+            type="button"
+            className="history-import-trigger"
+            onClick={() => setShowImportModal(true)}
+          >
+            Import workouts
+          </button>
+          <div className="history-filter-actions" ref={filterMenuRef}>
+            <button
+              type="button"
+              className="history-filter-trigger"
+              aria-expanded={showFilterMenu}
+              onClick={() => setShowFilterMenu((current) => !current)}
+            >
+              {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+            </button>
               {showFilterMenu && (
                 <div className="history-filter-popover">
                   <div className="history-filter-section">
@@ -571,7 +636,6 @@ export function History({ currentUser = null }) {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         </section>
 
@@ -590,19 +654,38 @@ export function History({ currentUser = null }) {
           </section>
         )}
 
-        {!isLoading && groupedWorkouts.length === 0 && (
+        {!isLoading && filteredWorkouts.length === 0 && (
           <section className="history-empty-state">
             <p>No matches.</p>
           </section>
         )}
 
-        {!isLoading && groupedWorkouts.map((group) => (
+        {!isLoading && historyView === 'date' && groupedWorkouts.map((group) => (
           <HistoryMonthSection
             key={group.key}
             group={group}
             expandedWorkoutId={expandedWorkoutId}
             openWorkoutMenuId={openWorkoutMenuId}
             onRowClick={handleRowClick}
+            onToggleStarred={handleToggleStarred}
+            onToggleWorkoutMenu={toggleWorkoutMenu}
+            onOpenEditModal={openEditModal}
+            onSeparateWorkout={handleSeparateWorkout}
+            onDeleteWorkout={handleDeleteWorkout}
+          />
+        ))}
+
+        {!isLoading && historyView === 'group' && groupedByColor.map((group) => (
+          <HistoryColorGroupSection
+            key={group.key}
+            group={group}
+            isExpanded={expandedGroupKeys.includes(group.key)}
+            expandedWorkoutKeys={expandedGroupWorkoutKeys}
+            expandedSessionId={expandedGroupedSessionId}
+            openWorkoutMenuId={openWorkoutMenuId}
+            onToggleGroup={toggleGroupKey}
+            onToggleGroupWorkout={toggleGroupWorkoutKey}
+            onToggleSession={toggleGroupedSessionId}
             onToggleStarred={handleToggleStarred}
             onToggleWorkoutMenu={toggleWorkoutMenu}
             onOpenEditModal={openEditModal}
@@ -1083,10 +1166,95 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
   );
 });
 
+const HistoryColorGroupSection = React.memo(function HistoryColorGroupSection({
+  group,
+  isExpanded,
+  expandedWorkoutKeys,
+  expandedSessionId,
+  openWorkoutMenuId,
+  onToggleGroup,
+  onToggleGroupWorkout,
+  onToggleSession,
+  onToggleStarred,
+  onToggleWorkoutMenu,
+  onOpenEditModal,
+  onSeparateWorkout,
+  onDeleteWorkout,
+}) {
+  const hasOpenMenu = group.workouts.some((workoutGroup) =>
+    workoutGroup.sessions.some((workout) => workout.id === openWorkoutMenuId)
+  );
+
+  return (
+    <section className={hasOpenMenu ? "history-month-group history-month-group-menu-open history-color-group" : "history-month-group history-color-group"}>
+      <button
+        type="button"
+        className={isExpanded ? "history-group-heading history-group-heading-expanded" : "history-group-heading"}
+        onClick={() => onToggleGroup(group.key)}
+      >
+        <span className="history-group-heading-copy">
+          <span className="history-group-swatch" style={{ background: group.color }} aria-hidden="true" />
+          <span>{group.label}</span>
+        </span>
+        <span className="history-group-meta">{group.sessionCount} sessions</span>
+      </button>
+
+      {isExpanded && (
+        <div className="history-group-body">
+          {group.workouts.map((workoutGroup) => {
+            const workoutKey = `${group.key}:${workoutGroup.key}`;
+            const isWorkoutExpanded = expandedWorkoutKeys.includes(workoutKey);
+
+            return (
+              <section key={workoutKey} className="history-group-workout">
+                <button
+                  type="button"
+                  className={isWorkoutExpanded ? "history-group-workout-toggle is-expanded" : "history-group-workout-toggle"}
+                  onClick={() => onToggleGroupWorkout(workoutKey)}
+                >
+                  <span className="history-group-workout-name" style={{ color: workoutGroup.color }}>
+                    {workoutGroup.label}
+                  </span>
+                  <span className="history-group-meta">{workoutGroup.sessions.length} sessions</span>
+                </button>
+
+                {isWorkoutExpanded && (
+                  <table className="history-table table table-dark table-hover history-group-table">
+                    <tbody>
+                      {workoutGroup.sessions.map((workout) => (
+                        <HistoryWorkoutRow
+                          key={workout.id}
+                          workout={workout}
+                          isExpanded={expandedSessionId === workout.id}
+                          isMenuOpen={openWorkoutMenuId === workout.id}
+                          rowLabel={formatImportedWorkoutDate(workout.date)}
+                          rowLabelClassName="history-group-session-date"
+                          onRowClick={onToggleSession}
+                          onToggleStarred={onToggleStarred}
+                          onToggleWorkoutMenu={onToggleWorkoutMenu}
+                          onOpenEditModal={onOpenEditModal}
+                          onSeparateWorkout={onSeparateWorkout}
+                          onDeleteWorkout={onDeleteWorkout}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+});
+
 const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   workout,
   isExpanded,
   isMenuOpen,
+  rowLabel = "",
+  rowLabelClassName = "",
   onRowClick,
   onToggleStarred,
   onToggleWorkoutMenu,
@@ -1187,10 +1355,13 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
             </button>
           </span>
           <span
-            className={workout.isMixed ? "history-workout-name is-mixed" : "history-workout-name"}
-            style={workout.isMixed ? undefined : { color: getWorkoutColor(workout) }}
+            className={[
+              workout.isMixed ? "history-workout-name is-mixed" : "history-workout-name",
+              rowLabelClassName,
+            ].filter(Boolean).join(" ")}
+            style={rowLabel ? undefined : (workout.isMixed ? undefined : { color: getWorkoutColor(workout) })}
           >
-            {workoutName}
+            {rowLabel || workoutName}
           </span>
         </td>
         <td className="history-notes-cell">
@@ -1385,6 +1556,73 @@ function groupWorkoutsByMonth(workouts) {
   });
 
   return groups.map(({ dayMap, ...group }) => group);
+}
+
+const colorSlotNames = {
+  '#ef4444': 'Red',
+  '#f97316': 'Orange',
+  '#eab308': 'Yellow',
+  '#22c55e': 'Green',
+  '#3b82f6': 'Blue',
+  '#a855f7': 'Violet',
+  '#ec4899': 'Pink',
+  '#8b5e3c': 'Brown',
+  '#94a3b8': 'Gray',
+};
+
+function groupWorkoutsByColorGroup(workouts, workoutColorPreferences) {
+  const groupMap = new Map();
+
+  workouts.forEach((workout) => {
+    const color = getWorkoutColor(workout);
+    const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+    const customLabel = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+    const fallbackLabel = `${colorSlotNames[slotColor] || 'Unlabeled'} Group`;
+    const groupLabel = customLabel || fallbackLabel;
+    const groupKey = `${slotColor}:${groupLabel.toLowerCase()}`;
+
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, {
+        key: groupKey,
+        label: groupLabel,
+        color,
+        slotColor,
+        sessionCount: 0,
+        workouts: [],
+        workoutMap: new Map(),
+      });
+    }
+
+    const group = groupMap.get(groupKey);
+    const workoutName = workout.templateName || workout.exercise || 'Workout';
+    const workoutKey = workoutName.toLowerCase();
+
+    if (!group.workoutMap.has(workoutKey)) {
+      const workoutGroup = {
+        key: workoutKey,
+        label: workoutName,
+        color,
+        sessions: [],
+      };
+      group.workoutMap.set(workoutKey, workoutGroup);
+      group.workouts.push(workoutGroup);
+    }
+
+    group.workoutMap.get(workoutKey).sessions.push(workout);
+    group.sessionCount += 1;
+  });
+
+  return Array.from(groupMap.values())
+    .map(({ workoutMap, ...group }) => ({
+      ...group,
+      workouts: group.workouts
+        .map((workoutGroup) => ({
+          ...workoutGroup,
+          sessions: sortWorkouts(workoutGroup.sessions),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function formatWorkoutDate(dateValue) {

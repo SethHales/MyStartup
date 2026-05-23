@@ -42,12 +42,20 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
             }
         };
 
+        const handleViewportChange = () => {
+            setShowAccountMenu(false);
+        };
+
         document.addEventListener("mousedown", handlePointerDown);
         document.addEventListener("touchstart", handlePointerDown);
+        window.addEventListener("scroll", handleViewportChange, true);
+        window.addEventListener("resize", handleViewportChange);
 
         return () => {
             document.removeEventListener("mousedown", handlePointerDown);
             document.removeEventListener("touchstart", handlePointerDown);
+            window.removeEventListener("scroll", handleViewportChange, true);
+            window.removeEventListener("resize", handleViewportChange);
         };
     }, []);
 

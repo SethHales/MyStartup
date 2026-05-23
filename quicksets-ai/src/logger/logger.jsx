@@ -342,12 +342,20 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       }
     };
 
+    const handleViewportChange = () => {
+      setShowTemplateActions(false);
+    };
+
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("scroll", handleViewportChange, true);
+    window.addEventListener("resize", handleViewportChange);
 
     return () => {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("scroll", handleViewportChange, true);
+      window.removeEventListener("resize", handleViewportChange);
     };
   }, []);
 
