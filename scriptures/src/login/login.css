@@ -13,13 +13,13 @@
     max-width: 460px;
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-panel);
+    border-radius: 30px;
     box-shadow: var(--shadow-panel);
-    backdrop-filter: blur(18px);
+    backdrop-filter: blur(7px);
 }
 
 .login-hero {
-    padding: 0.95rem 1.05rem;
+    padding: 1.15rem 1.25rem;
     background: var(--bg-panel-gradient);
     display: flex;
     flex-direction: column;
@@ -36,7 +36,7 @@
 
 .login-hero h2 {
     margin: 0;
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: clamp(1.35rem, 2.8vw, 1.9rem);
     line-height: 1.04;
 }
@@ -48,7 +48,7 @@
 }
 
 .login-card {
-    padding: 1.1rem;
+    padding: 1.25rem;
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
@@ -68,7 +68,7 @@
 }
 
 .auth-mode-copy h3 {
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 1.2rem;
 }
 
@@ -98,7 +98,7 @@
 
 .login-page input {
     padding: 0.7rem 0.8rem;
-    border-radius: 10px;
+    border-radius: 16px;
     border: 1px solid var(--border-subtle);
     background: var(--bg-surface);
     color: var(--text-main);
@@ -119,14 +119,14 @@
 .button-options button {
     flex: 1;
     padding: 0.8rem;
-    border-radius: 12px;
+    border-radius: 999px;
     border: 1px solid transparent;
     font-weight: 700;
     cursor: pointer;
 }
 
 .login-button {
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    background: var(--accent);
     color: var(--text-on-accent);
     box-shadow: var(--shadow-glow);
 }

@@ -3,7 +3,7 @@
 .study-mini-history-card {
   border: 1px solid var(--border-subtle);
   background: var(--bg-panel-gradient);
-  border-radius: 18px;
+  border-radius: 28px;
   box-shadow: var(--shadow-inline);
 }
 
@@ -24,7 +24,7 @@
 .study-hero-card h2,
 .study-form-header h3,
 .study-mini-history-header h3 {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(1.35rem, 2vw, 1.8rem);
   margin-bottom: 0.35rem;
 }
@@ -42,7 +42,7 @@
 
 .study-stat-card {
   padding: 0.95rem 1rem;
-  border-radius: 14px;
+  border-radius: 20px;
   background: var(--bg-row-soft);
   border: 1px solid var(--border-soft);
   display: grid;
@@ -106,7 +106,7 @@
 
 .study-input-block textarea {
   min-height: 132px;
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-main);
@@ -145,7 +145,7 @@
   padding: 0.95rem 1rem;
   background: var(--bg-row-soft);
   border: 1px solid var(--border-soft);
-  border-radius: 14px;
+  border-radius: 20px;
 }
 
 .study-mini-history-item strong {

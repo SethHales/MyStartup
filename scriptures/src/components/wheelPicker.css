@@ -1,11 +1,9 @@
 .wheel-picker {
     position: relative;
     height: 164px;
-    border-radius: 18px;
+    border-radius: 24px;
     overflow: hidden;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 4%, transparent), color-mix(in srgb, var(--text-on-accent) 1%, transparent)),
-        var(--bg-row-soft);
+    background: var(--bg-row-soft);
     border: 1px solid var(--border-subtle);
     touch-action: none;
     user-select: none;
@@ -34,12 +32,12 @@
 
 .wheel-picker::before {
     top: 0;
-    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), color-mix(in srgb, var(--bg-surface) 0%, transparent));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-panel-strong) 92%, transparent), color-mix(in srgb, var(--bg-panel-strong) 0%, transparent));
 }
 
 .wheel-picker::after {
     bottom: 0;
-    background: linear-gradient(0deg, color-mix(in srgb, var(--bg-surface) 96%, transparent), color-mix(in srgb, var(--bg-surface) 0%, transparent));
+    background: linear-gradient(0deg, color-mix(in srgb, var(--bg-panel-strong) 92%, transparent), color-mix(in srgb, var(--bg-panel-strong) 0%, transparent));
 }
 
 .wheel-picker-highlight {
@@ -49,7 +47,7 @@
     top: 50%;
     height: 44px;
     transform: translateY(-50%);
-    border-radius: 14px;
+    border-radius: 18px;
     border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     box-shadow: var(--shadow-inner-strong);
@@ -92,7 +90,7 @@
     width: min(132px, 100%);
     min-height: 3rem;
     border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
-    border-radius: 14px;
+    border-radius: 18px;
     background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
     color: var(--text-main);
     padding: 0.65rem 0.8rem;

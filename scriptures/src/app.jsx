@@ -2,7 +2,7 @@ import React from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './app.css';
 
-import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
@@ -86,16 +86,16 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
   const isAuthPage = location.pathname === "/" || location.pathname === "/signup";
   const showBrandTitle = isMobile && !isAuthPage;
   const title = location.pathname === "/history"
-    ? "HISTORY"
+    ? "History"
     : location.pathname === "/logger"
-      ? "LOGGER"
+      ? "Logger"
       : location.pathname === "/account"
-        ? "ACCOUNT"
+        ? "Account"
         : location.pathname === "/signup"
-          ? "SIGN UP"
+          ? "Sign Up"
           : location.pathname === "/"
-            ? "LOGIN"
-            : "SCRIPTURES";
+            ? "Login"
+            : "Scriptures";
 
   return (
     <header>
@@ -156,11 +156,6 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
 }
 
 function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleTheme }) {
-  const location = useLocation();
-  const showFooterNav = Boolean(currentUser)
-    && location.pathname !== "/"
-    && location.pathname !== "/signup";
-
   return (
     <div className="app">
       <Header
@@ -175,7 +170,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
           path="/"
           element={
             isAuthChecked && currentUser
-              ? <Navigate to="/logger" replace />
+              ? <Navigate to="/history" replace />
               : <Login setCurrentUser={setCurrentUser} mode="login" />
           }
         />
@@ -183,7 +178,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
           path="/signup"
           element={
             isAuthChecked && currentUser
-              ? <Navigate to="/logger" replace />
+              ? <Navigate to="/history" replace />
               : <Login setCurrentUser={setCurrentUser} mode="signup" />
           }
         />
@@ -211,22 +206,8 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
             </ProtectedRoute>
           )}
         />
-        <Route path="*" element={<Navigate to={currentUser ? "/logger" : "/"} replace />} />
+        <Route path="*" element={<Navigate to={currentUser ? "/history" : "/"} replace />} />
       </Routes>
-
-      {showFooterNav && (
-        <footer>
-          <nav className="tab-menu">
-            <NavLink to="/logger" className="tab">
-              Logger
-            </NavLink>
-
-            <NavLink to="/history" className="tab">
-              History
-            </NavLink>
-          </nav>
-        </footer>
-      )}
     </div>
   );
 }
@@ -236,7 +217,7 @@ export default function App() {
   const [isAuthChecked, setIsAuthChecked] = React.useState(false);
   const [theme, setTheme] = React.useState(() => {
     const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return THEMES.includes(storedTheme) ? storedTheme : "dark";
+    return THEMES.includes(storedTheme) ? storedTheme : "light";
   });
 
   React.useEffect(() => {
@@ -246,11 +227,11 @@ export default function App() {
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) {
       const themeColorMap = {
-        dark: "#101114",
-        light: "#f4f7fb",
-        red: "#2b1418",
-        blue: "#121c2d",
-        green: "#13261c",
+        dark: "#3a3728",
+        light: "#f5ecd8",
+        red: "#f0dccb",
+        blue: "#d9e7ea",
+        green: "#e0ead6",
       };
       themeColorMeta.setAttribute("content", themeColorMap[theme] || "#101114");
     }

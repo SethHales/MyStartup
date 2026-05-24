@@ -7,10 +7,8 @@
     width: 100%;
     min-height: 44px;
     border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 4%, transparent), color-mix(in srgb, var(--text-on-accent) 1%, transparent)),
-        var(--bg-surface);
+    border-radius: 18px;
+    background: var(--bg-surface);
     color: var(--text-main);
     padding: 0.68rem 2.7rem 0.68rem 0.8rem;
     text-align: left;
@@ -67,10 +65,10 @@
     width: min(320px, 100%);
     padding: 0.7rem;
     border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
-    border-radius: 18px;
+    border-radius: 24px;
     background: var(--bg-popover);
     box-shadow: var(--shadow-overlay);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
     z-index: 60;
 }
 
@@ -98,7 +96,7 @@
     border: 1px solid var(--border-subtle);
     background: var(--bg-row-hover);
     color: var(--text-main);
-    border-radius: 10px;
+    border-radius: 999px;
 }
 
 .qs-date-nav {
@@ -130,7 +128,7 @@
 .qs-date-day {
     min-height: 38px;
     border: 1px solid transparent;
-    border-radius: 12px;
+    border-radius: 999px;
     background: var(--bg-input-hover);
     color: var(--text-main);
     font-size: 0.86rem;
@@ -150,7 +148,7 @@
 }
 
 .qs-date-day.is-selected {
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    background: var(--accent);
     color: var(--text-on-accent);
     box-shadow: var(--shadow-glow);
 }

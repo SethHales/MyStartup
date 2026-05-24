@@ -11,11 +11,26 @@ import {
   getTotalMinutes,
 } from "../utils/studySessions";
 
+const DEFAULT_DURATION = "00:15:00";
+
+function sortSessionsNewestFirst(sessions) {
+  return [...sessions].sort((first, second) => {
+    const dateCompare = new Date(`${second.date}T00:00:00`) - new Date(`${first.date}T00:00:00`);
+    if (dateCompare !== 0) {
+      return dateCompare;
+    }
+
+    return String(second.id).localeCompare(String(first.id));
+  });
+}
+
 export function History() {
   const [sessions, setSessions] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
   const [editingSession, setEditingSession] = React.useState(null);
   const [draftSession, setDraftSession] = React.useState(null);
+  const [isSavingSession, setIsSavingSession] = React.useState(false);
   const [openMenuSessionId, setOpenMenuSessionId] = React.useState(null);
   const [menuPosition, setMenuPosition] = React.useState(null);
   const menuRef = React.useRef(null);
@@ -30,7 +45,7 @@ export function History() {
 
       const body = await response.json().catch(() => []);
       if (response.ok) {
-        setSessions(body);
+        setSessions(sortSessionsNewestFirst(body));
       }
     } catch (err) {
       console.error('Failed to load study sessions:', err);
@@ -82,7 +97,20 @@ export function History() {
     })
     .reduce((sum, session) => sum + getTotalMinutes(session.duration), 0);
 
+  const openAddModal = () => {
+    setIsAddModalOpen(true);
+    setEditingSession(null);
+    setDraftSession({
+      date: getTodayLocal(),
+      duration: DEFAULT_DURATION,
+      notes: "",
+    });
+    setOpenMenuSessionId(null);
+    setMenuPosition(null);
+  };
+
   const openEditModal = (session) => {
+    setIsAddModalOpen(false);
     setEditingSession(session);
     setDraftSession({
       date: session.date,
@@ -93,9 +121,11 @@ export function History() {
     setMenuPosition(null);
   };
 
-  const closeEditModal = () => {
+  const closeSessionModal = () => {
+    setIsAddModalOpen(false);
     setEditingSession(null);
     setDraftSession(null);
+    setIsSavingSession(false);
   };
 
   const handleToggleMenu = (event, sessionId) => {
@@ -147,13 +177,23 @@ export function History() {
   const handleSaveSession = async (event) => {
     event.preventDefault();
 
+    if (!draftSession?.date || getTotalMinutes(draftSession.duration) <= 0) {
+      alert("Please choose a date and a study duration before saving.");
+      return;
+    }
+
+    setIsSavingSession(true);
+
     try {
-      const response = await fetch(`/api/study-sessions/${editingSession.id}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(draftSession),
-      });
+      const response = await fetch(
+        editingSession ? `/api/study-sessions/${editingSession.id}` : '/api/study-sessions',
+        {
+          method: editingSession ? 'PUT' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(draftSession),
+        }
+      );
 
       const body = await response.json().catch(() => ({}));
 
@@ -162,22 +202,43 @@ export function History() {
         return;
       }
 
-      setSessions((currentSessions) =>
-        currentSessions.map((session) => session.id === body.id ? body : session)
-      );
-      closeEditModal();
+      setSessions((currentSessions) => {
+        const nextSessions = editingSession
+          ? currentSessions.map((session) => session.id === body.id ? body : session)
+          : [body, ...currentSessions];
+
+        return sortSessionsNewestFirst(nextSessions);
+      });
+      closeSessionModal();
     } catch (err) {
-      console.error('Failed to update study session:', err);
+      console.error('Failed to save study session:', err);
+      alert('Unable to connect to the server');
+    } finally {
+      setIsSavingSession(false);
     }
   };
+
+  const isSessionModalOpen = isAddModalOpen || Boolean(editingSession);
+  const modalTitle = editingSession ? "Update your study log" : "Add a study log";
+  const modalKicker = editingSession ? "Edit Session" : "Add Entry";
+  const modalFormId = editingSession ? "study-session-edit-form" : "study-session-add-form";
 
   return (
     <main>
       <div className="main-formatting">
         <section className="study-history-hero">
-          <div>
-            <p className="study-history-kicker">History</p>
-            <h2>{sessions.length} session{sessions.length === 1 ? "" : "s"} logged</h2>
+          <div className="study-history-hero-copy">
+            <div>
+              <p className="study-history-kicker">History</p>
+              <h2>{sessions.length} session{sessions.length === 1 ? "" : "s"} logged</h2>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary study-history-add-button"
+              onClick={openAddModal}
+            >
+              Add Entry
+            </button>
           </div>
           <div className="study-history-stats">
             <article className="study-history-stat-card">
@@ -261,13 +322,13 @@ export function History() {
           document.body
         )}
 
-        {editingSession && draftSession && (
+        {isSessionModalOpen && draftSession && (
           <div className="study-history-modal-backdrop" role="presentation">
-            <div className="study-history-modal" role="dialog" aria-modal="true" aria-labelledby="edit-study-session-title">
+            <div className="study-history-modal" role="dialog" aria-modal="true" aria-labelledby="study-session-modal-title">
               <button
                 type="button"
                 className="study-history-close-icon"
-                onClick={closeEditModal}
+                onClick={closeSessionModal}
                 aria-label="Close study session editor"
               >
                 ×
@@ -275,15 +336,15 @@ export function History() {
 
               <div className="study-history-modal-header">
                 <div>
-                  <p className="study-history-kicker">Edit Session</p>
-                  <h3 id="edit-study-session-title">Update your study log</h3>
+                  <p className="study-history-kicker">{modalKicker}</p>
+                  <h3 id="study-session-modal-title">{modalTitle}</h3>
                 </div>
-                <button type="submit" form="study-session-edit-form" className="btn btn-primary">
-                  Save
+                <button type="submit" form={modalFormId} className="btn btn-primary" disabled={isSavingSession}>
+                  {isSavingSession ? "Saving..." : "Save"}
                 </button>
               </div>
 
-              <form id="study-session-edit-form" className="study-history-modal-form" onSubmit={handleSaveSession}>
+              <form id={modalFormId} className="study-history-modal-form" onSubmit={handleSaveSession}>
                 <label className="study-history-input-block">
                   <span>Date</span>
                   <DatePicker
@@ -298,7 +359,7 @@ export function History() {
                   <StudyDurationPicker
                     duration={draftSession.duration}
                     onChange={(nextDuration) => setDraftSession((current) => ({ ...current, duration: nextDuration }))}
-                    summaryLabel="Edited session"
+                    summaryLabel={editingSession ? "Edited session" : "New session"}
                   />
                 </div>
 
@@ -306,17 +367,18 @@ export function History() {
                   <span>Notes</span>
                   <textarea
                     rows="4"
+                    placeholder="Optional thoughts, chapters, or what stood out today."
                     value={draftSession.notes}
                     onChange={(event) => setDraftSession((current) => ({ ...current, notes: event.target.value }))}
                   />
                 </label>
 
                 <div className="study-history-modal-actions">
-                  <button type="button" className="study-history-cancel-button" onClick={closeEditModal}>
+                  <button type="button" className="study-history-cancel-button" onClick={closeSessionModal}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
-                    Save
+                  <button type="submit" className="btn btn-primary" disabled={isSavingSession}>
+                    {isSavingSession ? "Saving..." : "Save"}
                   </button>
                 </div>
               </form>

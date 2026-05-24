@@ -3,7 +3,7 @@
 .account-status {
   border: 1px solid var(--border-subtle);
   background: var(--bg-panel-gradient);
-  border-radius: 18px;
+  border-radius: 28px;
   box-shadow: var(--shadow-inline);
 }
 
@@ -22,7 +22,7 @@
 
 .account-hero-card h2,
 .account-panel-header h3 {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .account-hero-copy {
@@ -54,7 +54,7 @@
 }
 
 .account-input-block input {
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-main);

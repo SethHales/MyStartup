@@ -351,6 +351,162 @@
     --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M4.5 6.75 9 11.25l4.5-4.5' stroke='%23e2ffea' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+:root,
+[data-theme="light"],
+[data-theme="red"],
+[data-theme="blue"],
+[data-theme="green"] {
+    --scripture-background-image: url("/images/scriptures-nature-bg.svg");
+    --bg-app: #e4d2a9;
+    --bg-app-accent: #f5ecd8;
+    --bg-panel: rgba(255, 250, 239, 0.78);
+    --bg-panel-strong: rgba(255, 252, 244, 0.9);
+    --bg-surface: rgba(255, 251, 241, 0.82);
+    --bg-surface-soft: rgba(246, 237, 218, 0.76);
+    --bg-header: rgba(248, 240, 222, 0.76);
+    --bg-footer: rgba(248, 240, 222, 0.82);
+    --bg-main-formatting: rgba(255, 251, 241, 0.56);
+    --bg-panel-gradient: rgba(255, 251, 241, 0.72);
+    --bg-panel-gradient-strong: rgba(255, 252, 246, 0.86);
+    --bg-popover: rgba(255, 252, 245, 0.94);
+    --bg-overlay: rgba(64, 57, 40, 0.34);
+    --bg-skeleton: linear-gradient(90deg, rgba(102, 124, 78, 0.06), rgba(102, 124, 78, 0.12), rgba(102, 124, 78, 0.06));
+    --bg-tab: rgba(88, 103, 66, 0.08);
+    --bg-tab-hover: rgba(88, 103, 66, 0.14);
+    --bg-input-hover: rgba(88, 103, 66, 0.08);
+    --bg-row-soft: rgba(255, 255, 255, 0.36);
+    --bg-row-hover: rgba(255, 255, 255, 0.52);
+    --bg-row-strong: rgba(255, 255, 255, 0.64);
+    --bg-selected: rgba(110, 132, 82, 0.14);
+    --bg-selected-strong: rgba(110, 132, 82, 0.2);
+    --scrollbar-thumb: rgba(79, 87, 57, 0.24);
+    --scrollbar-thumb-hover: rgba(79, 87, 57, 0.38);
+    --border-subtle: rgba(83, 73, 49, 0.14);
+    --border-strong: rgba(83, 73, 49, 0.22);
+    --border-soft: rgba(83, 73, 49, 0.1);
+    --border-dashed: rgba(83, 73, 49, 0.22);
+    --border-accent: rgba(107, 126, 73, 0.34);
+    --border-accent-strong: rgba(107, 126, 73, 0.48);
+    --border-accent-active: rgba(107, 126, 73, 0.58);
+    --text-main: #2f2b20;
+    --text-muted: rgba(47, 43, 32, 0.72);
+    --text-soft: rgba(47, 43, 32, 0.52);
+    --text-brand-quick: rgba(47, 43, 32, 0.72);
+    --text-brand-sets: #2f2b20;
+    --text-tab: #68704f;
+    --text-on-accent: #fffaf0;
+    --text-accent-soft: #445f35;
+    --text-badge: #445f35;
+    --text-success: #406d3c;
+    --text-gold: #9a6b1f;
+    --text-gold-strong: #704d13;
+    --text-gold-soft: #9a6b1f;
+    --accent: #6f8350;
+    --accent-strong: #4f6840;
+    --accent-soft: rgba(111, 131, 80, 0.18);
+    --accent-ring: rgba(111, 131, 80, 0.2);
+    --accent-glow: rgba(111, 131, 80, 0.16);
+    --danger-soft: #a34f42;
+    --gold: #b68a32;
+    --gold-soft: rgba(182, 138, 50, 0.1);
+    --gold-soft-strong: rgba(182, 138, 50, 0.16);
+    --gold-border: rgba(182, 138, 50, 0.28);
+    --gold-border-strong: rgba(182, 138, 50, 0.44);
+    --shadow-panel: 0 28px 70px rgba(65, 56, 35, 0.18);
+    --shadow-glow: 0 18px 36px rgba(79, 104, 64, 0.18);
+    --shadow-inline: 0 12px 28px rgba(65, 56, 35, 0.1);
+    --shadow-inline-strong: 0 16px 34px rgba(65, 56, 35, 0.16);
+    --shadow-overlay: 0 28px 54px rgba(65, 56, 35, 0.22);
+    --shadow-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    --shadow-inner-strong: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    --shadow-outline-soft: 0 0 0 2px rgba(83, 73, 49, 0.05);
+    --shadow-outline: 0 0 0 3px rgba(83, 73, 49, 0.05);
+    --shadow-outline-strong: 0 0 0 3px rgba(111, 131, 80, 0.14);
+    --radius-panel: 26px;
+    --radius-card: 18px;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 18 18' fill='none'%3E%3Cpath d='M4.5 6.75 9 11.25l4.5-4.5' stroke='%2368704f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+:root,
+[data-theme="light"] {
+    --accent: #6f8350;
+    --accent-strong: #4f6840;
+    --accent-soft: rgba(111, 131, 80, 0.18);
+    --accent-ring: rgba(111, 131, 80, 0.2);
+    --accent-glow: rgba(111, 131, 80, 0.16);
+}
+
+[data-theme="red"] {
+    --accent: #a96851;
+    --accent-strong: #874936;
+    --accent-soft: rgba(169, 104, 81, 0.18);
+    --accent-ring: rgba(169, 104, 81, 0.2);
+    --accent-glow: rgba(169, 104, 81, 0.16);
+    --border-accent: rgba(169, 104, 81, 0.34);
+    --border-accent-strong: rgba(169, 104, 81, 0.48);
+    --border-accent-active: rgba(169, 104, 81, 0.58);
+}
+
+[data-theme="blue"] {
+    --accent: #557c8b;
+    --accent-strong: #3d6170;
+    --accent-soft: rgba(85, 124, 139, 0.18);
+    --accent-ring: rgba(85, 124, 139, 0.2);
+    --accent-glow: rgba(85, 124, 139, 0.16);
+    --border-accent: rgba(85, 124, 139, 0.34);
+    --border-accent-strong: rgba(85, 124, 139, 0.48);
+    --border-accent-active: rgba(85, 124, 139, 0.58);
+}
+
+[data-theme="green"] {
+    --accent: #628b5a;
+    --accent-strong: #466f45;
+    --accent-soft: rgba(98, 139, 90, 0.18);
+    --accent-ring: rgba(98, 139, 90, 0.2);
+    --accent-glow: rgba(98, 139, 90, 0.16);
+    --border-accent: rgba(98, 139, 90, 0.34);
+    --border-accent-strong: rgba(98, 139, 90, 0.48);
+    --border-accent-active: rgba(98, 139, 90, 0.58);
+}
+
+[data-theme="dark"] {
+    --scripture-background-image: url("/images/scriptures-nature-bg.svg");
+    --bg-app: #3a3728;
+    --bg-app-accent: #595337;
+    --bg-panel: rgba(50, 47, 35, 0.72);
+    --bg-panel-strong: rgba(61, 56, 41, 0.86);
+    --bg-surface: rgba(58, 54, 40, 0.82);
+    --bg-surface-soft: rgba(70, 65, 47, 0.74);
+    --bg-header: rgba(55, 51, 37, 0.76);
+    --bg-main-formatting: rgba(57, 53, 39, 0.52);
+    --bg-panel-gradient: rgba(62, 58, 43, 0.68);
+    --bg-panel-gradient-strong: rgba(68, 62, 46, 0.82);
+    --bg-popover: rgba(68, 62, 46, 0.94);
+    --bg-overlay: rgba(20, 18, 12, 0.48);
+    --bg-row-soft: rgba(255, 248, 232, 0.08);
+    --bg-row-hover: rgba(255, 248, 232, 0.12);
+    --bg-row-strong: rgba(255, 248, 232, 0.16);
+    --text-main: #fff8e8;
+    --text-muted: rgba(255, 248, 232, 0.74);
+    --text-soft: rgba(255, 248, 232, 0.56);
+    --text-brand-quick: rgba(255, 248, 232, 0.8);
+    --text-brand-sets: #fff8e8;
+    --text-on-accent: #fffaf0;
+    --accent: #b7c27c;
+    --accent-strong: #81935e;
+    --accent-soft: rgba(183, 194, 124, 0.18);
+    --accent-ring: rgba(183, 194, 124, 0.22);
+    --accent-glow: rgba(183, 194, 124, 0.16);
+    --border-subtle: rgba(255, 248, 232, 0.12);
+    --border-strong: rgba(255, 248, 232, 0.22);
+    --border-soft: rgba(255, 248, 232, 0.08);
+    --border-accent: rgba(183, 194, 124, 0.34);
+    --border-accent-strong: rgba(183, 194, 124, 0.48);
+    --border-accent-active: rgba(183, 194, 124, 0.58);
+    --shadow-panel: 0 28px 70px rgba(20, 18, 12, 0.26);
+    --shadow-inline: 0 12px 28px rgba(20, 18, 12, 0.16);
+}
+
 html,
 body,
 #root {
@@ -360,20 +516,22 @@ body,
 body {
     margin: 0;
     background:
-        radial-gradient(circle at top left, var(--accent-soft), transparent 26%),
-        radial-gradient(circle at bottom right, color-mix(in srgb, var(--accent) 24%, transparent), transparent 28%),
-        linear-gradient(180deg, var(--bg-app-accent) 0%, var(--bg-app) 100%);
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-app-accent) 58%, transparent) 0%, color-mix(in srgb, var(--bg-app) 36%, transparent) 100%),
+        var(--scripture-background-image);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
     color: var(--text-main);
     overflow: hidden;
 }
 
 main {
-    font-family: 'Quicksand', system-ui, sans-serif;
+    font-family: 'Quicksand', Georgia, serif;
 }
 
 header,
 footer {
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: 'Quicksand', Georgia, serif;
     font-weight: 600;
 }
 
@@ -400,9 +558,9 @@ footer {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 16px;
+    border-radius: 18px;
     overflow: hidden;
-    box-shadow: 0 16px 28px color-mix(in srgb, var(--bg-app) 48%, transparent);
+    box-shadow: 0 14px 26px rgba(65, 56, 35, 0.18);
 }
 
 .brand-badge img {
@@ -415,9 +573,9 @@ footer {
     display: inline-flex;
     align-items: baseline;
     gap: 0.08rem;
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: clamp(1rem, 1.4vw, 1.22rem);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
     white-space: nowrap;
 }
 
@@ -440,7 +598,7 @@ header {
     padding: 0.5rem 1rem;
     background: var(--bg-header);
     border-bottom: 1px solid var(--border-subtle);
-    backdrop-filter: blur(18px);
+    backdrop-filter: blur(10px);
     position: relative;
     z-index: 40;
     flex-shrink: 0;
@@ -453,7 +611,7 @@ header::after {
     right: 1.5rem;
     bottom: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 35%, transparent), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 28%, transparent), transparent);
 }
 
     header .logo {
@@ -463,8 +621,10 @@ header::after {
 header h1 {
     justify-self: center;
     margin: 0;
-    font-size: clamp(1.05rem, 1.8vw, 1.4rem);
-    letter-spacing: 0.08em;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.08rem, 1.9vw, 1.48rem);
+    letter-spacing: 0.03em;
+    text-transform: none;
 }
 
 .header-brand-title {
@@ -508,7 +668,7 @@ header h1 {
 
 .user-section button,
 .account-menu-trigger {
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    background: color-mix(in srgb, var(--bg-panel-strong) 84%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
     color: var(--text-main);
     padding: 0.42rem 0.82rem;
@@ -563,7 +723,7 @@ header h1 {
     min-width: 190px;
     padding: 0.45rem;
     border: 1px solid var(--border-strong);
-    border-radius: 14px;
+    border-radius: 18px;
     background: var(--bg-popover);
     box-shadow: var(--shadow-panel);
     display: flex;
@@ -585,7 +745,7 @@ header h1 {
 .app {
     height: 100dvh;
     display: grid;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
     overflow: hidden;
 }
 
@@ -606,14 +766,14 @@ main {
     height: 100%;
     background: var(--bg-main-formatting);
     border-radius: var(--radius-panel);
-    padding: 1rem;
+    padding: 1.15rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
     overflow-y: auto;
     overscroll-behavior: contain;
     box-shadow: var(--shadow-panel);
-    backdrop-filter: blur(18px);
+    backdrop-filter: blur(8px);
 }
 
 .main-formatting>* {
@@ -743,6 +903,21 @@ select:focus-visible {
 
 button {
     transition: transform 0.18s ease, filter 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.btn.btn-primary {
+    --bs-btn-bg: var(--accent);
+    --bs-btn-border-color: color-mix(in srgb, var(--accent) 86%, var(--text-main));
+    --bs-btn-hover-bg: var(--accent-strong);
+    --bs-btn-hover-border-color: var(--accent-strong);
+    --bs-btn-active-bg: var(--accent-strong);
+    --bs-btn-active-border-color: var(--accent-strong);
+    --bs-btn-disabled-bg: color-mix(in srgb, var(--accent) 55%, var(--bg-surface));
+    --bs-btn-disabled-border-color: color-mix(in srgb, var(--accent) 35%, var(--bg-surface));
+    --bs-btn-color: var(--text-on-accent);
+    border-radius: 999px;
+    font-weight: 800;
+    box-shadow: var(--shadow-glow);
 }
 
 button:hover {

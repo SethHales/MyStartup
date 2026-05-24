@@ -3,13 +3,20 @@
 .study-history-empty {
   border: 1px solid var(--border-subtle);
   background: var(--bg-panel-gradient);
-  border-radius: 18px;
+  border-radius: 28px;
   box-shadow: var(--shadow-inline);
 }
 
 .study-history-hero {
   padding: 1.25rem;
   display: grid;
+  gap: 1rem;
+}
+
+.study-history-hero-copy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 1rem;
 }
 
@@ -24,7 +31,7 @@
 .study-history-hero h2,
 .study-history-month-header h3,
 .study-history-modal-header h3 {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .study-history-stats {
@@ -35,7 +42,7 @@
 
 .study-history-stat-card {
   padding: 0.95rem 1rem;
-  border-radius: 14px;
+  border-radius: 20px;
   background: var(--bg-row-soft);
   border: 1px solid var(--border-soft);
   display: grid;
@@ -51,6 +58,13 @@
 
 .study-history-stat-card strong {
   color: var(--text-main);
+}
+
+.study-history-add-button {
+  min-width: 132px;
+  border-radius: 999px;
+  font-weight: 800;
+  box-shadow: var(--shadow-glow);
 }
 
 .study-history-month {
@@ -77,7 +91,7 @@
   gap: 1rem;
   padding: 0.95rem 1rem;
   border: 1px solid var(--border-soft);
-  border-radius: 14px;
+  border-radius: 20px;
   background: var(--bg-row-soft);
 }
 
@@ -116,7 +130,7 @@
   position: fixed;
   min-width: 170px;
   padding: 0.45rem;
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--bg-popover);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-panel);
@@ -158,7 +172,7 @@
   max-height: min(92vh, 860px);
   overflow: auto;
   position: relative;
-  border-radius: 24px;
+  border-radius: 30px;
   background: var(--bg-panel-gradient-strong);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-panel);
@@ -209,7 +223,7 @@
 
 .study-history-input-block textarea {
   min-height: 132px;
-  border-radius: 16px;
+  border-radius: 22px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-main);
@@ -233,10 +247,15 @@
     grid-template-columns: 1fr;
   }
 
+  .study-history-hero-copy,
   .study-history-item,
   .study-history-modal-header,
   .study-history-modal-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .study-history-add-button {
+    width: 100%;
   }
 }
