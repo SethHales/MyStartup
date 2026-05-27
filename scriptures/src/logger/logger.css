@@ -104,6 +104,7 @@
   letter-spacing: 0.05em;
 }
 
+.study-input-block input,
 .study-input-block textarea {
   min-height: 132px;
   border-radius: 22px;
@@ -114,6 +115,12 @@
   resize: vertical;
 }
 
+.study-input-block input {
+  min-height: 48px;
+  resize: none;
+}
+
+.study-input-block input:focus,
 .study-input-block textarea:focus {
   outline: none;
   border-color: var(--border-accent-strong);
@@ -151,6 +158,14 @@
 .study-mini-history-item strong {
   display: block;
   margin-bottom: 0.35rem;
+}
+
+.study-mini-history-item em {
+  display: block;
+  margin-bottom: 0.28rem;
+  color: var(--text-muted);
+  font-style: normal;
+  font-weight: 700;
 }
 
 .study-mini-history-item p {

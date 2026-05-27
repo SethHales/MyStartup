@@ -5,7 +5,7 @@ const uuid = require('uuid');
 
 const app = express();
 const authCookieName = 'token';
-const port = process.argv.length > 2 ? Number(process.argv[2]) : 4001;
+const port = process.argv.length > 2 ? Number(process.argv[2]) : 4000;
 
 const { userCollection, studySessionCollection } = require('./database');
 
@@ -139,6 +139,7 @@ apiRouter.post('/study-sessions', verifyAuth, async (req, res) => {
     userEmail: req.user.email,
     date: normalizedSession.date,
     duration: normalizedSession.duration,
+    content: normalizedSession.content,
     notes: normalizedSession.notes,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -175,6 +176,7 @@ apiRouter.put('/study-sessions/:id', verifyAuth, async (req, res) => {
     ...existingSession,
     date: normalizedSession.date,
     duration: normalizedSession.duration,
+    content: normalizedSession.content,
     notes: normalizedSession.notes,
     updatedAt: new Date().toISOString(),
   };
@@ -185,6 +187,7 @@ apiRouter.put('/study-sessions/:id', verifyAuth, async (req, res) => {
       $set: {
         date: updatedSession.date,
         duration: updatedSession.duration,
+        content: updatedSession.content,
         notes: updatedSession.notes,
         updatedAt: updatedSession.updatedAt,
       },
@@ -278,6 +281,7 @@ function sanitizeStudySessionInput(input) {
   return {
     date: sanitizeDate(input?.date),
     duration: sanitizeDuration(input?.duration),
+    content: typeof input?.content === 'string' ? input.content.trim().slice(0, 500) : '',
     notes: typeof input?.notes === 'string' ? input.notes.trim().slice(0, 4000) : '',
   };
 }

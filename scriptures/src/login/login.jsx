@@ -36,7 +36,7 @@ export function Login({ setCurrentUser, mode = "login" }) {
       console.log(isSignup ? "Created user:" : "Logged in:", user);
 
       setCurrentUser(user);
-      navigate("/logger");
+      navigate("/history");
     } catch (err) {
       console.error(isSignup ? "Signup failed:" : "Login failed:", err);
       alert("Unable to connect to server");

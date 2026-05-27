@@ -15,11 +15,13 @@
 }
 
 .study-duration-wheel > span {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: var(--text-soft);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  justify-self: center;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
 
 .study-duration-summary {

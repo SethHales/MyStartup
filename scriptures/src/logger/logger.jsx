@@ -35,6 +35,7 @@ export function Logger({ currentUser = null }) {
   const storedDraft = React.useMemo(() => readDraft(), []);
   const [date, setDate] = React.useState(storedDraft?.date || getTodayLocal());
   const [duration, setDuration] = React.useState(storedDraft?.duration || DEFAULT_DURATION);
+  const [content, setContent] = React.useState(storedDraft?.content || "");
   const [notes, setNotes] = React.useState(storedDraft?.notes || "");
   const [sessions, setSessions] = React.useState([]);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -69,16 +70,16 @@ export function Logger({ currentUser = null }) {
 
   React.useEffect(() => {
     const totalMinutes = getTotalMinutes(duration);
-    if (!date && totalMinutes === 0 && !notes.trim()) {
+    if (!date && totalMinutes === 0 && !content.trim() && !notes.trim()) {
       window.localStorage.removeItem(LOGGER_DRAFT_KEY);
       return;
     }
 
     window.localStorage.setItem(
       LOGGER_DRAFT_KEY,
-      JSON.stringify({ date, duration, notes })
+      JSON.stringify({ date, duration, content, notes })
     );
-  }, [date, duration, notes]);
+  }, [date, duration, content, notes]);
 
   const totalMinutes = getTotalMinutes(duration);
   const todaysSessions = React.useMemo(
@@ -96,6 +97,7 @@ export function Logger({ currentUser = null }) {
   const resetForm = React.useCallback(() => {
     setDate(getTodayLocal());
     setDuration(DEFAULT_DURATION);
+    setContent("");
     setNotes("");
     window.localStorage.removeItem(LOGGER_DRAFT_KEY);
   }, []);
@@ -117,6 +119,7 @@ export function Logger({ currentUser = null }) {
         body: JSON.stringify({
           date,
           duration,
+          content,
           notes,
         }),
       });
@@ -144,8 +147,8 @@ export function Logger({ currentUser = null }) {
         <section className="study-hero-card">
           <div>
             <p className="study-kicker">Daily Study</p>
-            <h2>{currentUser?.name ? `${currentUser.name}'s scripture study` : "Log scripture study"}</h2>
-            <p className="study-subcopy">Track how long you studied each day and keep a clean running history.</p>
+            <h2>{currentUser?.name ? `${currentUser.name}'s study journal` : "Scripture study journal"}</h2>
+            <p className="study-subcopy">Make a quiet note of the time you spent and anything that felt worth remembering.</p>
           </div>
           <div className="study-hero-stats">
             <article className="study-stat-card">
@@ -157,7 +160,7 @@ export function Logger({ currentUser = null }) {
               <strong>{todaysMinutes} min</strong>
             </article>
             <article className="study-stat-card">
-              <span>Last session</span>
+              <span>Last entry</span>
               <strong>{lastSession ? formatDurationLabel(lastSession.duration) : "None yet"}</strong>
             </article>
           </div>
@@ -166,7 +169,7 @@ export function Logger({ currentUser = null }) {
         <form className="study-form-card" onSubmit={handleSubmit}>
           <div className="study-form-header">
             <div>
-              <p className="study-kicker">Logger</p>
+              <p className="study-kicker">Notebook</p>
               <h3>Record today’s study</h3>
             </div>
             <button
@@ -194,16 +197,26 @@ export function Logger({ currentUser = null }) {
               <StudyDurationPicker
                 duration={duration}
                 onChange={setDuration}
-                summaryLabel="This session"
+                summaryLabel="This entry"
               />
             </div>
           </div>
 
           <label className="study-input-block">
-            <span>Notes</span>
+            <span>Content Studied</span>
+            <input
+              type="text"
+              placeholder="For example: 1 Nephi 3, Alma 32, Come Follow Me, or conference talk."
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+            />
+          </label>
+
+          <label className="study-input-block">
+            <span>Study Notes</span>
             <textarea
               rows="4"
-              placeholder="Optional thoughts, chapters, or what stood out today."
+              placeholder="What stood out? Add a verse, thought, question, or prompting."
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />
@@ -218,7 +231,7 @@ export function Logger({ currentUser = null }) {
               className="btn btn-primary study-save-button"
               disabled={!canSave || isSaving}
             >
-              {isSaving ? "Saving..." : "Save Session"}
+              {isSaving ? "Saving..." : "Save Entry"}
             </button>
           </div>
         </form>
@@ -226,21 +239,22 @@ export function Logger({ currentUser = null }) {
         <section className="study-mini-history-card">
           <div className="study-mini-history-header">
             <div>
-              <p className="study-kicker">Recent</p>
-              <h3>Last few sessions</h3>
+              <p className="study-kicker">Recent Reflections</p>
+              <h3>Last few entries</h3>
             </div>
           </div>
 
           {isLoading ? (
-            <p className="study-empty-copy">Loading your recent study sessions...</p>
+            <p className="study-empty-copy">Opening your recent reflections...</p>
           ) : sessions.length === 0 ? (
-            <p className="study-empty-copy">No study sessions logged yet.</p>
+            <p className="study-empty-copy">No reflections yet. Start with a verse that stood out to you today.</p>
           ) : (
             <div className="study-mini-history-list">
               {sessions.slice(0, 5).map((session) => (
                 <article key={session.id} className="study-mini-history-item">
                   <div>
                     <strong>{formatStudyDayLabel(session.date)}</strong>
+                    {session.content ? <em>{session.content}</em> : null}
                     {session.notes ? <p>{session.notes}</p> : null}
                   </div>
                   <span>{formatDurationLabel(session.duration)}</span>

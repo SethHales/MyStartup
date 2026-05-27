@@ -1,23 +1,34 @@
-.study-history-hero,
-.study-history-month,
-.study-history-empty {
+.study-history-empty,
+.study-entry-page {
+  flex-shrink: 0;
   border: 1px solid var(--border-subtle);
   background: var(--bg-panel-gradient);
   border-radius: 28px;
   box-shadow: var(--shadow-inline);
 }
 
-.study-history-hero {
-  padding: 1.25rem;
+.study-history-layout {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: minmax(220px, 248px) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.15rem;
+}
+
+.study-history-hero {
+  padding: 0.8rem 1rem 1rem 0;
+  display: grid;
+  gap: 0.95rem;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-row-soft) 58%, transparent), transparent 42%),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 46%);
 }
 
 .study-history-hero-copy {
-  display: flex;
+  display: grid;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .study-history-kicker {
@@ -29,125 +40,296 @@
 }
 
 .study-history-hero h2,
-.study-history-month-header h3,
 .study-history-modal-header h3 {
   font-family: Georgia, 'Times New Roman', serif;
 }
 
-.study-history-stats {
+.study-history-page-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: 1fr;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 42%, transparent), transparent);
+  border-radius: 0;
+  overflow: hidden;
 }
 
-.study-history-stat-card {
-  padding: 0.95rem 1rem;
-  border-radius: 20px;
-  background: var(--bg-row-soft);
-  border: 1px solid var(--border-soft);
+.study-history-metric-section {
+  padding: 0.9rem 0.15rem 0.95rem;
   display: grid;
-  gap: 0.3rem;
+  gap: 0.7rem;
 }
 
-.study-history-stat-card span {
-  font-size: 0.78rem;
+.study-history-metric-section + .study-history-metric-section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.study-history-section-label,
+.study-history-streak-grid span,
+.study-history-total-time span {
+  margin: 0;
+  font-size: 0.73rem;
   color: var(--text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  font-weight: 800;
 }
 
-.study-history-stat-card strong {
+.study-history-streak-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.study-history-streak-grid > div {
+  display: grid;
+  gap: 0.34rem;
+}
+
+.study-history-streak-grid > div + div {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 0.95rem;
+  margin-left: 0.95rem;
+}
+
+.study-history-streak-grid strong,
+.study-history-total-time strong {
   color: var(--text-main);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.55rem, 3vw, 2rem);
+  line-height: 1;
+}
+
+.study-history-streak-grid small {
+  color: var(--text-muted);
+  font-family: 'Quicksand', Georgia, serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.study-history-total-time {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.study-history-total-time strong {
+  color: var(--accent);
+}
+
+.study-history-total-time span {
+  color: var(--text-main);
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .study-history-add-button {
-  min-width: 132px;
+  width: 100%;
   border-radius: 999px;
   font-weight: 800;
   box-shadow: var(--shadow-glow);
 }
 
-.study-history-month {
-  padding: 1rem;
+.study-history-calendar-card {
+  --study-calendar-cell-size: 48px;
+  --study-calendar-gap: 0.42rem;
+  --study-calendar-width: calc((var(--study-calendar-cell-size) * 7) + (var(--study-calendar-gap) * 6));
+  padding: 0.72rem 0 0.95rem 1.15rem;
   display: grid;
-  gap: 0.9rem;
+  gap: 0.62rem;
+  overflow: visible;
+  border-left: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-row-soft) 52%, transparent), transparent 38%),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%);
 }
 
-.study-history-month-header {
-  display: flex;
+.study-history-calendar-toolbar {
+  width: min(100%, var(--study-calendar-width));
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.46rem;
 }
 
-.study-history-list {
+.study-history-calendar-heading {
+  text-align: center;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.18rem;
 }
 
-.study-history-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.95rem 1rem;
-  border: 1px solid var(--border-soft);
-  border-radius: 20px;
-  background: var(--bg-row-soft);
+.study-history-calendar-heading .study-history-kicker {
+  margin: 0;
 }
 
-.study-history-item-copy {
-  display: grid;
-  gap: 0.32rem;
+.study-history-calendar-heading h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.28rem, 2.4vw, 1.65rem);
+  margin: 0;
 }
 
-.study-history-item-copy span {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.study-history-item-copy p {
-  margin: 0.2rem 0 0;
+.study-history-calendar-heading span {
   color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.78rem;
 }
 
-.study-history-menu-trigger,
-.study-history-menu button,
-.study-history-close-icon,
-.study-history-cancel-button {
+.study-calendar-nav-button,
+.study-history-calendar-actions button {
   border: 1px solid var(--border-strong);
   background: var(--bg-tab);
   color: var(--text-main);
-}
-
-.study-history-menu-trigger {
-  min-width: 40px;
-  min-height: 40px;
   border-radius: 999px;
+  font-weight: 800;
+  padding: 0.55rem 0.72rem;
+  box-shadow: 0 10px 24px rgba(75, 63, 53, 0.07);
+}
+
+.study-calendar-nav-button {
+  width: 38px;
+  height: 38px;
   padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
 }
 
-.study-history-menu {
-  position: fixed;
-  min-width: 170px;
-  padding: 0.45rem;
-  border-radius: 18px;
-  background: var(--bg-popover);
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-panel);
+.study-calendar-nav-button span {
+  color: var(--accent);
+  line-height: 1;
+}
+
+.study-calendar-nav-button:hover,
+.study-history-calendar-actions button:hover {
+  transform: translateY(-1px);
+}
+
+.study-history-calendar-actions {
+  display: flex;
+  justify-content: center;
+  width: min(100%, var(--study-calendar-width));
+  margin-inline: auto;
+}
+
+.study-history-calendar-actions button {
+  padding: 0.42rem 0.72rem;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.study-history-calendar-empty {
+  margin: 0.25rem auto 0.4rem;
+  max-width: 32rem;
+  padding: 0.85rem 1rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.study-history-calendar-weekdays,
+.study-history-calendar-grid {
   display: grid;
-  gap: 0.35rem;
-  z-index: 90;
+  grid-template-columns: repeat(7, var(--study-calendar-cell-size, 48px));
+  justify-content: center;
+  gap: var(--study-calendar-gap, 0.42rem);
+  width: min(100%, var(--study-calendar-width));
+  margin-inline: auto;
 }
 
-.study-history-menu button {
-  width: 100%;
-  text-align: left;
-  padding: 0.7rem 0.8rem;
-  border-radius: 10px;
+.study-history-calendar-weekdays span {
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.study-history-menu button.delete {
-  color: #ffb3b3;
+.study-history-calendar-grid {
+  position: relative;
+}
+
+.study-history-calendar-grid.direction-next {
+  animation: studyCalendarNext 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.study-history-calendar-grid.direction-previous {
+  animation: studyCalendarPrevious 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.study-history-calendar-grid.direction-current {
+  animation: studyCalendarFade 0.3s ease-out both;
+}
+
+.study-calendar-day {
+  width: var(--study-calendar-cell-size, 48px);
+  min-height: unset;
+  aspect-ratio: 1;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-row-soft);
+  border-radius: 12px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  color: var(--text-main);
+  font: inherit;
+  text-align: center;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.study-calendar-day.is-outside-month {
+  opacity: 0.48;
+}
+
+.study-calendar-day:hover,
+.study-calendar-day:focus-visible {
+  border-color: var(--border-accent-strong);
+  box-shadow: 0 12px 26px rgba(75, 63, 53, 0.09);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.study-calendar-day.is-today {
+  border-color: var(--border-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-ring), 0 12px 28px rgba(75, 63, 53, 0.08);
+}
+
+.study-calendar-day.heat-1 {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-surface));
+}
+
+.study-calendar-day.heat-2 {
+  background: color-mix(in srgb, var(--accent) 32%, var(--bg-surface));
+}
+
+.study-calendar-day.heat-3 {
+  background: color-mix(in srgb, var(--accent) 48%, var(--bg-surface));
+}
+
+.study-calendar-day.heat-4 {
+  background: color-mix(in srgb, var(--accent) 66%, var(--bg-surface));
+}
+
+.study-calendar-day-number {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.study-history-close-icon,
+.study-history-cancel-button,
+.study-entry-back-button,
+.study-entry-delete-button {
+  border: 1px solid var(--border-strong);
+  background: var(--bg-tab);
+  color: var(--text-main);
 }
 
 .study-history-empty {
@@ -165,6 +347,127 @@
   justify-content: center;
   padding: 1rem;
   z-index: 80;
+  animation: studyModalBackdropIn 0.24s ease-out both;
+  will-change: opacity;
+}
+
+.study-day-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 70;
+  animation: studyModalBackdropIn 0.24s ease-out both;
+}
+
+.study-day-modal {
+  position: relative;
+  width: min(100%, 520px);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  padding: 1.3rem;
+  border-radius: 28px;
+  background: var(--bg-panel-gradient-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-panel);
+  display: grid;
+  gap: 1rem;
+  animation: studyModalIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.study-day-modal-header {
+  display: grid;
+  gap: 0.25rem;
+  padding-right: 2.8rem;
+}
+
+.study-day-modal-header .study-history-kicker {
+  margin: 0;
+}
+
+.study-day-modal-header h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  margin: 0;
+  font-size: clamp(1.28rem, 3vw, 1.62rem);
+}
+
+.study-day-modal-header > p:last-child {
+  color: var(--text-muted);
+  margin: 0;
+  font-weight: 700;
+}
+
+.study-day-entry-list {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.study-day-entry-row {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border-radius: 17px;
+  padding: 0.85rem 0.92rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.85rem;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.study-day-entry-row:hover,
+.study-day-entry-row:focus-visible {
+  outline: none;
+  border-color: var(--border-accent-strong);
+  box-shadow: var(--shadow-inline);
+  transform: translateY(-1px);
+}
+
+.study-day-entry-row div {
+  min-width: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.study-day-entry-row strong,
+.study-day-entry-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-day-entry-row span {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.study-day-entry-row em {
+  color: var(--accent);
+  font-size: 0.83rem;
+  font-weight: 800;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.study-day-empty {
+  margin: 0;
+  padding: 1.15rem 0.9rem;
+  border-radius: 17px;
+  background: var(--bg-row-soft);
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+.study-day-add-button {
+  width: 100%;
+  border-radius: 999px;
+  font-weight: 800;
 }
 
 .study-history-modal {
@@ -179,6 +482,17 @@
   padding: 1.25rem;
   display: grid;
   gap: 1rem;
+  transform-origin: center;
+  animation: studyModalIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.study-history-modal-backdrop.is-closing {
+  animation: studyModalBackdropOut 0.22s ease-in both;
+}
+
+.study-history-modal-backdrop.is-closing .study-history-modal {
+  animation: studyModalOut 0.22s cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 .study-history-close-icon {
@@ -221,6 +535,7 @@
   letter-spacing: 0.05em;
 }
 
+.study-history-input-block input,
 .study-history-input-block textarea {
   min-height: 132px;
   border-radius: 22px;
@@ -231,6 +546,12 @@
   resize: vertical;
 }
 
+.study-history-input-block input {
+  min-height: 48px;
+  resize: none;
+}
+
+.study-history-input-block input:focus,
 .study-history-input-block textarea:focus {
   outline: none;
   border-color: var(--border-accent-strong);
@@ -242,13 +563,113 @@
   border-radius: 999px;
 }
 
+.study-entry-focus {
+  width: min(100%, 850px);
+  margin: 0 auto;
+  display: grid;
+  gap: 0.9rem;
+  animation: studyCalendarFade 0.3s ease-out both;
+}
+
+.study-entry-focus-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.study-entry-back-button {
+  border-radius: 999px;
+  padding: 0.64rem 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 800;
+}
+
+.study-entry-back-button span {
+  color: var(--accent);
+  font-size: 1.12rem;
+}
+
+.study-entry-save-notice {
+  margin: 0;
+  padding: 0.45rem 0.72rem;
+  border-radius: 999px;
+  background: var(--bg-selected);
+  color: var(--text-accent-soft);
+  font-weight: 800;
+  animation: studyCalendarFade 0.24s ease-out both;
+}
+
+.study-entry-page {
+  padding: clamp(1.05rem, 3vw, 1.8rem);
+  display: grid;
+  gap: 1.2rem;
+}
+
+.study-entry-page-header {
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.study-entry-page-header .study-history-kicker {
+  margin: 0;
+}
+
+.study-entry-page-header h2 {
+  font-family: Georgia, 'Times New Roman', serif;
+  margin: 0;
+  color: var(--text-main);
+  font-size: clamp(1.6rem, 4vw, 2.15rem);
+}
+
+.study-entry-page-header > p:last-child {
+  margin: 0;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.study-entry-focus-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.study-entry-focus-actions {
+  padding-top: 0.35rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.study-entry-delete-button {
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  color: var(--danger-soft);
+  font-weight: 700;
+}
+
+.study-entry-delete-button:hover {
+  background: color-mix(in srgb, var(--danger-soft) 10%, var(--bg-surface));
+}
+
 @media (max-width: 780px) {
-  .study-history-stats {
+  .study-history-layout {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
-  .study-history-hero-copy,
-  .study-history-item,
+  .study-history-hero {
+    padding: 0.75rem 0 0.95rem;
+  }
+
+  .study-history-page-metrics {
+    border-radius: 0;
+  }
+
   .study-history-modal-header,
   .study-history-modal-actions {
     flex-direction: column;
@@ -257,5 +678,165 @@
 
   .study-history-add-button {
     width: 100%;
+  }
+
+  .study-history-calendar-card {
+    padding: 0.75rem 0 0.95rem;
+    border-left: 0;
+    gap: 0.48rem;
+  }
+
+  .study-history-calendar-toolbar {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    gap: 0.38rem;
+  }
+
+  .study-history-calendar-heading {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .study-calendar-nav-button {
+    grid-row: 2;
+    padding: 0;
+  }
+
+  .study-history-calendar-weekdays,
+  .study-history-calendar-grid {
+    --study-calendar-cell-size: min(10.6vw, 42px);
+    --study-calendar-gap: 0.26rem;
+  }
+
+  .study-history-calendar-weekdays span {
+    font-size: 0.62rem;
+    letter-spacing: 0.02em;
+  }
+
+  .study-calendar-day {
+    border-radius: 9px;
+  }
+
+  .study-calendar-day-number {
+    font-size: 0.8rem;
+  }
+
+  .study-day-modal {
+    padding: 1rem;
+    border-radius: 23px;
+  }
+
+  .study-entry-page {
+    padding: 0.95rem;
+    border-radius: 22px;
+  }
+
+  .study-entry-focus-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .study-entry-focus-actions button {
+    width: 100%;
+  }
+
+  .study-day-entry-row {
+    gap: 0.55rem;
+    padding: 0.72rem;
+  }
+}
+
+@keyframes studyModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes studyModalBackdropOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes studyModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes studyModalOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+}
+
+@keyframes studyCalendarNext {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes studyCalendarPrevious {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes studyCalendarFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-history-modal-backdrop,
+  .study-history-modal,
+  .study-history-modal-backdrop.is-closing,
+  .study-history-modal-backdrop.is-closing .study-history-modal,
+  .study-day-modal-backdrop,
+  .study-day-modal,
+  .study-entry-focus,
+  .study-entry-save-notice,
+  .study-history-calendar-grid.direction-next,
+  .study-history-calendar-grid.direction-previous,
+  .study-history-calendar-grid.direction-current {
+    animation: none;
   }
 }

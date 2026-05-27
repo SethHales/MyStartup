@@ -11,14 +11,40 @@ import { BrandMark } from './components/brandMark';
 import { useIsMobile } from './hooks/useIsMobile';
 
 const THEME_STORAGE_KEY = "scriptures.theme";
-const THEMES = ["dark", "light", "red", "blue", "green"];
-const THEME_ICONS = {
-  dark: "☀",
-  light: "◐",
-  red: "●",
-  blue: "◆",
-  green: "▲",
+const THEMES = ["light", "green", "red", "blue", "dark"];
+const THEME_LABELS = {
+  light: "Meadow",
+  green: "Sage",
+  red: "Clay",
+  blue: "River",
+  dark: "Dusk",
 };
+const THEME_BACKGROUNDS = {
+  light: "/images/scriptures-bg-meadow.png",
+  green: "/images/scriptures-bg-sage.png",
+  red: "/images/scriptures-bg-clay.png",
+  blue: "/images/scriptures-bg-river.png",
+  dark: "/images/scriptures-bg-dusk-library.png",
+};
+const THEME_WASHES = {
+  light: "linear-gradient(180deg, rgba(245, 236, 216, 0.58) 0%, rgba(228, 210, 169, 0.36) 100%)",
+  green: "linear-gradient(180deg, rgba(224, 234, 214, 0.58) 0%, rgba(148, 170, 133, 0.34) 100%)",
+  red: "linear-gradient(180deg, rgba(240, 220, 203, 0.58) 0%, rgba(178, 116, 91, 0.32) 100%)",
+  blue: "linear-gradient(180deg, rgba(217, 231, 234, 0.58) 0%, rgba(93, 131, 142, 0.32) 100%)",
+  dark: "linear-gradient(180deg, rgba(89, 83, 55, 0.58) 0%, rgba(58, 55, 40, 0.46) 100%)",
+};
+const THEME_BROWSER_COLORS = {
+  light: "#F7F3EA",
+  green: "#E8EEE1",
+  red: "#F2E1D3",
+  blue: "#E7F0F1",
+  dark: "#4B3F35",
+};
+
+function getNextTheme(theme) {
+  const currentThemeIndex = THEMES.indexOf(theme);
+  return THEMES[(currentThemeIndex + 1 + THEMES.length) % THEMES.length];
+}
 
 function ProtectedRoute({ currentUser, isAuthChecked, children }) {
   if (!isAuthChecked) {
@@ -38,9 +64,6 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
   const isMobile = useIsMobile();
   const [showAccountMenu, setShowAccountMenu] = React.useState(false);
   const accountMenuRef = React.useRef(null);
-  const currentThemeIndex = THEMES.indexOf(theme);
-  const nextTheme = THEMES[(currentThemeIndex + 1 + THEMES.length) % THEMES.length];
-  const themeIcon = THEME_ICONS[theme] || THEME_ICONS.dark;
 
   React.useEffect(() => {
     setShowAccountMenu(false);
@@ -85,43 +108,35 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
   const displayName = currentUser?.name || currentUser?.email || "";
   const isAuthPage = location.pathname === "/" || location.pathname === "/signup";
   const showBrandTitle = isMobile && !isAuthPage;
-  const title = location.pathname === "/history"
-    ? "History"
+  const title = location.pathname === "/account"
+    ? "Account"
     : location.pathname === "/logger"
-      ? "Logger"
-      : location.pathname === "/account"
-        ? "Account"
-        : location.pathname === "/signup"
-          ? "Sign Up"
-          : location.pathname === "/"
-            ? "Login"
-            : "Scriptures";
+      ? "Study Entry"
+      : location.pathname === "/signup"
+        ? "Create Account"
+        : location.pathname === "/"
+          ? "Welcome"
+          : "Study Journal";
 
   return (
     <header>
       <BrandMark className="logo" />
-      <h1 className={showBrandTitle ? "header-brand-title" : ""}>
+      <div className={showBrandTitle ? "header-brand-title" : "header-title-stack"}>
         {showBrandTitle ? (
           <>
-            <span className="header-brand-title-quick">Script</span>
-            <span className="header-brand-title-sets">ures</span>
+            <span className="header-brand-title-sets">Scriptures</span>
           </>
         ) : (
-          title
+          <>
+            <h1>{title}</h1>
+          </>
         )}
-      </h1>
+      </div>
 
       {currentUser && !isAuthPage ? (
         <div className="user-section" ref={accountMenuRef}>
           <p className="user-email">{displayName}</p>
-          <button
-            type="button"
-            className="theme-toggle"
-            aria-label={`Switch to ${nextTheme} theme`}
-            onClick={toggleTheme}
-          >
-            <span aria-hidden="true">{themeIcon}</span>
-          </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
           <button
             type="button"
             className="account-menu-trigger"
@@ -129,7 +144,7 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
             aria-expanded={showAccountMenu}
             onClick={() => setShowAccountMenu((current) => !current)}
           >
-            <span aria-hidden="true">•••</span>
+            <span aria-hidden="true">...</span>
           </button>
           {showAccountMenu && (
             <div className="account-menu-popover">
@@ -141,23 +156,85 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
         </div>
       ) : (
         <div className="user-section">
-          <button
-            type="button"
-            className="theme-toggle"
-            aria-label={`Switch to ${nextTheme} theme`}
-            onClick={toggleTheme}
-          >
-            <span aria-hidden="true">{themeIcon}</span>
-          </button>
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </div>
       )}
     </header>
   );
 }
 
+function ThemeToggle({ theme, onToggle }) {
+  const currentThemeLabel = THEME_LABELS[theme] || THEME_LABELS.light;
+  const nextThemeLabel = THEME_LABELS[getNextTheme(theme)];
+
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-label={`Switch to ${nextThemeLabel} theme`}
+      onClick={onToggle}
+    >
+      <span aria-hidden="true">{currentThemeLabel}</span>
+    </button>
+  );
+}
+
+function ThemeBackdrop({ theme }) {
+  const [previousTheme, setPreviousTheme] = React.useState(null);
+  const [isTransitionReady, setIsTransitionReady] = React.useState(true);
+  const lastThemeRef = React.useRef(theme);
+
+  React.useLayoutEffect(() => {
+    if (lastThemeRef.current === theme) {
+      return undefined;
+    }
+
+    let frameId;
+    setPreviousTheme(lastThemeRef.current);
+    setIsTransitionReady(false);
+    lastThemeRef.current = theme;
+
+    frameId = window.requestAnimationFrame(() => {
+      setIsTransitionReady(true);
+    });
+
+    const timeoutId = window.setTimeout(() => {
+      setPreviousTheme(null);
+    }, 1900);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [theme]);
+
+  return (
+    <div className="theme-backdrop" aria-hidden="true">
+      {previousTheme && (
+        <div
+          className="theme-backdrop-layer is-previous"
+          style={{
+            "--theme-wash": THEME_WASHES[previousTheme],
+            backgroundImage: `url("${THEME_BACKGROUNDS[previousTheme]}")`,
+          }}
+        />
+      )}
+      <div
+        key={theme}
+        className={`theme-backdrop-layer is-current ${isTransitionReady ? "is-ready" : ""}`}
+        style={{
+          "--theme-wash": THEME_WASHES[theme],
+          backgroundImage: `url("${THEME_BACKGROUNDS[theme]}")`,
+        }}
+      />
+    </div>
+  );
+}
+
 function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleTheme }) {
   return (
     <div className="app">
+      <ThemeBackdrop theme={theme} />
       <Header
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
@@ -226,14 +303,7 @@ export default function App() {
 
     const themeColorMeta = document.querySelector('meta[name="theme-color"]');
     if (themeColorMeta) {
-      const themeColorMap = {
-        dark: "#3a3728",
-        light: "#f5ecd8",
-        red: "#f0dccb",
-        blue: "#d9e7ea",
-        green: "#e0ead6",
-      };
-      themeColorMeta.setAttribute("content", themeColorMap[theme] || "#101114");
+      themeColorMeta.setAttribute("content", THEME_BROWSER_COLORS[theme] || THEME_BROWSER_COLORS.light);
     }
   }, [theme]);
 
@@ -269,7 +339,7 @@ export default function App() {
         setCurrentUser={setCurrentUser}
         isAuthChecked={isAuthChecked}
         theme={theme}
-        toggleTheme={() => setTheme((currentTheme) => THEMES[(THEMES.indexOf(currentTheme) + 1 + THEMES.length) % THEMES.length])}
+        toggleTheme={() => setTheme(getNextTheme)}
       />
     </BrowserRouter>
   );
