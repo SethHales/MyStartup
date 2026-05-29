@@ -1,9 +1,7 @@
 import React from "react";
 import { WheelPicker } from "../components/wheelPicker";
 import {
-  formatDuration,
   formatMeasurementLabel,
-  formatSignedDuration,
   getSetDisplayLabel,
   normalizeSetType,
   parseDurationToSeconds,
@@ -203,7 +201,7 @@ export function formatTemplatePreview(name, fields, measurements = {}) {
     "notes",
   ].filter(Boolean);
 
-  return `${name.trim() || "Your new workout"} will save ${selectedFields.join(", ")}.`;
+  return `${name.trim() || "Your new exercise"} will save ${selectedFields.join(", ")}.`;
 }
 
 export function formatColorHexLabel(color) {
@@ -263,28 +261,6 @@ export function parseDurationParts(duration) {
   }
 
   return { minutes: "", seconds: "" };
-}
-
-export function normalizeRestDuration(duration, defaultRestDuration) {
-  return formatDuration(parseDurationToSeconds(duration, parseDurationToSeconds(defaultRestDuration, 30)));
-}
-
-export function getSetRestDuration(selectedTemplate, set, templates = [], defaultRestDuration) {
-  if (selectedTemplate?.isMixed) {
-    const setTemplate = templates.find((template) => template.id === set?.templateId);
-    return setTemplate?.restDuration || defaultRestDuration;
-  }
-
-  return selectedTemplate?.restDuration || defaultRestDuration;
-}
-
-export function shouldUseSetRestTimer(selectedTemplate, set, templates = []) {
-  if (selectedTemplate?.isMixed) {
-    const setTemplate = templates.find((template) => template.id === set?.templateId);
-    return Boolean(setTemplate?.usesRestTimer);
-  }
-
-  return Boolean(selectedTemplate?.usesRestTimer);
 }
 
 export function formatDurationValue(minutes, seconds) {
@@ -441,4 +417,4 @@ function trimTrailingZeroes(value) {
   return `${Number(value)}`;
 }
 
-export { getSetDisplayLabel, formatSignedDuration, parseDurationToSeconds };
+export { getSetDisplayLabel, parseDurationToSeconds };

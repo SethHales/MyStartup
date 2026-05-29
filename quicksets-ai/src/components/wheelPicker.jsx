@@ -20,6 +20,11 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
   const settleFrameRef = React.useRef(null);
   const interruptedSettleRef = React.useRef(false);
   const typeInputRef = React.useRef(null);
+  const lastEmittedValueRef = React.useRef(value);
+
+  React.useEffect(() => {
+    lastEmittedValueRef.current = value;
+  }, [value]);
 
   const selectedIndex = React.useMemo(() => {
     const foundIndex = options.findIndex((option) => option.value === value);
@@ -33,6 +38,15 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
 
     return ((index % options.length) + options.length) % options.length;
   }, [options.length]);
+
+  const emitValueIfChanged = React.useCallback((nextValue) => {
+    if (nextValue === undefined || nextValue === lastEmittedValueRef.current) {
+      return;
+    }
+
+    lastEmittedValueRef.current = nextValue;
+    onChange(nextValue);
+  }, [onChange]);
 
   React.useEffect(() => {
     if (!isDragging && !isSettling) {
@@ -66,7 +80,7 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     }
   }, []);
 
-  const animateSettle = React.useCallback((fromOffset, toOffset, finalIndex, finalValue, settleDuration) => {
+  const animateSettle = React.useCallback((fromOffset, toOffset, finalIndex, settleDuration) => {
     if (settleFrameRef.current) {
       window.cancelAnimationFrame(settleFrameRef.current);
     }
@@ -78,7 +92,11 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
       const progress = Math.min((now - startTime) / settleDuration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
       const nextOffset = fromOffset + (toOffset - fromOffset) * eased;
+      const previewStepShift = Math.round(nextOffset / ITEM_HEIGHT);
+      const visibleCenterIndex = normalizeIndex(currentIndex - previewStepShift);
+      const visibleValue = options[visibleCenterIndex]?.value;
 
+      emitValueIfChanged(visibleValue);
       setDragOffset(nextOffset);
 
       if (progress < 1) {
@@ -89,13 +107,10 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
       setCurrentIndex(finalIndex);
       setDragOffset(0);
       setIsSettling(false);
-      if (finalValue !== value) {
-        onChange(finalValue);
-      }
     };
 
     settleFrameRef.current = window.requestAnimationFrame(step);
-  }, [onChange, value]);
+  }, [currentIndex, emitValueIfChanged, normalizeIndex, options]);
 
   const stopSettleAtCurrentPosition = React.useCallback(() => {
     if (!isSettling || !options.length) {
@@ -117,11 +132,11 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     interruptedSettleRef.current = true;
 
     if (nextValue !== value) {
-      onChange(nextValue);
+      emitValueIfChanged(nextValue);
     }
 
     return visibleCenterIndex;
-  }, [currentIndex, dragOffset, isSettling, normalizeIndex, onChange, options, value]);
+  }, [currentIndex, dragOffset, emitValueIfChanged, isSettling, normalizeIndex, options, value]);
 
   const handlePointerDown = React.useCallback((event) => {
     if (!options.length || isTyping) {
@@ -175,8 +190,11 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
       velocity: deltaY / deltaTime,
     };
 
+    const previewStepShift = Math.round(nextOffset / ITEM_HEIGHT);
+    const visibleCenterIndex = normalizeIndex(startIndexRef.current - previewStepShift);
+    emitValueIfChanged(options[visibleCenterIndex]?.value);
     setDragOffset(nextOffset);
-  }, [isDragging]);
+  }, [emitValueIfChanged, isDragging, normalizeIndex, options]);
 
   const finishDrag = React.useCallback((event) => {
     if (interruptedSettleRef.current) {
@@ -204,12 +222,11 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     const totalShift = baseShift + momentumSteps;
     const targetOffset = totalShift * ITEM_HEIGHT;
     const finalIndex = normalizeIndex(startIndexRef.current - totalShift);
-    const finalValue = options[finalIndex]?.value ?? value;
     const settleDuration = Math.min(1100, 180 + Math.abs(totalShift) * 38);
 
     setIsDragging(false);
-    animateSettle(totalMovement, targetOffset, finalIndex, finalValue, settleDuration);
-  }, [animateSettle, dragOffset, isDragging, normalizeIndex, options, value]);
+    animateSettle(totalMovement, targetOffset, finalIndex, settleDuration);
+  }, [animateSettle, dragOffset, isDragging, normalizeIndex, options]);
 
   const handleKeyDown = React.useCallback((event) => {
     if (!options.length || isDragging || isTyping) {
@@ -225,8 +242,9 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     const nextIndex = normalizeIndex(currentIndex + delta);
     const nextValue = options[nextIndex]?.value ?? value;
 
-    animateSettle(delta * ITEM_HEIGHT * -0.35, delta * ITEM_HEIGHT, nextIndex, nextValue, 190);
-  }, [animateSettle, currentIndex, isDragging, isTyping, normalizeIndex, options, value]);
+    emitValueIfChanged(nextValue);
+    animateSettle(delta * ITEM_HEIGHT * -0.35, delta * ITEM_HEIGHT, nextIndex, 190);
+  }, [animateSettle, currentIndex, emitValueIfChanged, isDragging, isTyping, normalizeIndex, options, value]);
 
   const commitTypedValue = React.useCallback(() => {
     const trimmedValue = `${typedValue ?? ""}`.trim();
@@ -242,9 +260,9 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
     }
 
     if (trimmedValue !== `${value ?? ""}`) {
-      onChange(trimmedValue);
+      emitValueIfChanged(trimmedValue);
     }
-  }, [onChange, typedValue, value]);
+  }, [emitValueIfChanged, typedValue, value]);
 
   const supportsDecimalInput = React.useMemo(
     () => options.some((option) => `${option.value}`.includes(".")) || `${value ?? ""}`.includes("."),
@@ -298,14 +316,14 @@ export function WheelPicker({ value, options, onChange, ariaLabel }) {
 
       const closestOptionValue = options[closestIndex]?.value;
       if (closestOptionValue !== undefined && `${closestOptionValue}` !== currentValue && closestOptionValue !== value) {
-        onChange(closestOptionValue);
+        emitValueIfChanged(closestOptionValue);
       }
 
       setCurrentIndex(closestIndex);
       setDragOffset(0);
       return false;
     });
-  }, [commitTypedValue, onChange, options, selectedIndex, typedValue, value]);
+  }, [commitTypedValue, emitValueIfChanged, options, selectedIndex, typedValue, value]);
 
   const visibleOptions = React.useMemo(() => {
     if (!options.length) {

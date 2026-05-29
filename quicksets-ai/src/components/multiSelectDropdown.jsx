@@ -1,6 +1,8 @@
 import React from "react";
 import "./dropdown.css";
 import "./multiSelectDropdown.css";
+import { getWorkoutColor } from "../utils/workoutColors";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 export function MultiSelectDropdown({
   values,
@@ -10,11 +12,28 @@ export function MultiSelectDropdown({
   disabled = false,
   className = "",
   ariaLabel,
+  searchable = false,
+  searchPlaceholder = "Search",
 }) {
+  const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = React.useState(false);
   const [highlightedIndex, setHighlightedIndex] = React.useState(-1);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const containerRef = React.useRef(null);
   const buttonRef = React.useRef(null);
+  const searchResetTimeoutRef = React.useRef(null);
+
+  const filteredOptions = React.useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return options;
+    }
+
+    return options.filter((option) =>
+      `${option.label || ""}`.toLowerCase().includes(normalizedQuery)
+    );
+  }, [options, searchQuery]);
 
   React.useEffect(() => {
     const handlePointerDown = (event) => {
@@ -34,13 +53,21 @@ export function MultiSelectDropdown({
 
   React.useEffect(() => {
     if (!isOpen) {
+      setSearchQuery("");
+      setIsSearchFocused(false);
       return;
     }
 
-    const firstSelectedIndex = options.findIndex((option) => values.includes(option.value) && !option.disabled);
-    const firstEnabledIndex = options.findIndex((option) => !option.disabled);
+    const firstSelectedIndex = filteredOptions.findIndex((option) => values.includes(option.value) && !option.disabled);
+    const firstEnabledIndex = filteredOptions.findIndex((option) => !option.disabled);
     setHighlightedIndex(firstSelectedIndex >= 0 ? firstSelectedIndex : firstEnabledIndex);
-  }, [isOpen, options, values]);
+  }, [filteredOptions, isOpen, values]);
+
+  React.useEffect(() => () => {
+    if (searchResetTimeoutRef.current) {
+      window.clearTimeout(searchResetTimeoutRef.current);
+    }
+  }, []);
 
   const selectedOptions = React.useMemo(
     () => options.filter((option) => values.includes(option.value)),
@@ -68,23 +95,69 @@ export function MultiSelectDropdown({
   };
 
   const moveHighlight = (direction) => {
-    if (!options.length) {
+    if (!filteredOptions.length) {
       return;
     }
 
     let nextIndex = highlightedIndex;
 
-    for (let count = 0; count < options.length; count += 1) {
-      nextIndex = (nextIndex + direction + options.length) % options.length;
-      if (!options[nextIndex]?.disabled) {
+    for (let count = 0; count < filteredOptions.length; count += 1) {
+      nextIndex = (nextIndex + direction + filteredOptions.length) % filteredOptions.length;
+      if (!filteredOptions[nextIndex]?.disabled) {
         setHighlightedIndex(nextIndex);
         return;
       }
     }
   };
 
+  const queueSearchReset = () => {
+    if (searchResetTimeoutRef.current) {
+      window.clearTimeout(searchResetTimeoutRef.current);
+    }
+
+    searchResetTimeoutRef.current = window.setTimeout(() => {
+      setSearchQuery("");
+    }, 1800);
+  };
+
+  const handleTypeahead = (event) => {
+    if (!searchable || isMobile) {
+      return false;
+    }
+
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return false;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+      }
+      setSearchQuery((currentQuery) => currentQuery.slice(0, -1));
+      queueSearchReset();
+      return true;
+    }
+
+    if (event.key.length !== 1 || (!searchQuery && event.key === " ")) {
+      return false;
+    }
+
+    event.preventDefault();
+    if (!isOpen) {
+      setIsOpen(true);
+    }
+    setSearchQuery((currentQuery) => `${currentQuery}${event.key}`.slice(-40));
+    queueSearchReset();
+    return true;
+  };
+
   const handleButtonKeyDown = (event) => {
     if (disabled) {
+      return;
+    }
+
+    if (handleTypeahead(event)) {
       return;
     }
 
@@ -110,6 +183,10 @@ export function MultiSelectDropdown({
   };
 
   const handleMenuKeyDown = (event) => {
+    if (handleTypeahead(event)) {
+      return;
+    }
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
       moveHighlight(1);
@@ -124,7 +201,7 @@ export function MultiSelectDropdown({
 
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      const highlightedOption = options[highlightedIndex];
+      const highlightedOption = filteredOptions[highlightedIndex];
       if (highlightedOption && !highlightedOption.disabled) {
         toggleValue(highlightedOption.value);
       }
@@ -166,33 +243,77 @@ export function MultiSelectDropdown({
           tabIndex={-1}
           onKeyDown={handleMenuKeyDown}
         >
-          {options.map((option, index) => {
-            const isSelected = values.includes(option.value);
-
-            return (
-              <button
-                key={`${option.value}-${index}`}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
+          {searchable && isMobile && (
+            <div className="qs-dropdown-search-shell">
+              <input
+                type="search"
+                value={searchQuery}
                 className={[
-                  "qs-dropdown-option",
-                  "qs-multiselect-option",
-                  isSelected ? "is-selected" : "",
-                  index === highlightedIndex ? "is-highlighted" : "",
-                  option.disabled ? "is-disabled" : "",
+                  "qs-dropdown-search-input",
+                  isSearchFocused || searchQuery ? "is-active" : "",
                 ].filter(Boolean).join(" ")}
-                disabled={option.disabled}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                onClick={() => toggleValue(option.value)}
-              >
-                <span>{option.label}</span>
-                <span className="qs-multiselect-check" aria-hidden="true">
-                  {isSelected ? "✓" : ""}
-                </span>
-              </button>
-            );
-          })}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                }}
+              />
+            </div>
+          )}
+          {searchQuery && searchable && !isMobile && (
+            <div className="qs-dropdown-search-status" aria-live="polite">
+              Searching for <strong>{searchQuery}</strong>
+            </div>
+          )}
+          {filteredOptions.length > 0 ? (
+            filteredOptions.map((option, index) => {
+              const isSelected = values.includes(option.value);
+
+              return (
+                <button
+                  key={`${option.value}-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={[
+                    "qs-dropdown-option",
+                    "qs-multiselect-option",
+                    isSelected ? "is-selected" : "",
+                    index === highlightedIndex ? "is-highlighted" : "",
+                    option.disabled ? "is-disabled" : "",
+                  ].filter(Boolean).join(" ")}
+                  disabled={option.disabled}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  onClick={() => toggleValue(option.value)}
+                >
+                  {option.color && (
+                    <span
+                      className="qs-dropdown-color"
+                      style={{ backgroundColor: getWorkoutColor(option) }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="qs-dropdown-option-label">{option.label}</span>
+                  {option.badge && (
+                    <span
+                      className="qs-dropdown-badge"
+                      style={option.badgeColor ? { "--qs-badge-color": option.badgeColor } : undefined}
+                    >
+                      {option.badge}
+                    </span>
+                  )}
+                  <span className="qs-multiselect-check" aria-hidden="true">
+                    {isSelected ? "✓" : ""}
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            <div className="qs-dropdown-empty">No matches found.</div>
+          )}
         </div>
       )}
     </div>

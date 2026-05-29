@@ -1,12 +1,12 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import "./profile.css";
+import "./analytics.css";
 import { Dropdown } from "../components/dropdown";
 import { ExplorerPreferenceCard } from "../components/explorerPreferenceCard";
 import { WorkoutHistoryPreview } from "../components/workoutHistoryPreview";
-import { useLocation, useNavigate } from 'react-router-dom';
 import {
   formatMeasurementLabel,
+  getSetDisplayLabel,
   normalizeSetType,
   parseDurationToSeconds,
   parseLocalDate,
@@ -19,6 +19,17 @@ import {
 } from "../utils/workoutColors";
 
 const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
+const setFieldColumns = [
+  { key: "reps", label: "Reps", inputType: "number", placeholder: "10" },
+  { key: "weight", label: "Weight", inputType: "number", placeholder: "135" },
+  { key: "duration", label: "Time", inputType: "text", placeholder: "00:30" },
+  { key: "distance", label: "Distance", inputType: "number", placeholder: "1.5" },
+];
+const setTypeOptions = [
+  { value: "regular", label: "Regular" },
+  { value: "warmup", label: "Warmup" },
+  { value: "max", label: "Max" },
+];
 const defaultExplorerPreferences = {
   statCards: {
     lastPerformed: true,
@@ -58,6 +69,9 @@ export function Analytics({ currentUser }) {
   const [sessionFocusRequest, setSessionFocusRequest] = React.useState(null);
   const [showExplorerEditModal, setShowExplorerEditModal] = React.useState(false);
   const [showMobileWorkoutPicker, setShowMobileWorkoutPicker] = React.useState(false);
+  const [openSessionMenuId, setOpenSessionMenuId] = React.useState(null);
+  const [editingSession, setEditingSession] = React.useState(null);
+  const [draftSession, setDraftSession] = React.useState(null);
   const [explorerPreferencesDraft, setExplorerPreferencesDraft] = React.useState(defaultExplorerPreferences);
   const [isSavingExplorerPreferences, setIsSavingExplorerPreferences] = React.useState(false);
   const [dragState, setDragState] = React.useState(null);
@@ -109,6 +123,21 @@ export function Analytics({ currentUser }) {
         setIsLoading(false);
       });
   }, []);
+
+  React.useEffect(() => {
+    if (!openSessionMenuId) {
+      return undefined;
+    }
+
+    const closeOpenSessionMenu = () => setOpenSessionMenuId(null);
+    window.addEventListener("scroll", closeOpenSessionMenu, true);
+    window.addEventListener("resize", closeOpenSessionMenu);
+
+    return () => {
+      window.removeEventListener("scroll", closeOpenSessionMenu, true);
+      window.removeEventListener("resize", closeOpenSessionMenu);
+    };
+  }, [openSessionMenuId]);
 
   const analyticsWorkouts = React.useMemo(() => expandAnalyticsWorkouts(workouts), [workouts]);
   const workoutNames = React.useMemo(() => getWorkoutNames(analyticsWorkouts), [analyticsWorkouts]);
@@ -171,6 +200,10 @@ export function Analytics({ currentUser }) {
     },
     [selectedWorkoutName, selectedWorkoutStats, templates]
   );
+  const workoutTemplateOptions = React.useMemo(
+    () => buildWorkoutTemplateOptions(templates, workoutColorPreferences),
+    [templates, workoutColorPreferences]
+  );
   const selectedExplorerPreferences = React.useMemo(
     () => normalizeExplorerPreferences(selectedWorkoutTemplate?.explorerPreferences, selectedWorkoutStats),
     [selectedWorkoutTemplate?.explorerPreferences, selectedWorkoutStats]
@@ -230,6 +263,204 @@ export function Analytics({ currentUser }) {
     setShowMobileWorkoutPicker(false);
   }, []);
 
+  const toggleSessionMenu = React.useCallback((sessionId) => {
+    setOpenSessionMenuId((currentId) => currentId === sessionId ? null : sessionId);
+  }, []);
+
+  const closeSessionEditModal = React.useCallback(() => {
+    setEditingSession(null);
+    setDraftSession(null);
+  }, []);
+
+  const openSessionEditModal = React.useCallback((session) => {
+    const storedSession = resolveStoredSession(session, workouts);
+    setOpenSessionMenuId(null);
+    setEditingSession(storedSession);
+    setDraftSession(cloneAnalyticsSessionForEdit(storedSession));
+  }, [workouts]);
+
+  const handleDraftSessionFieldChange = React.useCallback((field, value) => {
+    setDraftSession((currentSession) => ({
+      ...currentSession,
+      [field]: value,
+    }));
+  }, []);
+
+  const handleDraftSessionSetChange = React.useCallback((setId, field, value) => {
+    setDraftSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession;
+      }
+
+      if (field === "templateId" && currentSession.isMixed) {
+        const nextTemplate = templates.find((template) => template.id === value);
+
+        return {
+          ...currentSession,
+          sets: currentSession.sets.map((set) =>
+            set.id === setId
+              ? {
+                id: set.id,
+                setType: normalizeSetType(set.setType),
+                templateId: nextTemplate?.id || value,
+                templateName: nextTemplate?.name || set.templateName || "",
+                color: nextTemplate ? getWorkoutColor(nextTemplate) : set.color,
+                fields: nextTemplate?.fields || set.fields || {},
+                measurements: nextTemplate?.measurements || set.measurements || {},
+                ...copyAnalyticsSetFields(set, nextTemplate?.fields || set.fields || {}),
+              }
+              : set
+          ),
+        };
+      }
+
+      return {
+        ...currentSession,
+        sets: currentSession.sets.map((set) =>
+          set.id === setId
+            ? { ...set, [field]: value }
+            : set
+        ),
+      };
+    });
+  }, [templates]);
+
+  const handleDraftSessionAddSet = React.useCallback(() => {
+    setDraftSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession;
+      }
+
+      const nextSetId = currentSession.sets.length + 1;
+      return {
+        ...currentSession,
+        sets: [
+          ...currentSession.sets,
+          buildAnalyticsDraftSet(currentSession, templates, nextSetId),
+        ],
+      };
+    });
+  }, [templates]);
+
+  const handleDraftSessionDeleteSet = React.useCallback((setId) => {
+    setDraftSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession;
+      }
+
+      return {
+        ...currentSession,
+        sets: currentSession.sets
+          .filter((set) => set.id !== setId)
+          .map((set, index) => ({ ...set, id: index + 1 })),
+      };
+    });
+  }, []);
+
+  const handleSaveSession = React.useCallback(async (event) => {
+    event.preventDefault();
+
+    if (!editingSession || !draftSession) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/workouts/${editingSession.id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          date: draftSession.date,
+          notes: draftSession.notes,
+          starred: Boolean(draftSession.starred),
+          sets: draftSession.sets,
+        }),
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        alert(body.msg || "Failed to update session");
+        return;
+      }
+
+      setWorkouts((currentWorkouts) =>
+        sortWorkoutsAscending(
+          currentWorkouts.map((workout) => workout.id === body.id ? body : workout)
+        )
+      );
+      closeSessionEditModal();
+    } catch (err) {
+      console.error("Error updating analytics session:", err);
+      alert("Failed to update session");
+    }
+  }, [closeSessionEditModal, draftSession, editingSession]);
+
+  const handleDeleteSession = React.useCallback(async (session) => {
+    const storedSession = resolveStoredSession(session, workouts);
+    setOpenSessionMenuId(null);
+
+    try {
+      const response = await fetch(`/api/workouts/${storedSession.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        alert(body.msg || "Failed to delete session");
+        return;
+      }
+
+      setWorkouts((currentWorkouts) =>
+        currentWorkouts.filter((workout) => workout.id !== storedSession.id)
+      );
+    } catch (err) {
+      console.error("Error deleting analytics session:", err);
+      alert("Failed to delete session");
+    }
+  }, [workouts]);
+
+  const handleSeparateSession = React.useCallback(async (session) => {
+    const storedSession = resolveStoredSession(session, workouts);
+    setOpenSessionMenuId(null);
+
+    if (!storedSession?.isMixed) {
+      alert("Only full workouts can be separated.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Separate ${storedSession.templateName || storedSession.exercise || "Full Workout"}? This will split the full workout into its individual exercise sessions.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/workouts/${storedSession.id}/separate`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        alert(body?.msg || "Failed to separate session");
+        return;
+      }
+
+      setWorkouts((currentWorkouts) =>
+        sortWorkoutsAscending([
+          ...currentWorkouts.filter((workout) => workout.id !== storedSession.id),
+          ...body,
+        ])
+      );
+    } catch (err) {
+      console.error("Error separating analytics session:", err);
+      alert("Failed to separate session");
+    }
+  }, [workouts]);
+
   React.useEffect(() => {
     if (!showMobileWorkoutPicker || !selectedWorkoutName) {
       return;
@@ -271,7 +502,7 @@ export function Analytics({ currentUser }) {
       const body = await response.json().catch(() => null);
 
       if (!response.ok) {
-        alert(body?.msg || 'Failed to save workout explorer settings');
+        alert(body?.msg || 'Failed to save exercise explorer settings');
         return;
       }
 
@@ -282,8 +513,8 @@ export function Analytics({ currentUser }) {
       );
       setShowExplorerEditModal(false);
     } catch (err) {
-      console.error('Error saving workout explorer settings:', err);
-      alert('Failed to save workout explorer settings');
+      console.error('Error saving exercise explorer settings:', err);
+      alert('Failed to save exercise explorer settings');
     } finally {
       setIsSavingExplorerPreferences(false);
     }
@@ -541,7 +772,7 @@ export function Analytics({ currentUser }) {
             <div className="profile-loading-hero">
               <p className="profile-kicker">Analytics</p>
               <h2>Loading your dashboard...</h2>
-              <p className="panel-muted">Crunching your training trends.</p>
+              <p className="panel-muted">Crunching your session trends.</p>
             </div>
             <div className="profile-loading-grid">
               <div className="profile-loading-card profile-loading-card-wide" />
@@ -563,11 +794,11 @@ export function Analytics({ currentUser }) {
               <strong>{profileIdentity.memberSince}</strong>
             </div>
             <div className="profile-meta-card">
-              <span>Last Workout</span>
+               <span>Last Session</span>
               <strong>{profileIdentity.lastWorkout}</strong>
             </div>
             <div className="profile-meta-card">
-              <span>Favorite Workout</span>
+               <span>Favorite Exercise</span>
               <strong>{profileIdentity.favoriteWorkout}</strong>
             </div>
           </div>
@@ -582,10 +813,10 @@ export function Analytics({ currentUser }) {
             <p className="panel-muted">{weeklySnapshot.shortWeekRange}</p>
           </div>
           <div className="metric-grid">
-            <MetricCard label="Workouts This Week" value={weeklySnapshot.workoutsThisWeek} />
+            <MetricCard label="Sessions This Week" value={weeklySnapshot.workoutsThisWeek} />
             <MetricCard label="Sets This Week" value={weeklySnapshot.setsThisWeek} />
             <MetricCard label="Active Days" value={weeklySnapshot.activeDaysThisWeek} />
-            <MetricCard label="Favorite Workout" value={profileIdentity.favoriteWorkout} accent />
+            <MetricCard label="Favorite Exercise" value={profileIdentity.favoriteWorkout} accent />
           </div>
         </section>
 
@@ -601,7 +832,7 @@ export function Analytics({ currentUser }) {
           <div className="metric-grid">
             <MetricCard label="Current Streak" value={`${consistencyStats.currentStreak} week${consistencyStats.currentStreak === 1 ? "" : "s"}`} />
             <MetricCard label="Longest Streak" value={`${consistencyStats.longestStreak} week${consistencyStats.longestStreak === 1 ? "" : "s"}`} />
-            <MetricCard label="Workout Days" value={consistencyStats.totalWorkoutDays} />
+            <MetricCard label="Training Days" value={consistencyStats.totalWorkoutDays} />
             <MetricCard label="Average / Week" value={consistencyStats.averageWorkoutDaysPerWeek} accent />
           </div>
 
@@ -621,8 +852,8 @@ export function Analytics({ currentUser }) {
         >
           <div className="panel-header">
             <div>
-              <p className="panel-kicker">Workout Explorer</p>
-              <h3>One Workout At A Time</h3>
+              <p className="panel-kicker">Exercise Explorer</p>
+              <h3>One Exercise At A Time</h3>
             </div>
           </div>
 
@@ -630,7 +861,7 @@ export function Analytics({ currentUser }) {
             <div className="workout-focus-card workout-focus-list-card">
               <div className="workout-focus-toolbar">
                 <div className="trend-card-header">
-                  <h4>Workouts</h4>
+                  <h4>Exercises</h4>
                   <p>{workoutExplorerItems.length} tracked</p>
                 </div>
                 <label className="workout-page-size">
@@ -643,7 +874,7 @@ export function Analytics({ currentUser }) {
                       { value: "10", label: "10" },
                       { value: "20", label: "20" },
                     ]}
-                    ariaLabel="Workouts per page"
+                     ariaLabel="Exercises per page"
                   />
                 </label>
               </div>
@@ -660,7 +891,7 @@ export function Analytics({ currentUser }) {
                   ))}
                 </div>
               ) : (
-                <p className="panel-empty">No workouts logged yet.</p>
+                <p className="panel-empty">No sessions logged yet.</p>
               )}
 
               <div className="workout-pagination">
@@ -690,8 +921,8 @@ export function Analytics({ currentUser }) {
               <div className="workout-focus-card workout-focus-detail-card">
                 <div className="panel-header workout-focus-detail-header">
                   <div>
-                    <p className="panel-kicker">Selected Workout</p>
-                    <h3>{selectedWorkoutName || "Choose a workout"}</h3>
+                    <p className="panel-kicker">Selected Exercise</p>
+                    <h3>{selectedWorkoutName || "Choose an exercise"}</h3>
                     {selectedWorkoutExplorerItem ? (
                       <div className="mobile-workout-picker-trigger">
                         <WorkoutExplorerPickerRow
@@ -709,24 +940,24 @@ export function Analytics({ currentUser }) {
                         className="mobile-workout-picker-trigger mobile-workout-picker-empty-trigger"
                         onClick={() => setShowMobileWorkoutPicker(true)}
                       >
-                        Choose a workout
+                        Choose an exercise
                       </button>
                     )}
                   </div>
                   <label className="workout-select">
-                    Workout
+                    Exercise
                     <Dropdown
                       value={selectedWorkoutName}
                       onChange={setSelectedWorkoutName}
                       searchable
-                      searchPlaceholder="Search workouts"
+                      searchPlaceholder="Search exercises"
                       options={workoutNames.map((name) => ({
                         value: name,
                         label: name,
                         color: getWorkoutColorByName(analyticsWorkouts, name),
                         ...buildWorkoutGroupBadge(getWorkoutColorByName(analyticsWorkouts, name), workoutColorPreferences),
                       }))}
-                      ariaLabel="Profile workout selector"
+                      ariaLabel="Analytics exercise selector"
                     />
                   </label>
                 </div>
@@ -788,7 +1019,7 @@ export function Analytics({ currentUser }) {
                     ) : null}
                   </>
                 ) : (
-                  <p className="panel-empty">Select a workout to see trends and stats.</p>
+                  <p className="panel-empty">Select an exercise to see trends and stats.</p>
                 )}
               </div>
             </div>
@@ -798,7 +1029,7 @@ export function Analytics({ currentUser }) {
               <div className="panel-header workout-focus-history-header">
                 <div>
                   <p className="panel-kicker">Sessions</p>
-                  <h3>{selectedWorkoutName || "Workout Sessions"}</h3>
+                  <h3>{selectedWorkoutName || "Exercise Sessions"}</h3>
                 </div>
                 <p className="panel-muted">
                   {selectedWorkoutSessions.length} session{selectedWorkoutSessions.length === 1 ? "" : "s"}
@@ -807,15 +1038,156 @@ export function Analytics({ currentUser }) {
               {selectedWorkoutName ? (
                 <WorkoutHistoryPreview
                   workouts={selectedWorkoutSessions}
-                  emptyMessage="No sessions logged for this workout yet."
+                  emptyMessage="No sessions logged for this exercise yet."
                   focusRequest={sessionFocusRequest}
+                  openMenuId={openSessionMenuId}
+                  onToggleWorkoutMenu={toggleSessionMenu}
+                  onOpenEditModal={openSessionEditModal}
+                  onSeparateWorkout={handleSeparateSession}
+                  onDeleteWorkout={handleDeleteSession}
                 />
               ) : (
-                <p className="panel-empty">Select a workout to see its sessions.</p>
+                <p className="panel-empty">Select an exercise to see its sessions.</p>
               )}
             </div>
           </div>
         </section>
+
+          {editingSession && draftSession && (
+            <div className="history-modal-backdrop" role="presentation">
+              <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="analytics-edit-session-title">
+                <button type="button" className="history-close-button is-icon" onClick={closeSessionEditModal} aria-label="Close session editor">
+                  &times;
+                </button>
+                <div className="history-modal-header">
+                  <div>
+                    <p className="history-modal-eyebrow">Edit Session</p>
+                    <h2 id="analytics-edit-session-title">
+                      {draftSession.isMixed ? "Full Workout" : (draftSession.templateName || draftSession.exercise)}
+                    </h2>
+                  </div>
+                  <div className="modal-header-actions">
+                    <button type="submit" form="analytics-session-form" className="btn btn-primary">
+                      Save
+                    </button>
+                  </div>
+                </div>
+
+                <form id="analytics-session-form" className="history-modal-form" onSubmit={handleSaveSession}>
+                  <label>
+                    Date
+                    <input
+                      type="date"
+                      value={draftSession.date}
+                      onChange={(event) => handleDraftSessionFieldChange("date", event.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Notes
+                    <textarea
+                      rows="3"
+                      value={draftSession.notes}
+                      onChange={(event) => handleDraftSessionFieldChange("notes", event.target.value)}
+                    />
+                  </label>
+
+                  <label className="history-starred-toggle">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draftSession.starred)}
+                      onChange={(event) => handleDraftSessionFieldChange("starred", event.target.checked)}
+                    />
+                    <span>Star this session</span>
+                  </label>
+
+                  <section className="history-modal-panel">
+                    <div className="history-modal-panel-header">
+                      <h3>Sets</h3>
+                      <button type="button" className="btn btn-outline-light btn-sm" onClick={handleDraftSessionAddSet}>
+                        + Add Set
+                      </button>
+                    </div>
+
+                    {draftSession.sets.length > 0 ? (
+                      <div className="history-edit-sets">
+                        {draftSession.sets.map((set) => (
+                          <div key={set.id} className="history-edit-set-card">
+                            <div className="history-edit-set-header">
+                              <span>{getSetDisplayLabel(set, draftSession.sets, draftSession.sets.findIndex((currentSet) => currentSet.id === set.id))}</span>
+                              <button
+                                type="button"
+                                className="history-delete-set-button"
+                                onClick={() => handleDraftSessionDeleteSet(set.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                            <div className="history-edit-set-grid">
+                              {draftSession.isMixed && (
+                                <label>
+                                  Exercise
+                                  <Dropdown
+                                    value={set.templateId || ""}
+                                    onChange={(nextValue) => handleDraftSessionSetChange(set.id, "templateId", nextValue)}
+                                    searchable
+                                    searchPlaceholder="Search exercises"
+                                    options={workoutTemplateOptions}
+                                    ariaLabel={`Set ${set.id} exercise`}
+                                  />
+                                </label>
+                              )}
+                              <label>
+                                Set type
+                                <Dropdown
+                                  value={set.setType || "regular"}
+                                  onChange={(nextValue) => handleDraftSessionSetChange(set.id, "setType", nextValue)}
+                                  options={setTypeOptions}
+                                  ariaLabel={`Set ${set.id} type`}
+                                />
+                              </label>
+                              {getAnalyticsVisibleFields(draftSession, set).map((field) => (
+                                <label key={field.key}>
+                                  {getAnalyticsFieldLabel(field, getAnalyticsWorkoutMeasurements(draftSession, set))}
+                                  <div className="input-with-unit">
+                                    <input
+                                      type={field.inputType || "text"}
+                                      value={set[field.key] ?? ""}
+                                      placeholder={field.placeholder || ""}
+                                      onChange={(event) => handleDraftSessionSetChange(set.id, field.key, event.target.value)}
+                                    />
+                                    {getAnalyticsFieldUnitSuffix(field, getAnalyticsWorkoutMeasurements(draftSession, set)) && (
+                                      <span className="input-unit">
+                                        {getAnalyticsFieldUnitSuffix(field, getAnalyticsWorkoutMeasurements(draftSession, set))}
+                                      </span>
+                                    )}
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="history-empty-edit-message">
+                        No sets yet.
+                      </p>
+                    )}
+                  </section>
+
+                  <div className="history-modal-actions">
+                    <button type="button" className="history-close-button" onClick={closeSessionEditModal} aria-label="Close session editor">
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary">
+                      Save
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {showExplorerEditModal && selectedWorkoutTemplate && typeof document !== "undefined"
             ? createPortal(
@@ -827,7 +1199,7 @@ export function Analytics({ currentUser }) {
               >
                 <div className="explorer-modal-header">
                   <div>
-                    <p className="panel-kicker">Workout Explorer</p>
+                    <p className="panel-kicker">Exercise Explorer</p>
                     <h3>Customize {selectedWorkoutTemplate.name}</h3>
                   </div>
                   <button
@@ -902,14 +1274,14 @@ export function Analytics({ currentUser }) {
                 <div className="mobile-workout-picker-modal" onClick={(event) => event.stopPropagation()}>
                   <div className="mobile-workout-picker-header">
                     <div>
-                      <p className="panel-kicker">Workout Explorer</p>
-                      <h3>Choose Workout</h3>
+                      <p className="panel-kicker">Exercise Explorer</p>
+                      <h3>Choose Exercise</h3>
                     </div>
                     <button
                       type="button"
                       className="explorer-modal-close"
                       onClick={() => setShowMobileWorkoutPicker(false)}
-                      aria-label="Close workout picker"
+                      aria-label="Close exercise picker"
                     >
                       ×
                     </button>
@@ -933,7 +1305,7 @@ export function Analytics({ currentUser }) {
                         />
                       ))
                     ) : (
-                      <p className="panel-empty">No workouts logged yet.</p>
+                      <p className="panel-empty">No sessions logged yet.</p>
                     )}
                   </div>
                 </div>
@@ -968,324 +1340,6 @@ export function Analytics({ currentUser }) {
           </>
         )}
       </div>
-    </main>
-  );
-}
-
-export function Account({ currentUser, setCurrentUser }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [workouts, setWorkouts] = React.useState([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [displayNameInput, setDisplayNameInput] = React.useState(currentUser?.name || "");
-  const [currentPassword, setCurrentPassword] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmPassword, setConfirmPassword] = React.useState("");
-  const [accountStatus, setAccountStatus] = React.useState({ type: "", message: "" });
-  const [isSavingAccount, setIsSavingAccount] = React.useState(false);
-
-  React.useEffect(() => {
-    setDisplayNameInput(currentUser?.name || "");
-  }, [currentUser?.name]);
-
-  React.useEffect(() => {
-    fetch('/api/workouts', {
-      method: 'GET',
-      credentials: 'include',
-    })
-      .then((response) => {
-        if (!response.ok) {
-          if (response.status === 401) {
-            return [];
-          }
-          throw new Error('Failed to fetch workouts');
-        }
-        return response.json();
-      })
-      .then((userWorkouts) => {
-        setWorkouts(sortWorkoutsAscending(userWorkouts));
-      })
-      .catch((err) => {
-        console.error('Error loading workouts:', err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, []);
-
-  const profileIdentity = React.useMemo(
-    () => buildProfileIdentity(workouts, currentUser),
-    [workouts, currentUser]
-  );
-
-  const searchParams = React.useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const isAccountModalOpen = searchParams.get("modal") === "account-settings";
-
-  const openAccountModal = () => {
-    const nextSearchParams = new URLSearchParams(location.search);
-    nextSearchParams.set("modal", "account-settings");
-    navigate(`${location.pathname}?${nextSearchParams.toString()}`);
-  };
-
-  const closeAccountModal = React.useCallback(() => {
-    const nextSearchParams = new URLSearchParams(location.search);
-    nextSearchParams.delete("modal");
-    const nextSearch = nextSearchParams.toString();
-    navigate(nextSearch ? `${location.pathname}?${nextSearch}` : location.pathname, { replace: true });
-  }, [location.pathname, location.search, navigate]);
-
-  React.useEffect(() => {
-    if (!isAccountModalOpen) {
-      return;
-    }
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        closeAccountModal();
-      }
-    };
-
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [closeAccountModal, isAccountModalOpen]);
-
-  const handleAccountSubmit = async (event) => {
-    event.preventDefault();
-
-    setIsSavingAccount(true);
-    setAccountStatus({ type: "", message: "" });
-
-    try {
-      const trimmedName = displayNameInput.trim();
-      const shouldUpdateName = trimmedName && trimmedName !== (currentUser?.name || "");
-      const shouldUpdatePassword = Boolean(currentPassword || newPassword || confirmPassword);
-
-      if (!shouldUpdateName && !shouldUpdatePassword) {
-        setAccountStatus({ type: "error", message: "Make a change before saving." });
-        return;
-      }
-
-      if (shouldUpdateName) {
-        const nameResponse = await fetch('/api/user/me', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ name: trimmedName }),
-        });
-
-        let nameBody = {};
-        try {
-          nameBody = await nameResponse.json();
-        } catch (_err) {
-          nameBody = {};
-        }
-
-        if (!nameResponse.ok) {
-          setAccountStatus({ type: "error", message: nameBody.msg || "Couldn't update name." });
-          return;
-        }
-
-        setCurrentUser((current) => current ? { ...current, name: nameBody.name || trimmedName } : current);
-      }
-
-      if (shouldUpdatePassword) {
-        if (!currentPassword || !newPassword || !confirmPassword) {
-          setAccountStatus({ type: "error", message: "Fill out all password fields to change your password." });
-          return;
-        }
-
-        if (newPassword !== confirmPassword) {
-          setAccountStatus({ type: "error", message: "New passwords do not match." });
-          return;
-        }
-
-        const response = await fetch('/api/auth/password', {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            currentPassword,
-            newPassword,
-          }),
-        });
-
-        if (!response.ok) {
-          let body = {};
-          try {
-            body = await response.json();
-          } catch (_err) {
-            body = {};
-          }
-
-          setAccountStatus({ type: "error", message: body.msg || "Couldn't update password." });
-          return;
-        }
-      }
-
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setAccountStatus({ type: "success", message: shouldUpdatePassword ? "Account updated." : "Name updated." });
-    } catch (err) {
-      console.error('Error updating account:', err);
-      setAccountStatus({ type: "error", message: "Couldn't update account settings." });
-    } finally {
-      setIsSavingAccount(false);
-    }
-  };
-
-  return (
-    <main>
-      <div className="main-formatting profile-layout">
-        {isLoading ? (
-          <section className="profile-loading-state" aria-live="polite">
-            <div className="profile-loading-hero">
-              <p className="profile-kicker">Account</p>
-              <h2>Loading your profile...</h2>
-              <p className="panel-muted">Gathering your account details.</p>
-            </div>
-            <div className="profile-loading-grid">
-              <div className="profile-loading-card profile-loading-card-wide" />
-              <div className="profile-loading-card" />
-              <div className="profile-loading-card" />
-            </div>
-          </section>
-        ) : (
-          <>
-            <section className="profile-hero">
-              <div>
-                <p className="profile-kicker">Account</p>
-                <h2>{profileIdentity.displayName}</h2>
-              </div>
-              <div className="profile-meta-grid">
-                <div className="profile-meta-card">
-                  <span>Username</span>
-                  <strong>{currentUser?.name || "Not set"}</strong>
-                </div>
-                <div className="profile-meta-card">
-                  <span>Email</span>
-                  <strong>{currentUser?.email || "Unknown"}</strong>
-                </div>
-                <div className="profile-meta-card">
-                  <span>Member Since</span>
-                  <strong>{profileIdentity.memberSince}</strong>
-                </div>
-              </div>
-            </section>
-
-            <section className="profile-panel">
-              <div className="panel-header">
-                <div>
-                  <p className="panel-kicker">Profile</p>
-                  <h3>Personal Information</h3>
-                </div>
-                <button type="button" className="btn btn-outline-light" onClick={openAccountModal}>
-                  Edit account
-                </button>
-              </div>
-              <div className="account-overview-grid">
-                <div className="metric-card">
-                  <span>Display name</span>
-                  <strong>{currentUser?.name || "Not set"}</strong>
-                </div>
-                <div className="metric-card">
-                  <span>Email</span>
-                  <strong>{currentUser?.email || "Unknown"}</strong>
-                </div>
-                <div className="metric-card metric-card-accent">
-                  <span>Favorite Workout</span>
-                  <strong>{profileIdentity.favoriteWorkout}</strong>
-                </div>
-              </div>
-            </section>
-
-            <section className="profile-panel">
-              <div className="panel-header">
-                <div>
-                  <p className="panel-kicker">Security</p>
-                  <h3>Login & Password</h3>
-                </div>
-              </div>
-              <p className="panel-muted">Manage your display name and password from one place.</p>
-            </section>
-          </>
-        )}
-      </div>
-
-      {isAccountModalOpen && (
-        <div className="password-modal-backdrop" role="presentation" onClick={closeAccountModal}>
-          <div
-            className="password-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="change-password-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="password-modal-header">
-              <div>
-                <p className="panel-kicker">Account</p>
-                <h3 id="change-password-title">Account Settings</h3>
-              </div>
-              <button type="button" className="password-modal-close" onClick={closeAccountModal}>
-                Close
-              </button>
-            </div>
-
-            <form className="password-form" onSubmit={handleAccountSubmit}>
-              <label className="password-field">
-                Display name
-                <input
-                  type="text"
-                  value={displayNameInput}
-                  onChange={(event) => setDisplayNameInput(event.target.value)}
-                  autoComplete="name"
-                />
-              </label>
-              <div className="password-section-label">Change password</div>
-              <label className="password-field">
-                Current password
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  autoComplete="current-password"
-                />
-              </label>
-              <label className="password-field">
-                New password
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="password-field">
-                Confirm new password
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  autoComplete="new-password"
-                />
-              </label>
-              {accountStatus.message && (
-                <p className={accountStatus.type === "success" ? "password-status success" : "password-status error"}>
-                  {accountStatus.message}
-                </p>
-              )}
-              <div className="password-form-actions">
-                <button type="button" className="btn btn-outline-light" onClick={closeAccountModal}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={isSavingAccount}>
-                  {isSavingAccount ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
@@ -1336,7 +1390,7 @@ function WorkoutAveragesTable({ workoutName, metrics }) {
         <h4>Averages</h4>
         <p>Session and set-level benchmarks for {workoutName}.</p>
       </div>
-        <div className="workout-averages-table" role="table" aria-label="Workout averages">
+        <div className="workout-averages-table" role="table" aria-label="Exercise averages">
           {metrics.map((metric) => (
           <div key={metric.key || metric.label} className="workout-averages-row" role="row">
             <span className="workout-averages-label" role="cell">{metric.label}</span>
@@ -1983,6 +2037,155 @@ function buildWorkoutExplorerItems(workouts) {
     }));
 }
 
+function resolveStoredSession(session, workouts) {
+  if (!session) {
+    return session;
+  }
+
+  const sourceId = session.sourceWorkoutId || session.id;
+  return workouts.find((workout) => workout.id === sourceId)
+    || workouts.find((workout) => workout.id === session.id)
+    || session;
+}
+
+function cloneAnalyticsSessionForEdit(session) {
+  const inferredFields = inferAnalyticsFieldsFromSets(session?.sets || []);
+  const fields = hasAnalyticsTrackedFields(session?.fields) ? session.fields : inferredFields;
+
+  return {
+    ...session,
+    fields,
+    notes: session?.notes || "",
+    sets: Array.isArray(session?.sets)
+      ? session.sets.map((set, index) => ({
+        ...set,
+        id: set.id ?? index + 1,
+        setType: normalizeSetType(set.setType),
+      }))
+      : [],
+  };
+}
+
+function buildAnalyticsDraftSet(session, templates, setId) {
+  if (session?.isMixed) {
+    const template = templates[0] || null;
+    const fields = template?.fields || {};
+
+    return {
+      id: setId,
+      setType: "regular",
+      templateId: template?.id || "",
+      templateName: template?.name || "",
+      color: template ? getWorkoutColor(template) : "",
+      fields,
+      measurements: template?.measurements || {},
+      ...copyAnalyticsSetFields({}, fields),
+    };
+  }
+
+  const fields = hasAnalyticsTrackedFields(session?.fields)
+    ? session.fields
+    : inferAnalyticsFieldsFromSets(session?.sets || []);
+
+  return {
+    id: setId,
+    setType: "regular",
+    ...copyAnalyticsSetFields({}, fields),
+  };
+}
+
+function copyAnalyticsSetFields(sourceSet, fields) {
+  return {
+    ...(fields?.reps ? { reps: sourceSet?.reps ?? "" } : {}),
+    ...(fields?.weight ? { weight: sourceSet?.weight ?? "" } : {}),
+    ...(fields?.duration ? { duration: sourceSet?.duration ?? "" } : {}),
+    ...(fields?.distance ? { distance: sourceSet?.distance ?? "" } : {}),
+  };
+}
+
+function getAnalyticsVisibleFields(session, setOverride = null) {
+  const savedFieldConfig = setOverride?.fields || session?.fields;
+
+  if (savedFieldConfig) {
+    return setFieldColumns.filter((field) => savedFieldConfig[field.key]);
+  }
+
+  return setFieldColumns.filter((field) =>
+    Array.isArray(session?.sets) && session.sets.some((set) => set[field.key] !== undefined && set[field.key] !== "")
+  );
+}
+
+function getAnalyticsWorkoutMeasurements(session, setOverride = null) {
+  if (session?.isMixed) {
+    return setOverride?.measurements || session?.measurements || {};
+  }
+
+  return session?.measurements || {};
+}
+
+function getAnalyticsFieldLabel(field, measurements) {
+  if (field.key === "weight") {
+    return `Weight (${formatMeasurementLabel(measurements?.weight, "LBs")})`;
+  }
+
+  if (field.key === "distance") {
+    return `Distance (${formatMeasurementLabel(measurements?.distance, "Miles")})`;
+  }
+
+  if (field.key === "duration") {
+    return "Time (HH:MM:SS)";
+  }
+
+  return field.label;
+}
+
+function getAnalyticsFieldUnitSuffix(field, measurements) {
+  if (field.key === "weight") {
+    return formatMeasurementLabel(measurements?.weight, "lbs");
+  }
+
+  if (field.key === "distance") {
+    return formatMeasurementLabel(measurements?.distance, "mi");
+  }
+
+  return "";
+}
+
+function inferAnalyticsFieldsFromSets(sets) {
+  return {
+    reps: sets.some((set) => hasAnalyticsSetValue(set?.reps)),
+    weight: sets.some((set) => hasAnalyticsSetValue(set?.weight)),
+    duration: sets.some((set) => hasAnalyticsSetValue(set?.duration)),
+    distance: sets.some((set) => hasAnalyticsSetValue(set?.distance)),
+    notes: true,
+  };
+}
+
+function hasAnalyticsTrackedFields(fields) {
+  return Boolean(fields?.reps || fields?.weight || fields?.duration || fields?.distance);
+}
+
+function hasAnalyticsSetValue(value) {
+  return value !== undefined && value !== null && `${value}` !== "";
+}
+
+function buildWorkoutTemplateOptions(templates, workoutColorPreferences = {}) {
+  return [...templates]
+    .sort((left, right) => (left.name || "").localeCompare(right.name || ""))
+    .map((template) => {
+      const color = getWorkoutColor(template);
+      const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+      const badge = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+
+      return {
+        value: template.id,
+        label: template.name,
+        color,
+        ...(badge ? { badge, badgeColor: color } : {}),
+      };
+    });
+}
+
 function getNiceNumber(value, round) {
   if (!Number.isFinite(value) || value <= 0) {
     return 1;
@@ -2282,7 +2485,7 @@ function CalendarHeatmap({ weeks }) {
                 <div
                   key={day.date}
                   className={`heatmap-cell intensity-${day.intensity}`}
-                  title={`${day.date}: ${day.count} workout${day.count === 1 ? "" : "s"}`}
+                  title={`${day.date}: ${day.count} session${day.count === 1 ? "" : "s"}`}
                 />
               ))}
             </div>
@@ -2301,9 +2504,9 @@ function buildProfileIdentity(workouts, currentUser) {
 
   return {
     displayName,
-    summary: `${workouts.length} workouts logged.`,
-    memberSince: firstWorkout ? formatMonthYear(firstWorkout.date) : "No workouts yet",
-    lastWorkout: lastWorkout ? formatReadableDate(lastWorkout.date) : "No workouts yet",
+    summary: `${workouts.length} sessions logged.`,
+    memberSince: firstWorkout ? formatMonthYear(firstWorkout.date) : "No sessions yet",
+    lastWorkout: lastWorkout ? formatReadableDate(lastWorkout.date) : "No sessions yet",
     favoriteWorkout,
   };
 }
@@ -2319,6 +2522,8 @@ function expandAnalyticsWorkouts(workouts) {
       const key = set.templateId || set.templateName || `mixed-${index}`;
       const existing = groupedSets.get(key) || {
         ...workout,
+        sourceWorkoutId: workout.id,
+        isAnalyticsMixedSlice: true,
         id: `${workout.id}-${key}`,
         templateId: set.templateId || workout.templateId,
         templateName: set.templateName || workout.templateName,
@@ -2378,7 +2583,7 @@ function buildWorkoutBreakdown(workouts, selectedCategoryKey) {
     {
       key: "strength",
       label: "Strength",
-      description: "Weight or reps-driven workouts.",
+      description: "Weight or reps-driven exercises.",
       swatchClass: "is-strength",
       segmentClass: "is-strength",
     },
@@ -2399,7 +2604,7 @@ function buildWorkoutBreakdown(workouts, selectedCategoryKey) {
     {
       key: "mixed",
       label: "Mixed",
-      description: "Workouts blending strength and cardio signals.",
+      description: "Exercises blending strength and cardio signals.",
       swatchClass: "is-mixed",
       segmentClass: "is-mixed",
     },
@@ -2510,15 +2715,15 @@ function buildWorkoutBreakdown(workouts, selectedCategoryKey) {
     activeCategoryLabel: selectedSegment
       ? selectedSegment.label
       : breakdownMode === "workouts"
-        ? "Workout Split"
-        : "All Workouts",
+        ? "Exercise Split"
+        : "All Exercises",
     activeCategoryDescription: selectedSegment
       ? breakdownMode === "workouts"
         ? `${selectedSegment.count} sessions of ${selectedSegment.label}.`
         : selectedSegment.description
       : breakdownMode === "workouts"
-        ? "One workout type dominates, so this view drills into your specific workouts."
-        : "Your most-performed workouts across every category.",
+        ? "One exercise dominates, so this view drills into your specific exercises."
+        : "Your most-performed exercises across every category.",
     topWorkouts,
   };
 }
@@ -2985,7 +3190,19 @@ function getWorkoutTrendMetric(workout, metricKey) {
   };
 
   if (metricKey === "weight") {
-    const averageWeight = getAverageMetric((set) => Number(set.weight));
+    if (regularSets.length === 0) {
+      return null;
+    }
+
+    const regularWeightValues = regularSets
+      .map((set) => Number(set.weight))
+      .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (regularWeightValues.length === 0) {
+      return null;
+    }
+
+    const averageWeight = regularWeightValues.reduce((sum, value) => sum + value, 0) / regularWeightValues.length;
     return averageWeight === null ? null : { value: averageWeight };
   }
 
@@ -3266,7 +3483,7 @@ function buildPerformanceTrend(workouts, fields, measurements) {
 
   return {
     title: "Session Trend",
-    subtitle: "Workout frequency over time",
+    subtitle: "Session frequency over time",
     points: [],
   };
 }
@@ -3555,3 +3772,4 @@ function normalizeMeasurements(measurements) {
 function formatMeasurementUnit(value, fallback) {
   return formatMeasurementLabel(value, fallback);
 }
+

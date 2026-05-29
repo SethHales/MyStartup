@@ -6,7 +6,8 @@ import { BrowserRouter, NavLink, Route, Routes, Navigate, useLocation, useNaviga
 import { Login } from './login/login';
 import { History } from './history/history';
 import { Logger } from './logger/logger';
-import { Analytics, Account } from './profile/profile';
+import { Analytics } from './analytics/analytics';
+import { Account } from './account/account';
 import { BrandMark } from './components/brandMark';
 import { useIsMobile } from './hooks/useIsMobile';
 
@@ -210,7 +211,7 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
                     path="/history"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <History currentUser={currentUser} />
+                            <History currentUser={currentUser} setCurrentUser={setCurrentUser} />
                         </ProtectedRoute>
                     }
                 />

@@ -7,7 +7,7 @@ const uuid = require('uuid');
 const { createWorkoutImportService } = require('./workoutImportService');
 const app = express();
 const mixedWorkoutTemplateId = '__mixed_workout__';
-const mixedWorkoutName = 'Mixed Workout';
+const mixedWorkoutName = 'Full Workout';
 const defaultRestDuration = '00:30';
 const openAiImportModel = process.env.OPENAI_IMPORT_MODEL || 'gpt-4o-mini';
 const openAiApiKey = process.env.OPENAI_API_KEY || readLocalOpenAiApiKey();
@@ -199,7 +199,7 @@ apiRouter.put('/user/color-preferences', verifyAuth, async (req, res) => {
   );
 
   if (workoutColorPreferencesHaveDuplicates(nextPreferences)) {
-    res.status(400).send({ msg: 'Each workout color needs to stay unique' });
+    res.status(400).send({ msg: 'Each exercise color needs to stay unique' });
     return;
   }
 
@@ -316,7 +316,7 @@ apiRouter.put('/workouts/:id', verifyAuth, async (req, res) => {
   });
 
   if (!existingWorkout) {
-    res.status(404).send({ msg: 'Workout not found' });
+    res.status(404).send({ msg: 'Session not found' });
     return;
   }
 
@@ -366,7 +366,7 @@ apiRouter.delete('/workouts/:id', verifyAuth, async (req, res) => {
   });
 
   if (result.deletedCount === 0) {
-    res.status(404).send({ msg: 'Workout not found' });
+    res.status(404).send({ msg: 'Session not found' });
     return;
   }
 
@@ -380,18 +380,18 @@ apiRouter.post('/workouts/:id/separate', verifyAuth, async (req, res) => {
   });
 
   if (!existingWorkout) {
-    res.status(404).send({ msg: 'Workout not found' });
+    res.status(404).send({ msg: 'Session not found' });
     return;
   }
 
   if (!existingWorkout.isMixed) {
-    res.status(400).send({ msg: 'Only mixed workouts can be separated' });
+    res.status(400).send({ msg: 'Only full workouts can be separated' });
     return;
   }
 
   const sourceSets = Array.isArray(existingWorkout.sets) ? existingWorkout.sets.filter(Boolean) : [];
   if (sourceSets.length === 0) {
-    res.status(400).send({ msg: 'This mixed workout has no sets to separate' });
+    res.status(400).send({ msg: 'This full workout has no sets to separate' });
     return;
   }
 
@@ -417,7 +417,7 @@ apiRouter.post('/workouts/:id/separate', verifyAuth, async (req, res) => {
   });
 
   if (groupedSets.size === 0) {
-    res.status(400).send({ msg: 'No valid workout sets were found to separate' });
+    res.status(400).send({ msg: 'No valid exercise sets were found to separate' });
     return;
   }
 
@@ -437,7 +437,7 @@ apiRouter.post('/workouts/:id/separate', verifyAuth, async (req, res) => {
 
   const separatedWorkouts = Array.from(groupedSets.values()).map((group, index) => {
     const template = group.templateId ? templateMap.get(group.templateId) : null;
-    const templateName = template?.name || group.templateName || `Workout ${index + 1}`;
+    const templateName = template?.name || group.templateName || `Exercise ${index + 1}`;
     const fields = template?.fields || inferFieldsFromSets(group.sets);
     const normalizedSets = group.sets.map((set, setIndex) => sanitizeSet(set, fields, setIndex));
     const createdAt = Number.isNaN(baseCreatedAt)
@@ -509,12 +509,12 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   const measurements = sanitizeMeasurements(req.body.measurements);
 
   if (!name) {
-    res.status(400).send({ msg: 'Workout name is required' });
+    res.status(400).send({ msg: 'Exercise name is required' });
     return;
   }
 
   if (!fields.reps && !fields.weight && !fields.duration && !fields.distance) {
-    res.status(400).send({ msg: 'Select at least one set field for this workout' });
+    res.status(400).send({ msg: 'Select at least one set field for this exercise' });
     return;
   }
 
@@ -524,7 +524,7 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   });
 
   if (existingTemplate) {
-    res.status(409).send({ msg: 'A workout with that name already exists' });
+    res.status(409).send({ msg: 'An exercise with that name already exists' });
     return;
   }
 
@@ -545,6 +545,213 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   res.send(template);
 });
 
+apiRouter.put('/workout-templates/group', verifyAuth, async (req, res) => {
+  const templateIds = sanitizeStringArray(req.body?.templateIds);
+  const requestedColor = sanitizeWorkoutColor(req.body?.color).toLowerCase();
+
+  if (templateIds.length === 0) {
+    res.status(400).send({ msg: 'Select at least one exercise' });
+    return;
+  }
+
+  if (!requestedColor) {
+    res.status(400).send({ msg: 'Pick a valid exercise group color' });
+    return;
+  }
+
+  const templates = await workoutTemplateCollection.find({
+    userEmail: req.user.email,
+    id: { $in: templateIds },
+  }).toArray();
+
+  if (templates.length !== templateIds.length) {
+    res.status(404).send({ msg: 'One or more selected exercises could not be found' });
+    return;
+  }
+
+  await workoutTemplateCollection.updateMany(
+    { userEmail: req.user.email, id: { $in: templateIds } },
+    { $set: { color: requestedColor } }
+  );
+
+  await workoutCollection.updateMany(
+    {
+      userEmail: req.user.email,
+      isMixed: { $ne: true },
+      templateId: { $in: templateIds },
+    },
+    { $set: { color: requestedColor } }
+  );
+
+  const mixedWorkoutsToUpdate = await workoutCollection.find({
+    userEmail: req.user.email,
+    isMixed: true,
+    sets: { $elemMatch: { templateId: { $in: templateIds } } },
+  }).toArray();
+
+  await Promise.all(
+    mixedWorkoutsToUpdate.map((workout) => {
+      const updatedSets = Array.isArray(workout.sets)
+        ? workout.sets.map((set) => (
+          templateIds.includes(set?.templateId)
+            ? { ...set, color: requestedColor }
+            : set
+        ))
+        : [];
+
+      return workoutCollection.updateOne(
+        { id: workout.id, userEmail: req.user.email },
+        { $set: { sets: updatedSets, updatedAt: new Date().toISOString() } }
+      );
+    })
+  );
+
+  res.send({
+    updatedTemplateIds: templateIds,
+    color: requestedColor,
+  });
+});
+
+apiRouter.post('/workout-templates/merge', verifyAuth, async (req, res) => {
+  const templateIds = sanitizeStringArray(req.body?.templateIds);
+  const requestedTargetId = typeof req.body?.targetTemplateId === 'string'
+    ? req.body.targetTemplateId
+    : '';
+  const targetTemplateId = requestedTargetId && templateIds.includes(requestedTargetId)
+    ? requestedTargetId
+    : templateIds[0];
+
+  if (templateIds.length < 2) {
+    res.status(400).send({ msg: 'Select at least two exercises to merge' });
+    return;
+  }
+
+  const templates = await workoutTemplateCollection.find({
+    userEmail: req.user.email,
+    id: { $in: templateIds },
+  }).toArray();
+
+  if (templates.length !== templateIds.length) {
+    res.status(404).send({ msg: 'One or more selected exercises could not be found' });
+    return;
+  }
+
+  const templateMap = new Map(templates.map((template) => [template.id, template]));
+  const targetTemplate = templateMap.get(targetTemplateId);
+
+  if (!targetTemplate) {
+    res.status(400).send({ msg: 'Choose an exercise to merge into' });
+    return;
+  }
+
+  const targetFields = sanitizeFields(targetTemplate.fields);
+  const mismatchedTemplate = templates.find((template) => !doTrackedFieldsMatch(targetFields, sanitizeFields(template.fields)));
+
+  if (mismatchedTemplate) {
+    res.status(400).send({ msg: 'Selected exercises must use the same fields before they can be merged' });
+    return;
+  }
+
+  const sourceTemplates = templates.filter((template) => template.id !== targetTemplate.id);
+  const sourceTemplateIds = sourceTemplates.map((template) => template.id);
+  const sourceTemplateNames = sourceTemplates.map((template) => template.name);
+  const targetColor = normalizeStoredWorkoutColor(targetTemplate.color, targetTemplate.name) || getFallbackWorkoutColor(targetTemplate.name);
+  const targetMeasurements = sanitizeMeasurements(targetTemplate.measurements);
+  const targetRestDuration = sanitizeRestDuration(targetTemplate.restDuration);
+
+  await workoutCollection.updateMany(
+    {
+      userEmail: req.user.email,
+      isMixed: { $ne: true },
+      $or: [
+        { templateId: { $in: sourceTemplateIds } },
+        {
+          templateId: { $in: [null, ''] },
+          $or: [
+            { templateName: { $in: sourceTemplateNames } },
+            { exercise: { $in: sourceTemplateNames } },
+          ],
+        },
+      ],
+    },
+    {
+      $set: {
+        templateId: targetTemplate.id,
+        templateName: targetTemplate.name,
+        exercise: targetTemplate.name,
+        color: targetColor,
+        usesRestTimer: Boolean(targetTemplate.usesRestTimer),
+        restDuration: targetRestDuration,
+        fields: targetFields,
+        measurements: targetMeasurements,
+        updatedAt: new Date().toISOString(),
+      },
+    }
+  );
+
+  const mixedWorkoutsToUpdate = await workoutCollection.find({
+    userEmail: req.user.email,
+    isMixed: true,
+    $or: [
+      { 'sets.templateId': { $in: sourceTemplateIds } },
+      { 'sets.templateName': { $in: sourceTemplateNames } },
+    ],
+  }).toArray();
+
+  await Promise.all(
+    mixedWorkoutsToUpdate.map((workout) => {
+      const updatedSets = Array.isArray(workout.sets)
+        ? workout.sets.map((set) => {
+          const isSourceTemplate = sourceTemplateIds.includes(set?.templateId)
+            || sourceTemplateNames.includes(set?.templateName);
+
+          if (!isSourceTemplate) {
+            return set;
+          }
+
+          return {
+            ...set,
+            templateId: targetTemplate.id,
+            templateName: targetTemplate.name,
+            color: targetColor,
+            fields: targetFields,
+            measurements: targetMeasurements,
+            usesRestTimer: Boolean(targetTemplate.usesRestTimer),
+            restDuration: targetRestDuration,
+          };
+        })
+        : [];
+
+      return workoutCollection.updateOne(
+        { id: workout.id, userEmail: req.user.email },
+        {
+          $set: {
+            sets: updatedSets,
+            fields: buildFieldsFromMixedSets(updatedSets),
+            updatedAt: new Date().toISOString(),
+          },
+        }
+      );
+    })
+  );
+
+  await workoutTemplateCollection.deleteMany({
+    userEmail: req.user.email,
+    id: { $in: sourceTemplateIds },
+  });
+
+  res.send({
+    targetTemplate: {
+      ...targetTemplate,
+      color: targetColor,
+      fields: targetFields,
+      measurements: targetMeasurements,
+      restDuration: targetRestDuration,
+    },
+    mergedTemplateIds: sourceTemplateIds,
+  });
+});
+
 apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   const existingTemplate = await workoutTemplateCollection.findOne({
     id: req.params.id,
@@ -552,7 +759,7 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   });
 
   if (!existingTemplate) {
-    res.status(404).send({ msg: 'Workout template not found' });
+    res.status(404).send({ msg: 'Exercise not found' });
     return;
   }
 
@@ -564,12 +771,12 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   const measurements = sanitizeMeasurements(req.body.measurements);
 
   if (!name) {
-    res.status(400).send({ msg: 'Workout name is required' });
+    res.status(400).send({ msg: 'Exercise name is required' });
     return;
   }
 
   if (!fields.reps && !fields.weight && !fields.duration && !fields.distance) {
-    res.status(400).send({ msg: 'Select at least one set field for this workout' });
+    res.status(400).send({ msg: 'Select at least one set field for this exercise' });
     return;
   }
 
@@ -580,7 +787,7 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
   });
 
   if (conflictingTemplate) {
-    res.status(409).send({ msg: 'A workout with that name already exists' });
+    res.status(409).send({ msg: 'An exercise with that name already exists' });
     return;
   }
 
@@ -685,7 +892,7 @@ apiRouter.put('/workout-templates/:id/explorer-preferences', verifyAuth, async (
   });
 
   if (!existingTemplate) {
-    res.status(404).send({ msg: 'Workout template not found' });
+    res.status(404).send({ msg: 'Exercise not found' });
     return;
   }
 
@@ -713,7 +920,7 @@ apiRouter.delete('/workout-templates/:id', verifyAuth, async (req, res) => {
   });
 
   if (!existingTemplate) {
-    res.status(404).send({ msg: 'Workout template not found' });
+    res.status(404).send({ msg: 'Exercise not found' });
     return;
   }
 
@@ -807,7 +1014,7 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
   }
 
   if (!isMixedWorkout && !template) {
-    res.status(400).send({ msg: 'Select a registered workout before saving' });
+    res.status(400).send({ msg: 'Select a registered exercise before saving' });
     return;
   }
 
@@ -862,7 +1069,7 @@ apiRouter.post('/workouts/import/preview', verifyAuth, async (req, res) => {
     res.send(preview);
   } catch (err) {
     const status = err?.statusCode || err?.status || 500;
-    res.status(status).send({ msg: err?.message || 'Failed to preview imported workouts' });
+    res.status(status).send({ msg: err?.message || 'Failed to preview imported sessions' });
   }
 });
 
@@ -873,7 +1080,7 @@ apiRouter.post('/workouts/import/commit', verifyAuth, async (req, res) => {
     res.send(importResult);
   } catch (err) {
     const status = err?.statusCode || err?.status || 500;
-    res.status(status).send({ msg: err?.message || 'Failed to import workouts' });
+    res.status(status).send({ msg: err?.message || 'Failed to import sessions' });
   }
 });
 
@@ -1108,6 +1315,34 @@ function sanitizeWorkoutColor(value) {
 
 function sanitizeApprovedWorkoutColor(value) {
   return sanitizeWorkoutColor(value).toLowerCase();
+}
+
+function sanitizeStringArray(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return values
+    .map((value) => typeof value === 'string' ? value.trim() : '')
+    .filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+
+      seen.add(value);
+      return true;
+    });
+}
+
+function doTrackedFieldsMatch(leftFields, rightFields) {
+  const left = sanitizeFields(leftFields);
+  const right = sanitizeFields(rightFields);
+
+  return left.reps === right.reps
+    && left.weight === right.weight
+    && left.duration === right.duration
+    && left.distance === right.distance;
 }
 
 function normalizeStoredWorkoutColor(value, seedName = 'quicksets') {

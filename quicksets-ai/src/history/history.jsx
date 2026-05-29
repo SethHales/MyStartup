@@ -13,7 +13,9 @@ import {
   findWorkoutColorSlot,
   getWorkoutColor,
   getWorkoutColorPreferenceLabel,
+  getWorkoutColorPreferenceValue,
   resolveWorkoutColorPreferences,
+  workoutColorPalette,
 } from "../utils/workoutColors";
 
 const setFieldColumns = [
@@ -38,16 +40,25 @@ const monthNames = [
   'December',
 ];
 
-export function History({ currentUser = null }) {
+export function History({ currentUser = null, setCurrentUser = null }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [historyView, setHistoryView] = React.useState('date');
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
-  const [expandedGroupKeys, setExpandedGroupKeys] = React.useState([]);
   const [expandedGroupWorkoutKeys, setExpandedGroupWorkoutKeys] = React.useState([]);
   const [expandedGroupedSessionId, setExpandedGroupedSessionId] = React.useState(null);
   const [editingWorkout, setEditingWorkout] = React.useState(null);
   const [draftWorkout, setDraftWorkout] = React.useState(null);
+  const [editingGroup, setEditingGroup] = React.useState(null);
+  const [groupDraft, setGroupDraft] = React.useState({ label: '', color: '' });
+  const [isSavingGroup, setIsSavingGroup] = React.useState(false);
+  const [isExerciseSelectionMode, setIsExerciseSelectionMode] = React.useState(false);
+  const [selectedExerciseKeys, setSelectedExerciseKeys] = React.useState([]);
+  const [showSelectionGroupPicker, setShowSelectionGroupPicker] = React.useState(false);
+  const [editingColorSlot, setEditingColorSlot] = React.useState('');
+  const [colorPreferenceDraft, setColorPreferenceDraft] = React.useState({ label: '', color: '' });
+  const [isSavingColorPreference, setIsSavingColorPreference] = React.useState(false);
+  const [isApplyingSelectionAction, setIsApplyingSelectionAction] = React.useState(false);
   const [openWorkoutMenuId, setOpenWorkoutMenuId] = React.useState(null);
   const [showFilterMenu, setShowFilterMenu] = React.useState(false);
   const [workoutFilters, setWorkoutFilters] = React.useState([]);
@@ -78,7 +89,14 @@ export function History({ currentUser = null }) {
       }
     };
 
-    const handleViewportChange = () => {
+    const handleViewportChange = (event) => {
+      const didScrollInsideFilter = event?.type === 'scroll'
+        && filterMenuRef.current?.contains(event.target);
+
+      if (didScrollInsideFilter) {
+        return;
+      }
+
       setShowFilterMenu(false);
       setOpenWorkoutMenuId(null);
     };
@@ -96,9 +114,31 @@ export function History({ currentUser = null }) {
     };
   }, []);
 
-  const workoutOptions = React.useMemo(
-    () => Array.from(new Set(workouts.map((workout) => workout.templateName || workout.exercise).filter(Boolean))).sort(),
-    [workouts]
+  const workoutFilterOptions = React.useMemo(
+    () => {
+      const optionMap = new Map();
+
+      workouts.forEach((workout) => {
+        const workoutName = workout.templateName || workout.exercise;
+        if (!workoutName || optionMap.has(workoutName)) {
+          return;
+        }
+
+        const color = getWorkoutColor(workout);
+        const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+        const badge = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+
+        optionMap.set(workoutName, {
+          value: workoutName,
+          label: workoutName,
+          color,
+          ...(badge ? { badge, badgeColor: color } : {}),
+        });
+      });
+
+      return Array.from(optionMap.values()).sort((left, right) => left.label.localeCompare(right.label));
+    },
+    [workouts, workoutColorPreferences]
   );
   const yearOptions = React.useMemo(
     () => Array.from(new Set(workouts.map((workout) => String(parseLocalDate(workout.date).getFullYear())))).sort((left, right) => Number(right) - Number(left)),
@@ -126,18 +166,59 @@ export function History({ currentUser = null }) {
     () => groupWorkoutsByColorGroup(filteredWorkouts, workoutColorPreferences),
     [filteredWorkouts, workoutColorPreferences]
   );
+  const selectableExerciseGroups = React.useMemo(
+    () => flattenHistoryExerciseGroups(groupedByColor),
+    [groupedByColor]
+  );
+  const selectableExerciseKeySet = React.useMemo(
+    () => new Set(selectableExerciseGroups.map((group) => group.selectionKey)),
+    [selectableExerciseGroups]
+  );
+  const selectedExerciseKeySet = React.useMemo(
+    () => new Set(selectedExerciseKeys),
+    [selectedExerciseKeys]
+  );
+  const selectedExerciseGroups = React.useMemo(
+    () => selectableExerciseGroups.filter((group) => selectedExerciseKeySet.has(group.selectionKey)),
+    [selectableExerciseGroups, selectedExerciseKeySet]
+  );
+  const selectedExerciseTemplateIds = React.useMemo(
+    () => Array.from(new Set(
+      selectedExerciseGroups.flatMap((group) => Array.isArray(group.templateIds) ? group.templateIds : [])
+    )),
+    [selectedExerciseGroups]
+  );
+  const canMergeSelectedExercises = React.useMemo(
+    () => selectedExerciseTemplateIds.length >= 2 && selectedExerciseGroupsHaveMatchingFields(selectedExerciseGroups),
+    [selectedExerciseGroups, selectedExerciseTemplateIds]
+  );
   const activeFilterCount = workoutFilters.length + monthFilters.length + yearFilters.length + (starredOnly ? 1 : 0);
+
+  React.useEffect(() => {
+    if (!isExerciseSelectionMode) {
+      return;
+    }
+
+    setSelectedExerciseKeys((currentKeys) => {
+      const nextKeys = currentKeys.filter((key) => selectableExerciseKeySet.has(key));
+      if (nextKeys.length === 0) {
+        setIsExerciseSelectionMode(false);
+      }
+      return nextKeys;
+    });
+  }, [isExerciseSelectionMode, selectableExerciseKeySet]);
+
+  React.useEffect(() => {
+    if (historyView !== 'group') {
+      setIsExerciseSelectionMode(false);
+      setSelectedExerciseKeys([]);
+      setShowSelectionGroupPicker(false);
+    }
+  }, [historyView]);
 
   const handleRowClick = React.useCallback((id) => {
     setExpandedWorkoutId((current) =>
       current === id ? null : id
-    );
-  }, []);
-  const toggleGroupKey = React.useCallback((groupKey) => {
-    setExpandedGroupKeys((currentKeys) =>
-      currentKeys.includes(groupKey)
-        ? currentKeys.filter((key) => key !== groupKey)
-        : [...currentKeys, groupKey]
     );
   }, []);
   const toggleGroupWorkoutKey = React.useCallback((groupWorkoutKey) => {
@@ -152,6 +233,32 @@ export function History({ currentUser = null }) {
       currentId === workoutId ? null : workoutId
     );
   }, []);
+  const beginExerciseSelection = React.useCallback((selectionKey) => {
+    setIsExerciseSelectionMode(true);
+    setSelectedExerciseKeys((currentKeys) =>
+      currentKeys.includes(selectionKey) ? currentKeys : [...currentKeys, selectionKey]
+    );
+  }, []);
+  const toggleExerciseSelection = React.useCallback((selectionKey) => {
+    setSelectedExerciseKeys((currentKeys) => {
+      const nextKeys = currentKeys.includes(selectionKey)
+        ? currentKeys.filter((key) => key !== selectionKey)
+        : [...currentKeys, selectionKey];
+
+      if (nextKeys.length === 0) {
+        setIsExerciseSelectionMode(false);
+      }
+
+      return nextKeys;
+    });
+  }, []);
+  const clearExerciseSelection = React.useCallback(() => {
+    setIsExerciseSelectionMode(false);
+    setSelectedExerciseKeys([]);
+    setShowSelectionGroupPicker(false);
+    setEditingColorSlot('');
+    setColorPreferenceDraft({ label: '', color: '' });
+  }, []);
 
   const openEditModal = React.useCallback((workout) => {
     setEditingWorkout(workout);
@@ -164,6 +271,360 @@ export function History({ currentUser = null }) {
     setDraftWorkout(null);
   }, []);
 
+  const openGroupEditor = React.useCallback((group) => {
+    const slotColor = group.slotColor;
+    setEditingGroup({
+      slotColor,
+      fallbackLabel: group.fallbackLabel || `${colorSlotNames[slotColor] || 'Unlabeled'} Group`,
+    });
+    setGroupDraft({
+      label: getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences),
+      color: getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences),
+    });
+    setOpenWorkoutMenuId(null);
+  }, [workoutColorPreferences]);
+
+  const closeGroupEditor = React.useCallback(() => {
+    setEditingGroup(null);
+    setGroupDraft({ label: '', color: '' });
+    setIsSavingGroup(false);
+  }, []);
+
+  const handleSaveGroupPreference = React.useCallback(async (event) => {
+    event.preventDefault();
+
+    if (!editingGroup) {
+      return;
+    }
+
+    const slotColor = editingGroup.slotColor;
+    const trimmedLabel = groupDraft.label.trim();
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(groupDraft.color)
+      ? groupDraft.color.toLowerCase()
+      : getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences);
+    const nextPreferences = workoutColorPalette.reduce((preferences, paletteSlot) => ({
+      ...preferences,
+      [paletteSlot]: {
+        ...workoutColorPreferences[paletteSlot],
+        ...(paletteSlot === slotColor
+          ? {
+            label: trimmedLabel,
+            color: normalizedColor,
+          }
+          : {}),
+      },
+    }), {});
+    const colorValues = workoutColorPalette.map((paletteSlot) => nextPreferences[paletteSlot].color);
+
+    if (new Set(colorValues).size !== colorValues.length) {
+      alert('Each exercise group color needs to stay unique.');
+      return;
+    }
+
+    setIsSavingGroup(true);
+
+    try {
+      const response = await fetch('/api/user/color-preferences', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ workoutColorPreferences: nextPreferences }),
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to save exercise group');
+        setIsSavingGroup(false);
+        return;
+      }
+
+      const nextResolvedPreferences = resolveWorkoutColorPreferences(
+        body?.workoutColorPreferences,
+        body?.workoutColorLabels
+      );
+      const colorUpdates = workoutColorPalette
+        .map((paletteSlot) => ({
+          previousColor: getWorkoutColorPreferenceValue(paletteSlot, workoutColorPreferences),
+          nextColor: getWorkoutColorPreferenceValue(paletteSlot, nextResolvedPreferences),
+        }))
+        .filter(({ previousColor, nextColor }) => previousColor !== nextColor);
+      const remapColor = (colorValue) => {
+        const matchedUpdate = colorUpdates.find(({ previousColor }) => previousColor === colorValue);
+        return matchedUpdate ? matchedUpdate.nextColor : colorValue;
+      };
+
+      if (colorUpdates.length > 0) {
+        setWorkouts((currentWorkouts) =>
+          currentWorkouts.map((workout) => ({
+            ...workout,
+            color: workout.isMixed ? workout.color : remapColor(workout.color),
+            sets: Array.isArray(workout.sets)
+              ? workout.sets.map((set) => ({
+                ...set,
+                color: set?.color ? remapColor(set.color) : set.color,
+              }))
+              : workout.sets,
+          }))
+        );
+      }
+
+      if (setCurrentUser) {
+        setCurrentUser((current) => ({
+          ...(current || {}),
+          ...body,
+        }));
+      }
+
+      closeGroupEditor();
+    } catch (err) {
+      console.error('Failed to save exercise group:', err);
+      alert('Failed to save exercise group');
+      setIsSavingGroup(false);
+    }
+  }, [closeGroupEditor, editingGroup, groupDraft, setCurrentUser, workoutColorPreferences]);
+
+  const remapWorkoutColorsFromPreferences = React.useCallback((nextUserPayload) => {
+    const nextResolvedPreferences = resolveWorkoutColorPreferences(
+      nextUserPayload?.workoutColorPreferences,
+      nextUserPayload?.workoutColorLabels
+    );
+    const colorUpdates = workoutColorPalette
+      .map((paletteSlot) => ({
+        previousColor: getWorkoutColorPreferenceValue(paletteSlot, workoutColorPreferences),
+        nextColor: getWorkoutColorPreferenceValue(paletteSlot, nextResolvedPreferences),
+      }))
+      .filter(({ previousColor, nextColor }) => previousColor !== nextColor);
+    const remapColor = (colorValue) => {
+      const matchedUpdate = colorUpdates.find(({ previousColor }) => previousColor === colorValue);
+      return matchedUpdate ? matchedUpdate.nextColor : colorValue;
+    };
+
+    if (colorUpdates.length > 0) {
+      setWorkouts((currentWorkouts) =>
+        currentWorkouts.map((workout) => ({
+          ...workout,
+          color: workout.isMixed ? workout.color : remapColor(workout.color),
+          sets: Array.isArray(workout.sets)
+            ? workout.sets.map((set) => ({
+              ...set,
+              color: set?.color ? remapColor(set.color) : set.color,
+            }))
+            : workout.sets,
+        }))
+      );
+    }
+
+    if (setCurrentUser) {
+      setCurrentUser((current) => ({
+        ...(current || {}),
+        ...nextUserPayload,
+      }));
+    }
+  }, [setCurrentUser, workoutColorPreferences]);
+
+  const openSelectionGroupPicker = React.useCallback(() => {
+    if (selectedExerciseTemplateIds.length === 0) {
+      alert('Select at least one exercise with a saved template first.');
+      return;
+    }
+
+    setShowSelectionGroupPicker(true);
+    setEditingColorSlot('');
+    setColorPreferenceDraft({ label: '', color: '' });
+  }, [selectedExerciseTemplateIds]);
+
+  const closeSelectionGroupPicker = React.useCallback(() => {
+    setShowSelectionGroupPicker(false);
+    setEditingColorSlot('');
+    setColorPreferenceDraft({ label: '', color: '' });
+    setIsSavingColorPreference(false);
+  }, []);
+
+  const startEditingColorPreference = React.useCallback((slotColor) => {
+    setEditingColorSlot(slotColor);
+    setColorPreferenceDraft({
+      label: getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences),
+      color: getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences),
+    });
+  }, [workoutColorPreferences]);
+
+  const handleSaveColorPreference = React.useCallback(async (slotColor) => {
+    const trimmedLabel = colorPreferenceDraft.label.trim();
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(colorPreferenceDraft.color)
+      ? colorPreferenceDraft.color.toLowerCase()
+      : getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences);
+    const nextPreferences = workoutColorPalette.reduce((preferences, paletteSlot) => ({
+      ...preferences,
+      [paletteSlot]: {
+        ...workoutColorPreferences[paletteSlot],
+        ...(paletteSlot === slotColor
+          ? {
+            label: trimmedLabel,
+            color: normalizedColor,
+          }
+          : {}),
+      },
+    }), {});
+    const colorValues = workoutColorPalette.map((paletteSlot) => nextPreferences[paletteSlot].color);
+
+    if (new Set(colorValues).size !== colorValues.length) {
+      alert('Each exercise group color needs to stay unique.');
+      return;
+    }
+
+    setIsSavingColorPreference(true);
+
+    try {
+      const response = await fetch('/api/user/color-preferences', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ workoutColorPreferences: nextPreferences }),
+      });
+      const body = await response.json();
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to save exercise groups');
+        setIsSavingColorPreference(false);
+        return;
+      }
+
+      remapWorkoutColorsFromPreferences(body);
+      setEditingColorSlot('');
+      setColorPreferenceDraft({ label: '', color: '' });
+    } catch (err) {
+      console.error('Failed to save exercise groups:', err);
+      alert('Failed to save exercise groups');
+    } finally {
+      setIsSavingColorPreference(false);
+    }
+  }, [colorPreferenceDraft, remapWorkoutColorsFromPreferences, workoutColorPreferences]);
+
+  const handleAssignSelectedExercisesToGroup = React.useCallback(async (slotColor) => {
+    if (selectedExerciseTemplateIds.length === 0) {
+      alert('Select at least one exercise with a saved template first.');
+      return;
+    }
+
+    setIsApplyingSelectionAction(true);
+
+    try {
+      const response = await fetch('/api/workout-templates/group', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          templateIds: selectedExerciseTemplateIds,
+          color: getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to add exercises to group');
+        return;
+      }
+
+      await loadWorkouts();
+      clearExerciseSelection();
+    } catch (err) {
+      console.error('Failed to add exercises to group:', err);
+      alert('Failed to add exercises to group');
+    } finally {
+      setIsApplyingSelectionAction(false);
+    }
+  }, [clearExerciseSelection, selectedExerciseTemplateIds, workoutColorPreferences]);
+
+  const handleDeleteSelectedExercises = React.useCallback(async () => {
+    if (selectedExerciseTemplateIds.length === 0) {
+      alert('Select at least one exercise with a saved template first.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedExerciseTemplateIds.length} exercise${selectedExerciseTemplateIds.length === 1 ? '' : 's'}? This will delete their templates and all matching sessions.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsApplyingSelectionAction(true);
+
+    try {
+      for (const templateId of selectedExerciseTemplateIds) {
+        const response = await fetch(`/api/workout-templates/${templateId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          alert(body.msg || 'Failed to delete selected exercises');
+          return;
+        }
+      }
+
+      await loadWorkouts();
+      clearExerciseSelection();
+    } catch (err) {
+      console.error('Failed to delete selected exercises:', err);
+      alert('Failed to delete selected exercises');
+    } finally {
+      setIsApplyingSelectionAction(false);
+    }
+  }, [clearExerciseSelection, selectedExerciseTemplateIds]);
+
+  const handleMergeSelectedExercises = React.useCallback(async () => {
+    if (selectedExerciseTemplateIds.length < 2) {
+      alert('Select at least two exercises to merge.');
+      return;
+    }
+
+    if (!selectedExerciseGroupsHaveMatchingFields(selectedExerciseGroups)) {
+      alert('Selected exercises must use the same fields before they can be merged.');
+      return;
+    }
+
+    const targetGroup = selectedExerciseGroups.find((group) => group.templateIds?.[0]);
+    const targetTemplateId = targetGroup?.templateIds?.[0] || selectedExerciseTemplateIds[0];
+    const confirmed = window.confirm(
+      `Merge ${selectedExerciseTemplateIds.length} exercises into ${targetGroup?.label || 'the first selected exercise'}? This will move their sessions into one exercise and remove the other templates.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsApplyingSelectionAction(true);
+
+    try {
+      const response = await fetch('/api/workout-templates/merge', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          templateIds: selectedExerciseTemplateIds,
+          targetTemplateId,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        alert(body.msg || 'Failed to merge selected exercises');
+        return;
+      }
+
+      await loadWorkouts();
+      clearExerciseSelection();
+    } catch (err) {
+      console.error('Failed to merge selected exercises:', err);
+      alert('Failed to merge selected exercises');
+    } finally {
+      setIsApplyingSelectionAction(false);
+    }
+  }, [clearExerciseSelection, selectedExerciseGroups, selectedExerciseTemplateIds]);
+
   const handleDeleteWorkout = React.useCallback(async (workoutId) => {
     setOpenWorkoutMenuId(null);
 
@@ -175,7 +636,7 @@ export function History({ currentUser = null }) {
 
       if (!response.ok) {
         const body = await response.json();
-        alert(body.msg || 'Failed to delete workout');
+        alert(body.msg || 'Failed to delete session');
         return;
       }
 
@@ -185,7 +646,7 @@ export function History({ currentUser = null }) {
       setExpandedWorkoutId((current) => current === workoutId ? null : current);
       setExpandedGroupedSessionId((currentId) => currentId === workoutId ? null : currentId);
     } catch (err) {
-      console.error('Error deleting workout:', err);
+      console.error('Error deleting session:', err);
     }
   }, []);
 
@@ -228,7 +689,7 @@ export function History({ currentUser = null }) {
             )
           )
         );
-        alert(body.msg || 'Failed to update starred workout');
+        alert(body.msg || 'Failed to update starred session');
         return;
       }
 
@@ -249,7 +710,7 @@ export function History({ currentUser = null }) {
           )
         )
       );
-      console.error('Error updating starred workout:', err);
+      console.error('Error updating starred session:', err);
     }
   }, []);
 
@@ -257,7 +718,7 @@ export function History({ currentUser = null }) {
     setOpenWorkoutMenuId(null);
 
     const confirmed = window.confirm(
-      `Separate ${workout.templateName || workout.exercise}? This will split the mixed workout into its individual workouts.`
+      `Separate ${workout.templateName || workout.exercise}? This will split the full workout into its individual exercise sessions.`
     );
 
     if (!confirmed) {
@@ -273,7 +734,7 @@ export function History({ currentUser = null }) {
       const body = await response.json().catch(() => null);
 
       if (!response.ok) {
-        alert(body?.msg || 'Failed to separate workout');
+        alert(body?.msg || 'Failed to separate session');
         return;
       }
 
@@ -285,7 +746,7 @@ export function History({ currentUser = null }) {
       );
       setExpandedWorkoutId((currentId) => currentId === workout.id ? null : currentId);
     } catch (err) {
-      console.error('Error separating workout:', err);
+      console.error('Error separating session:', err);
     }
   }, []);
 
@@ -376,7 +837,7 @@ export function History({ currentUser = null }) {
       const body = await response.json();
 
       if (!response.ok) {
-        alert(body.msg || 'Failed to update workout');
+        alert(body.msg || 'Failed to update session');
         return;
       }
 
@@ -389,7 +850,7 @@ export function History({ currentUser = null }) {
       );
       closeEditModal();
     } catch (err) {
-      console.error('Error updating workout:', err);
+      console.error('Error updating session:', err);
     }
   };
 
@@ -446,7 +907,7 @@ export function History({ currentUser = null }) {
 
   const handlePreviewImport = React.useCallback(async () => {
     if (!importFile && !importPastedText.trim()) {
-      alert('Attach a file or paste workout text first.');
+      alert('Attach a file or paste session text first.');
       return;
     }
 
@@ -469,14 +930,14 @@ export function History({ currentUser = null }) {
       const body = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        alert(body.msg || 'Failed to preview imported workouts');
+        alert(body.msg || 'Failed to preview imported sessions');
         return;
       }
 
       setImportPreview(body);
     } catch (err) {
-      console.error('Error previewing imported workouts:', err);
-      alert('Failed to preview imported workouts');
+      console.error('Error previewing imported sessions:', err);
+      alert('Failed to preview imported sessions');
     } finally {
       setIsPreviewingImport(false);
     }
@@ -500,16 +961,16 @@ export function History({ currentUser = null }) {
       const body = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        alert(body.msg || 'Failed to import workouts');
+        alert(body.msg || 'Failed to import sessions');
         return;
       }
 
       await loadWorkouts();
       closeImportModal();
-      alert(`Imported ${body.importedWorkouts?.length || 0} workouts${(body.importedTemplates?.length || 0) > 0 ? ` and created ${body.importedTemplates.length} templates` : ''}.`);
+      alert(`Imported ${body.importedWorkouts?.length || 0} session${body.importedWorkouts?.length === 1 ? '' : 's'}${(body.importedTemplates?.length || 0) > 0 ? ` and created ${body.importedTemplates.length} exercise${body.importedTemplates.length === 1 ? '' : 's'}` : ''}.`);
     } catch (err) {
-      console.error('Error importing workouts:', err);
-      alert('Failed to import workouts');
+      console.error('Error importing sessions:', err);
+      alert('Failed to import sessions');
     } finally {
       setIsImportingWorkouts(false);
     }
@@ -521,7 +982,7 @@ export function History({ currentUser = null }) {
         <section className="history-filter-bar">
           <div className="history-filter-copy">
             <p className="history-kicker">History</p>
-            <h2>{filteredWorkouts.length} workout{filteredWorkouts.length === 1 ? "" : "s"}</h2>
+            <h2>{filteredWorkouts.length} session{filteredWorkouts.length === 1 ? "" : "s"}</h2>
             <p className="history-summary">
               {historyView === 'date'
                 ? `${groupedWorkouts.length} month${groupedWorkouts.length === 1 ? "" : "s"}`
@@ -558,7 +1019,7 @@ export function History({ currentUser = null }) {
             className="history-import-trigger"
             onClick={() => setShowImportModal(true)}
           >
-            Import workouts
+            Import sessions
           </button>
           <div className="history-filter-actions" ref={filterMenuRef}>
             <button
@@ -573,7 +1034,7 @@ export function History({ currentUser = null }) {
                 <div className="history-filter-popover">
                   <div className="history-filter-section">
                     <div className="history-filter-section-header">
-                      <span>Workout</span>
+                      <span>Exercise</span>
                       {workoutFilters.length > 0 && (
                         <button type="button" className="history-filter-clear" onClick={() => setWorkoutFilters([])}>
                           Clear
@@ -583,9 +1044,11 @@ export function History({ currentUser = null }) {
                     <MultiSelectDropdown
                       values={workoutFilters}
                       onChange={setWorkoutFilters}
-                      options={workoutOptions.map((option) => ({ value: option, label: option }))}
-                      placeholder="All workouts"
-                      ariaLabel="Filter by workout"
+                      options={workoutFilterOptions}
+                      placeholder="All exercises"
+                      ariaLabel="Filter by exercise"
+                      searchable
+                      searchPlaceholder="Search exercises"
                     />
                   </div>
                   <div className="history-filter-section">
@@ -643,7 +1106,7 @@ export function History({ currentUser = null }) {
           <section className="history-loading-state" aria-live="polite">
             <div className="history-loading-copy">
               <p className="history-kicker">History</p>
-              <h2>Loading workouts...</h2>
+              <h2>Loading sessions...</h2>
               <p className="history-summary">Pulling your training log together.</p>
             </div>
             <div className="history-loading-list">
@@ -679,13 +1142,16 @@ export function History({ currentUser = null }) {
           <HistoryColorGroupSection
             key={group.key}
             group={group}
-            isExpanded={expandedGroupKeys.includes(group.key)}
             expandedWorkoutKeys={expandedGroupWorkoutKeys}
             expandedSessionId={expandedGroupedSessionId}
             openWorkoutMenuId={openWorkoutMenuId}
-            onToggleGroup={toggleGroupKey}
+            isSelectionMode={isExerciseSelectionMode}
+            selectedExerciseKeys={selectedExerciseKeySet}
             onToggleGroupWorkout={toggleGroupWorkoutKey}
             onToggleSession={toggleGroupedSessionId}
+            onBeginExerciseSelection={beginExerciseSelection}
+            onToggleExerciseSelection={toggleExerciseSelection}
+            onOpenGroupEditor={openGroupEditor}
             onToggleStarred={handleToggleStarred}
             onToggleWorkoutMenu={toggleWorkoutMenu}
             onOpenEditModal={openEditModal}
@@ -693,17 +1159,114 @@ export function History({ currentUser = null }) {
             onDeleteWorkout={handleDeleteWorkout}
           />
         ))}
+
+        {isExerciseSelectionMode && (
+          <HistoryExerciseSelectionBar
+            selectedCount={selectedExerciseGroups.length}
+            canMerge={canMergeSelectedExercises}
+            hasTemplateSelection={selectedExerciseTemplateIds.length > 0}
+            isBusy={isApplyingSelectionAction}
+            onDelete={handleDeleteSelectedExercises}
+            onMerge={handleMergeSelectedExercises}
+            onAddToGroup={openSelectionGroupPicker}
+            onClear={clearExerciseSelection}
+          />
+        )}
       </section>
+
+      {showSelectionGroupPicker && (
+        <HistorySelectionGroupPickerModal
+          workoutColorPreferences={workoutColorPreferences}
+          editingColorSlot={editingColorSlot}
+          colorPreferenceDraft={colorPreferenceDraft}
+          isSavingColorPreference={isSavingColorPreference}
+          isApplyingSelectionAction={isApplyingSelectionAction}
+          onClose={closeSelectionGroupPicker}
+          onPickGroup={handleAssignSelectedExercisesToGroup}
+          onStartEditingColorPreference={startEditingColorPreference}
+          onColorPreferenceDraftChange={setColorPreferenceDraft}
+          onCancelEditingColorPreference={() => {
+            setEditingColorSlot('');
+            setColorPreferenceDraft({ label: '', color: '' });
+          }}
+          onSaveColorPreference={handleSaveColorPreference}
+        />
+      )}
+
+      {editingGroup && (
+        <div className="history-modal-backdrop history-group-editor-backdrop" role="presentation">
+          <div className="history-modal history-group-editor-modal" role="dialog" aria-modal="true" aria-labelledby="history-group-editor-title">
+            <button type="button" className="history-close-button is-icon" onClick={closeGroupEditor} aria-label="Close group editor">
+              Ã—
+            </button>
+            <div className="history-modal-header">
+              <div>
+                <p className="history-modal-eyebrow">Exercise Group</p>
+                <h2 id="history-group-editor-title">Edit group</h2>
+              </div>
+              <div className="modal-header-actions">
+                <button type="submit" form="history-group-editor-form" className="btn btn-primary" disabled={isSavingGroup}>
+                  {isSavingGroup ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
+            <form id="history-group-editor-form" className="history-modal-form" onSubmit={handleSaveGroupPreference}>
+              <section className="history-modal-panel history-group-editor-panel">
+                <label>
+                  Group name
+                  <input
+                    type="text"
+                    value={groupDraft.label}
+                    onChange={(event) => setGroupDraft((currentDraft) => ({
+                      ...currentDraft,
+                      label: event.target.value,
+                    }))}
+                    placeholder={editingGroup.fallbackLabel}
+                    maxLength={32}
+                  />
+                </label>
+                <p className="history-group-editor-hint">
+                  Leave blank to use {editingGroup.fallbackLabel}.
+                </p>
+                <label>
+                  Group color
+                  <div className="history-group-color-fields">
+                    <input
+                      type="color"
+                      value={groupDraft.color || getWorkoutColorPreferenceValue(editingGroup.slotColor, workoutColorPreferences)}
+                      onChange={(event) => setGroupDraft((currentDraft) => ({
+                        ...currentDraft,
+                        color: event.target.value.toLowerCase(),
+                      }))}
+                    />
+                    <input
+                      type="text"
+                      value={groupDraft.color || getWorkoutColorPreferenceValue(editingGroup.slotColor, workoutColorPreferences)}
+                      onChange={(event) => setGroupDraft((currentDraft) => ({
+                        ...currentDraft,
+                        color: event.target.value,
+                      }))}
+                      placeholder="#3b82f6"
+                      maxLength={7}
+                    />
+                  </div>
+                </label>
+              </section>
+            </form>
+          </div>
+        </div>
+      )}
 
       {editingWorkout && draftWorkout && (
         <div className="history-modal-backdrop" role="presentation">
           <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="edit-workout-title">
-            <button type="button" className="history-close-button is-icon" onClick={closeEditModal} aria-label="Close workout editor">
+            <button type="button" className="history-close-button is-icon" onClick={closeEditModal} aria-label="Close session editor">
               ×
             </button>
             <div className="history-modal-header">
               <div>
-                <p className="history-modal-eyebrow">Edit Workout</p>
+                <p className="history-modal-eyebrow">Edit Session</p>
                 <h2 id="edit-workout-title">{editingWorkout.templateName || editingWorkout.exercise}</h2>
               </div>
               <div className="modal-header-actions">
@@ -739,7 +1302,7 @@ export function History({ currentUser = null }) {
                   checked={Boolean(draftWorkout.starred)}
                   onChange={(event) => handleDraftFieldChange('starred', event.target.checked)}
                 />
-                <span>Star this workout</span>
+                <span>Star this session</span>
               </label>
 
               <section className="history-modal-panel">
@@ -767,14 +1330,14 @@ export function History({ currentUser = null }) {
                         <div className="history-edit-set-grid">
                           {draftWorkout.isMixed && (
                             <label>
-                              Workout
+                              Exercise
                               <Dropdown
                                 value={set.templateId || ''}
                                 onChange={(nextValue) => handleDraftSetChange(set.id, 'templateId', nextValue)}
                                 searchable
-                                searchPlaceholder="Search workouts"
+                                searchPlaceholder="Search exercises"
                                  options={getMixedWorkoutTemplateOptions(workouts, workoutColorPreferences)}
-                                 ariaLabel={`Set ${set.id} workout`}
+                                 ariaLabel={`Set ${set.id} exercise`}
                                />
                             </label>
                           )}
@@ -821,7 +1384,7 @@ export function History({ currentUser = null }) {
               </section>
 
               <div className="history-modal-actions">
-                <button type="button" className="history-close-button" onClick={closeEditModal} aria-label="Close workout editor">
+                <button type="button" className="history-close-button" onClick={closeEditModal} aria-label="Close session editor">
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
@@ -905,13 +1468,13 @@ function ImportWorkoutsModal({
   return (
     <div className="history-modal-backdrop" role="presentation">
       <div className="history-modal history-import-modal" role="dialog" aria-modal="true" aria-labelledby="import-workouts-title">
-        <button type="button" className="history-close-button is-icon" onClick={onClose} aria-label="Close import workouts">
+        <button type="button" className="history-close-button is-icon" onClick={onClose} aria-label="Close import sessions">
           ×
         </button>
         <div className="history-modal-header">
           <div>
-            <p className="history-modal-eyebrow">Import Workouts</p>
-            <h2 id="import-workouts-title">Bring workouts into QuickSets</h2>
+            <p className="history-modal-eyebrow">Import Sessions</p>
+            <h2 id="import-workouts-title">Bring exercise sessions into QuickSets</h2>
           </div>
           <div className="modal-header-actions">
             {importPreview && (
@@ -955,7 +1518,7 @@ function ImportWorkoutsModal({
                 rows="8"
                 value={importPastedText}
                 onChange={(event) => onPastedTextChange(event.target.value)}
-                placeholder="Paste workout notes, exported rows, or copied sheet content here."
+                placeholder="Paste session notes, exported rows, or copied sheet content here."
               />
             </label>
 
@@ -970,7 +1533,7 @@ function ImportWorkoutsModal({
             </label>
 
             <p className="import-hint">
-              We’ll send your file/text, notes, current templates, and last 200 workouts to the backend AI importer. Nothing saves until you confirm the preview.
+              We’ll send your file/text, notes, current exercises, and last 200 sessions to the backend AI importer. Nothing saves until you confirm the preview.
             </p>
           </section>
 
@@ -991,11 +1554,11 @@ function ImportWorkoutsModal({
               <div className="history-import-preview">
                 <div className="history-import-summary-grid">
                   <div className="history-import-summary-card">
-                    <span>Workouts</span>
+                    <span>Sessions</span>
                     <strong>{previewWorkoutCount}</strong>
                   </div>
                   <div className="history-import-summary-card">
-                    <span>Templates</span>
+                    <span>Exercises</span>
                     <strong>{previewTemplateCount}</strong>
                   </div>
                   <div className="history-import-summary-card">
@@ -1017,7 +1580,7 @@ function ImportWorkoutsModal({
 
                 {importPreview.templates?.length > 0 && (
                   <section className="history-import-section">
-                    <h4>Templates to create or match</h4>
+                    <h4>Exercises to create or match</h4>
                     <div className="history-import-template-list">
                       {importPreview.templates.map((template) => (
                         <article key={template.name} className="history-import-template-card">
@@ -1034,7 +1597,7 @@ function ImportWorkoutsModal({
 
                 {importPreview.workouts?.length > 0 ? (
                   <section className="history-import-section">
-                    <h4>Workouts to import</h4>
+                    <h4>Sessions to import</h4>
                     <div className="history-import-workout-list">
                       {importPreview.workouts.map((workout, index) => (
                         <article key={`${workout.date}-${workout.templateName}-${index}`} className="history-import-workout-card">
@@ -1059,7 +1622,7 @@ function ImportWorkoutsModal({
                   </section>
                 ) : (
                   <section className="history-empty-state">
-                    <p>No new workouts were found to import.</p>
+                    <p>No new sessions were found to import.</p>
                   </section>
                 )}
 
@@ -1168,13 +1731,16 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
 
 const HistoryColorGroupSection = React.memo(function HistoryColorGroupSection({
   group,
-  isExpanded,
   expandedWorkoutKeys,
   expandedSessionId,
   openWorkoutMenuId,
-  onToggleGroup,
+  isSelectionMode,
+  selectedExerciseKeys,
   onToggleGroupWorkout,
   onToggleSession,
+  onBeginExerciseSelection,
+  onToggleExerciseSelection,
+  onOpenGroupEditor,
   onToggleStarred,
   onToggleWorkoutMenu,
   onOpenEditModal,
@@ -1187,67 +1753,350 @@ const HistoryColorGroupSection = React.memo(function HistoryColorGroupSection({
 
   return (
     <section className={hasOpenMenu ? "history-month-group history-month-group-menu-open history-color-group" : "history-month-group history-color-group"}>
-      <button
-        type="button"
-        className={isExpanded ? "history-group-heading history-group-heading-expanded" : "history-group-heading"}
-        onClick={() => onToggleGroup(group.key)}
-      >
+      <div className="history-group-heading" style={{ "--history-group-color": group.color }}>
         <span className="history-group-heading-copy">
           <span className="history-group-swatch" style={{ background: group.color }} aria-hidden="true" />
           <span>{group.label}</span>
         </span>
-        <span className="history-group-meta">{group.sessionCount} sessions</span>
-      </button>
+        <span className="history-group-heading-actions">
+          <span className="history-group-meta">{group.sessionCount} sessions</span>
+          <button
+            type="button"
+            className="history-group-edit-button"
+            aria-label={`Edit ${group.label} group`}
+            onClick={() => onOpenGroupEditor(group)}
+          >
+            {"\u270e"}
+          </button>
+        </span>
+      </div>
 
-      {isExpanded && (
-        <div className="history-group-body">
-          {group.workouts.map((workoutGroup) => {
-            const workoutKey = `${group.key}:${workoutGroup.key}`;
-            const isWorkoutExpanded = expandedWorkoutKeys.includes(workoutKey);
+      <div className="history-group-body">
+        {group.workouts.map((workoutGroup) => {
+          const workoutKey = `${group.key}:${workoutGroup.key}`;
+          const isWorkoutExpanded = expandedWorkoutKeys.includes(workoutKey);
+          const isExerciseSelected = selectedExerciseKeys.has(workoutKey);
 
-            return (
-              <section key={workoutKey} className="history-group-workout">
-                <button
-                  type="button"
-                  className={isWorkoutExpanded ? "history-group-workout-toggle is-expanded" : "history-group-workout-toggle"}
-                  onClick={() => onToggleGroupWorkout(workoutKey)}
-                >
-                  <span className="history-group-workout-name" style={{ color: workoutGroup.color }}>
-                    {workoutGroup.label}
-                  </span>
-                  <span className="history-group-meta">{workoutGroup.sessions.length} sessions</span>
-                </button>
+          return (
+            <section key={workoutKey} className="history-group-workout">
+              <HistoryGroupWorkoutToggle
+                workoutKey={workoutKey}
+                workoutGroup={workoutGroup}
+                isExpanded={isWorkoutExpanded}
+                isSelected={isExerciseSelected}
+                isSelectionMode={isSelectionMode}
+                onToggleSessions={onToggleGroupWorkout}
+                onBeginSelection={onBeginExerciseSelection}
+                onToggleSelection={onToggleExerciseSelection}
+              />
 
-                {isWorkoutExpanded && (
-                  <table className="history-table table table-dark table-hover history-group-table">
-                    <tbody>
-                      {workoutGroup.sessions.map((workout) => (
-                        <HistoryWorkoutRow
-                          key={workout.id}
-                          workout={workout}
-                          isExpanded={expandedSessionId === workout.id}
-                          isMenuOpen={openWorkoutMenuId === workout.id}
-                          rowLabel={formatImportedWorkoutDate(workout.date)}
-                          rowLabelClassName="history-group-session-date"
-                          onRowClick={onToggleSession}
-                          onToggleStarred={onToggleStarred}
-                          onToggleWorkoutMenu={onToggleWorkoutMenu}
-                          onOpenEditModal={onOpenEditModal}
-                          onSeparateWorkout={onSeparateWorkout}
-                          onDeleteWorkout={onDeleteWorkout}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
+              {isWorkoutExpanded && (
+                <table className="history-table table table-dark table-hover history-group-table">
+                  <tbody>
+                    {workoutGroup.sessions.map((workout) => (
+                      <HistoryWorkoutRow
+                        key={workout.id}
+                        workout={workout}
+                        isExpanded={expandedSessionId === workout.id}
+                        isMenuOpen={openWorkoutMenuId === workout.id}
+                        rowLabel={formatImportedWorkoutDate(workout.date)}
+                        rowLabelClassName="history-group-session-date"
+                        onRowClick={onToggleSession}
+                        onToggleStarred={onToggleStarred}
+                        onToggleWorkoutMenu={onToggleWorkoutMenu}
+                        onOpenEditModal={onOpenEditModal}
+                        onSeparateWorkout={onSeparateWorkout}
+                        onDeleteWorkout={onDeleteWorkout}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          );
+        })}
+      </div>
     </section>
   );
 });
+
+const HistoryGroupWorkoutToggle = React.memo(function HistoryGroupWorkoutToggle({
+  workoutKey,
+  workoutGroup,
+  isExpanded,
+  isSelected,
+  isSelectionMode,
+  onToggleSessions,
+  onBeginSelection,
+  onToggleSelection,
+}) {
+  const longPressTimerRef = React.useRef(null);
+  const didLongPressRef = React.useRef(false);
+
+  const clearLongPressTimer = React.useCallback(() => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
+
+  const handlePointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    clearLongPressTimer();
+    didLongPressRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      didLongPressRef.current = true;
+      onBeginSelection(workoutKey);
+      window.navigator?.vibrate?.(12);
+    }, 420);
+  };
+
+  const handlePrimaryClick = (event) => {
+    if (didLongPressRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      didLongPressRef.current = false;
+      return;
+    }
+
+    if (isSelectionMode) {
+      onToggleSelection(workoutKey);
+      return;
+    }
+
+    onToggleSessions(workoutKey);
+  };
+
+  const handleKeyDown = (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    if (isSelectionMode) {
+      onToggleSelection(workoutKey);
+      return;
+    }
+
+    onToggleSessions(workoutKey);
+  };
+
+  const toggleClassName = [
+    'history-group-workout-toggle',
+    isExpanded ? 'is-expanded' : '',
+    isSelectionMode ? 'is-selection-mode' : '',
+    isSelected ? 'is-selected' : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <div
+      className={toggleClassName}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelectionMode ? isSelected : undefined}
+      onPointerDown={handlePointerDown}
+      onPointerUp={clearLongPressTimer}
+      onPointerCancel={clearLongPressTimer}
+      onPointerLeave={clearLongPressTimer}
+      onClick={handlePrimaryClick}
+      onKeyDown={handleKeyDown}
+    >
+      {isSelectionMode && (
+        <span className="history-group-workout-select-indicator" aria-hidden="true">
+          {isSelected ? "\u2713" : ""}
+        </span>
+      )}
+      <span className="history-group-workout-name" style={{ color: workoutGroup.color }}>
+        {workoutGroup.label}
+      </span>
+      <button
+        type="button"
+        className="history-group-workout-session-toggle"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          clearLongPressTimer();
+          onToggleSessions(workoutKey);
+        }}
+      >
+        {workoutGroup.sessions.length} sessions
+      </button>
+    </div>
+  );
+});
+
+const HistoryExerciseSelectionBar = React.memo(function HistoryExerciseSelectionBar({
+  selectedCount,
+  canMerge,
+  hasTemplateSelection,
+  isBusy,
+  onDelete,
+  onMerge,
+  onAddToGroup,
+  onClear,
+}) {
+  return (
+    <aside className="history-selection-bar" aria-live="polite">
+      <div className="history-selection-copy">
+        <strong>{selectedCount}</strong>
+        <span>exercise{selectedCount === 1 ? '' : 's'} selected</span>
+      </div>
+      <div className="history-selection-actions">
+        <button type="button" className="history-selection-button danger" onClick={onDelete} disabled={isBusy || !hasTemplateSelection}>
+          Delete
+        </button>
+        <button type="button" className="history-selection-button" onClick={onMerge} disabled={isBusy || !canMerge}>
+          Merge
+        </button>
+        <button type="button" className="history-selection-button primary" onClick={onAddToGroup} disabled={isBusy || !hasTemplateSelection}>
+          Add to group
+        </button>
+        <button type="button" className="history-selection-clear" onClick={onClear} disabled={isBusy}>
+          Clear
+        </button>
+      </div>
+    </aside>
+  );
+});
+
+function HistorySelectionGroupPickerModal({
+  workoutColorPreferences,
+  editingColorSlot,
+  colorPreferenceDraft,
+  isSavingColorPreference,
+  isApplyingSelectionAction,
+  onClose,
+  onPickGroup,
+  onStartEditingColorPreference,
+  onColorPreferenceDraftChange,
+  onCancelEditingColorPreference,
+  onSaveColorPreference,
+}) {
+  return (
+    <div className="template-modal-backdrop is-stacked-modal history-selection-group-picker" role="presentation">
+      <div className="template-modal color-picker-modal" role="dialog" aria-modal="true" aria-labelledby="selection-group-picker-title">
+        <button type="button" className="template-close-button is-icon" onClick={onClose} aria-label="Close group picker">
+          Ã—
+        </button>
+        <div className="template-modal-header">
+          <div>
+            <p className="template-eyebrow">Exercise Groups</p>
+            <h2 id="selection-group-picker-title">Add selected exercises</h2>
+          </div>
+          <div className="modal-header-actions">
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        </div>
+
+        <div className="template-modal-form">
+          <section className="template-color-panel">
+            <div className="template-color-list" role="list" aria-label="Exercise groups">
+              {workoutColorPalette.map((slotColor) => {
+                const isEditing = editingColorSlot === slotColor;
+                const rawLabel = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+                const label = rawLabel || 'Unlabeled';
+                const isUnlabeled = !rawLabel;
+                const displayColor = getWorkoutColorPreferenceValue(slotColor, workoutColorPreferences);
+
+                return (
+                  <div
+                    key={slotColor}
+                    className="template-color-row"
+                    style={{ "--template-color": displayColor }}
+                    role="listitem"
+                  >
+                    <button
+                      type="button"
+                      className="template-color-row-main"
+                      disabled={isApplyingSelectionAction}
+                      onClick={() => onPickGroup(slotColor)}
+                    >
+                      <span className="template-color-swatch" style={{ "--template-color": displayColor }} aria-hidden="true" />
+                      <span className={isUnlabeled ? "template-color-row-copy is-unlabeled" : "template-color-row-copy"}>
+                        <strong>{label}</strong>
+                      </span>
+                    </button>
+                    <div className="template-color-row-actions">
+                      <button
+                        type="button"
+                        className="template-color-icon-button"
+                        aria-label={`Edit ${label} group`}
+                        onClick={() => onStartEditingColorPreference(slotColor)}
+                      >
+                        {"\u270e"}
+                      </button>
+                    </div>
+                    {isEditing && (
+                      <div className="template-color-label-editor">
+                        <label className="template-color-editor-row">
+                          <span>Color</span>
+                          <div className="template-color-editor-input">
+                            <input
+                              type="color"
+                              value={colorPreferenceDraft.color || displayColor}
+                              onChange={(event) => onColorPreferenceDraftChange((currentDraft) => ({
+                                ...currentDraft,
+                                color: event.target.value.toLowerCase(),
+                              }))}
+                            />
+                            <input
+                              type="text"
+                              value={colorPreferenceDraft.color || displayColor}
+                              onChange={(event) => onColorPreferenceDraftChange((currentDraft) => ({
+                                ...currentDraft,
+                                color: event.target.value,
+                              }))}
+                              placeholder="#3b82f6"
+                              maxLength={7}
+                            />
+                          </div>
+                        </label>
+                        <input
+                          type="text"
+                          value={colorPreferenceDraft.label}
+                          placeholder="Upper Body, Push, Cardio..."
+                          onChange={(event) => onColorPreferenceDraftChange((currentDraft) => ({
+                            ...currentDraft,
+                            label: event.target.value,
+                          }))}
+                          maxLength={32}
+                        />
+                        <div className="template-color-label-actions">
+                          <button
+                            type="button"
+                            className="template-close-button"
+                            onClick={onCancelEditingColorPreference}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => onSaveColorPreference(slotColor)}
+                            disabled={isSavingColorPreference}
+                          >
+                            {isSavingColorPreference ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   workout,
@@ -1262,7 +2111,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   onSeparateWorkout,
   onDeleteWorkout,
 }) {
-  const workoutName = workout.templateName || workout.exercise;
+  const workoutName = workout.isMixed ? "Full Workout" : (workout.templateName || workout.exercise);
   const [shouldRenderDetails, setShouldRenderDetails] = React.useState(isExpanded);
   const [detailsState, setDetailsState] = React.useState(isExpanded ? 'open' : 'closed');
   const menuTriggerRef = React.useRef(null);
@@ -1345,7 +2194,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
             <button
               type="button"
               className={workout.starred ? "history-star-button is-starred" : "history-star-button"}
-              aria-label={workout.starred ? `Unstar ${workoutName}` : `Star ${workoutName}`}
+              aria-label={workout.starred ? `Unstar session for ${workoutName}` : `Star session for ${workoutName}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onToggleStarred(workout);
@@ -1378,7 +2227,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
               ref={menuTriggerRef}
               type="button"
               className="workout-menu-trigger"
-              aria-label={`Manage workout ${workoutName}`}
+              aria-label={`Manage session for ${workoutName}`}
               onClick={() => onToggleWorkoutMenu(workout.id)}
             >
               ...
@@ -1453,7 +2302,7 @@ function renderWorkoutDetails(workout) {
       <thead>
       <tr>
         <th>Set</th>
-        {workout.isMixed && <th>Workout</th>}
+        {workout.isMixed && <th>Exercise</th>}
         {visibleFields.map((field) => (
           <th key={field.key}>{getFieldLabel(field, getWorkoutMeasurements(workout))}</th>
         ))}
@@ -1469,7 +2318,7 @@ function renderWorkoutDetails(workout) {
                   className="history-inline-workout"
                   style={{ color: getWorkoutColor(set) }}
                 >
-                  {set.templateName || 'Mixed set'}
+                  {set.templateName || 'Exercise set'}
                 </span>
               </td>
             )}
@@ -1585,6 +2434,7 @@ function groupWorkoutsByColorGroup(workouts, workoutColorPreferences) {
       groupMap.set(groupKey, {
         key: groupKey,
         label: groupLabel,
+        fallbackLabel,
         color,
         slotColor,
         sessionCount: 0,
@@ -1594,7 +2444,7 @@ function groupWorkoutsByColorGroup(workouts, workoutColorPreferences) {
     }
 
     const group = groupMap.get(groupKey);
-    const workoutName = workout.templateName || workout.exercise || 'Workout';
+    const workoutName = workout.isMixed ? 'Full Workout' : (workout.templateName || workout.exercise || 'Exercise');
     const workoutKey = workoutName.toLowerCase();
 
     if (!group.workoutMap.has(workoutKey)) {
@@ -1602,13 +2452,18 @@ function groupWorkoutsByColorGroup(workouts, workoutColorPreferences) {
         key: workoutKey,
         label: workoutName,
         color,
+        templateIds: new Set(),
         sessions: [],
       };
       group.workoutMap.set(workoutKey, workoutGroup);
       group.workouts.push(workoutGroup);
     }
 
-    group.workoutMap.get(workoutKey).sessions.push(workout);
+    const workoutGroup = group.workoutMap.get(workoutKey);
+    if (workout.templateId) {
+      workoutGroup.templateIds.add(workout.templateId);
+    }
+    workoutGroup.sessions.push(workout);
     group.sessionCount += 1;
   });
 
@@ -1618,11 +2473,65 @@ function groupWorkoutsByColorGroup(workouts, workoutColorPreferences) {
       workouts: group.workouts
         .map((workoutGroup) => ({
           ...workoutGroup,
+          templateIds: Array.from(workoutGroup.templateIds),
           sessions: sortWorkouts(workoutGroup.sessions),
         }))
         .sort((left, right) => left.label.localeCompare(right.label)),
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function flattenHistoryExerciseGroups(groups) {
+  return groups.flatMap((group) =>
+    group.workouts.map((workoutGroup) => ({
+      ...workoutGroup,
+      groupKey: group.key,
+      selectionKey: `${group.key}:${workoutGroup.key}`,
+    }))
+  );
+}
+
+function selectedExerciseGroupsHaveMatchingFields(groups) {
+  if (groups.length < 2) {
+    return false;
+  }
+
+  const [firstGroup, ...remainingGroups] = groups;
+  const firstFields = getComparableExerciseGroupFields(firstGroup);
+
+  return remainingGroups.every((group) =>
+    doComparableFieldsMatch(firstFields, getComparableExerciseGroupFields(group))
+  );
+}
+
+function getComparableExerciseGroupFields(group) {
+  const sessions = Array.isArray(group?.sessions) ? group.sessions : [];
+  return sessions.reduce((fields, workout) => {
+    const workoutFields = hasTrackedWorkoutFields(workout?.fields)
+      ? workout.fields
+      : inferWorkoutFields(workout?.sets || []);
+
+    return {
+      reps: Boolean(fields.reps || workoutFields?.reps),
+      weight: Boolean(fields.weight || workoutFields?.weight),
+      duration: Boolean(fields.duration || workoutFields?.duration),
+      distance: Boolean(fields.distance || workoutFields?.distance),
+    };
+  }, {
+    reps: false,
+    weight: false,
+    duration: false,
+    distance: false,
+  });
+}
+
+function doComparableFieldsMatch(leftFields, rightFields) {
+  return Boolean(leftFields)
+    && Boolean(rightFields)
+    && leftFields.reps === rightFields.reps
+    && leftFields.weight === rightFields.weight
+    && leftFields.duration === rightFields.duration
+    && leftFields.distance === rightFields.distance;
 }
 
 function formatWorkoutDate(dateValue) {

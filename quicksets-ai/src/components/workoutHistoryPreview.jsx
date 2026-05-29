@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import "../history/history.css";
 import {
   formatMeasurementLabel,
@@ -14,7 +15,16 @@ const setFieldColumns = [
   { key: 'distance', label: 'Distance' },
 ];
 
-export function WorkoutHistoryPreview({ workouts, emptyMessage = "No sessions yet.", focusRequest = null }) {
+export function WorkoutHistoryPreview({
+  workouts,
+  emptyMessage = "No sessions yet.",
+  focusRequest = null,
+  openMenuId = null,
+  onToggleWorkoutMenu = null,
+  onOpenEditModal = null,
+  onSeparateWorkout = null,
+  onDeleteWorkout = null,
+}) {
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
   const rowRefs = React.useRef(new Map());
   const sortedWorkouts = React.useMemo(
@@ -58,6 +68,7 @@ export function WorkoutHistoryPreview({ workouts, emptyMessage = "No sessions ye
               key={workout.id}
               workout={workout}
               isExpanded={expandedWorkoutId === workout.id}
+              isMenuOpen={openMenuId === workout.id}
               rowRef={(node) => {
                 if (!node) {
                   rowRefs.current.delete(workout.id);
@@ -68,6 +79,10 @@ export function WorkoutHistoryPreview({ workouts, emptyMessage = "No sessions ye
               onRowClick={() => {
                 setExpandedWorkoutId((currentId) => currentId === workout.id ? null : workout.id);
               }}
+              onToggleWorkoutMenu={onToggleWorkoutMenu}
+              onOpenEditModal={onOpenEditModal}
+              onSeparateWorkout={onSeparateWorkout}
+              onDeleteWorkout={onDeleteWorkout}
             />
           ))}
         </tbody>
@@ -79,12 +94,20 @@ export function WorkoutHistoryPreview({ workouts, emptyMessage = "No sessions ye
 const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
   workout,
   isExpanded,
+  isMenuOpen,
   rowRef,
   onRowClick,
+  onToggleWorkoutMenu,
+  onOpenEditModal,
+  onSeparateWorkout,
+  onDeleteWorkout,
 }) {
-  const workoutName = workout.templateName || workout.exercise;
+  const workoutName = workout.isMixed ? "Full Workout" : (workout.templateName || workout.exercise);
   const [shouldRenderDetails, setShouldRenderDetails] = React.useState(isExpanded);
   const [detailsState, setDetailsState] = React.useState(isExpanded ? 'open' : 'closed');
+  const menuTriggerRef = React.useRef(null);
+  const [menuPosition, setMenuPosition] = React.useState(null);
+  const hasMenuActions = Boolean(onToggleWorkoutMenu && onOpenEditModal && onDeleteWorkout);
 
   React.useEffect(() => {
     if (isExpanded) {
@@ -106,6 +129,47 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
 
     return () => window.clearTimeout(timeoutId);
   }, [isExpanded, shouldRenderDetails]);
+
+  React.useEffect(() => {
+    if (!isMenuOpen || !hasMenuActions) {
+      setMenuPosition(null);
+      return undefined;
+    }
+
+    const updateMenuPosition = () => {
+      const trigger = menuTriggerRef.current;
+
+      if (!trigger) {
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      const menuWidth = 160;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const desiredLeft = rect.right - menuWidth;
+      const left = Math.min(
+        Math.max(12, desiredLeft),
+        Math.max(12, viewportWidth - menuWidth - 12)
+      );
+      const openUpward = rect.bottom + 156 > viewportHeight - 12;
+
+      setMenuPosition({
+        left,
+        top: openUpward ? rect.top - 8 : rect.bottom + 8,
+        openUpward,
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [hasMenuActions, isMenuOpen]);
 
   return (
     <>
@@ -133,7 +197,25 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
             {workout.notes}
           </span>
         </td>
-        <td className="workout-actions-cell workout-actions-cell-placeholder" aria-hidden="true" />
+        <td
+          className={hasMenuActions ? "workout-actions-cell" : "workout-actions-cell workout-actions-cell-placeholder"}
+          aria-hidden={hasMenuActions ? undefined : "true"}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {hasMenuActions && (
+            <div className="workout-actions-menu">
+              <button
+                ref={menuTriggerRef}
+                type="button"
+                className="workout-menu-trigger"
+                aria-label={`Manage session for ${workoutName}`}
+                onClick={() => onToggleWorkoutMenu(workout.id)}
+              >
+                ...
+              </button>
+            </div>
+          )}
+        </td>
       </tr>
       {shouldRenderDetails && (
         <tr className={detailsState === 'open' ? "history-row-details is-open" : "history-row-details is-closing"}>
@@ -145,6 +227,42 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
             </div>
           </td>
         </tr>
+      )}
+      {hasMenuActions && isMenuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
+        <div
+          className={menuPosition.openUpward ? "workout-menu-popover workout-menu-popover-overlay is-open-upward" : "workout-menu-popover workout-menu-popover-overlay"}
+          style={{
+            position: 'fixed',
+            left: `${menuPosition.left}px`,
+            top: menuPosition.openUpward ? 'auto' : `${menuPosition.top}px`,
+            bottom: menuPosition.openUpward ? `${window.innerHeight - menuPosition.top}px` : 'auto',
+          }}
+        >
+          <button
+            type="button"
+            className="workout-menu-item"
+            onClick={() => onOpenEditModal(workout)}
+          >
+            Edit
+          </button>
+          {workout.isMixed && onSeparateWorkout && (
+            <button
+              type="button"
+              className="workout-menu-item"
+              onClick={() => onSeparateWorkout(workout)}
+            >
+              Separate
+            </button>
+          )}
+          <button
+            type="button"
+            className="workout-menu-item delete"
+            onClick={() => onDeleteWorkout(workout)}
+          >
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </>
   );
@@ -166,7 +284,7 @@ function renderWorkoutDetails(workout) {
       <thead>
         <tr>
           <th>Set</th>
-          {workout.isMixed && <th>Workout</th>}
+          {workout.isMixed && <th>Exercise</th>}
           {visibleFields.map((field) => (
             <th key={field.key}>{getFieldLabel(field, getWorkoutMeasurements(workout))}</th>
           ))}
@@ -182,7 +300,7 @@ function renderWorkoutDetails(workout) {
                   className="history-inline-workout"
                   style={{ color: getWorkoutColor(set) }}
                 >
-                  {set.templateName || 'Mixed set'}
+                  {set.templateName || 'Exercise set'}
                 </span>
               </td>
             )}

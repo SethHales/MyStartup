@@ -37,7 +37,7 @@ import {
 const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
 const MIXED_WORKOUT_TEMPLATE_ID = "__mixed_workout__";
 const CREATE_TEMPLATE_OPTION_ID = "__create_workout_template__";
-const MIXED_WORKOUT_NAME = "Mixed Workout";
+const MIXED_WORKOUT_NAME = "Full Workout";
 const DEFAULT_REST_DURATION = "00:30";
 const UNLABELED_COLOR_COPY = "Unlabeled";
 
@@ -223,6 +223,27 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   const templateActionsRef = React.useRef(null);
   const setMenuRef = React.useRef(null);
   const templateNameInputRef = React.useRef(null);
+  const submitFormOnPointerUp = React.useCallback((event) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const blockGhostClick = (clickEvent) => {
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      document.removeEventListener("click", blockGhostClick, true);
+    };
+
+    document.addEventListener("click", blockGhostClick, true);
+    window.setTimeout(() => {
+      document.removeEventListener("click", blockGhostClick, true);
+    }, 400);
+
+    event.currentTarget.form?.requestSubmit();
+  }, []);
   const workoutColorPreferences = React.useMemo(
     () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
     [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
@@ -467,7 +488,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
     if (sets.length > 0) {
       const confirmed = window.confirm(
-        "Switch workouts? This will discard the sets you've logged for the current workout."
+        "Switch exercises? This will discard the sets you've logged for the current session."
       );
 
       if (!confirmed) {
@@ -537,7 +558,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       return;
     }
 
-    const confirmed = window.confirm(`Delete ${selectedTemplate.name}? This will also delete every saved workout logged with that template.`);
+    const confirmed = window.confirm(`Delete ${selectedTemplate.name}? This will also delete every saved session logged for that exercise.`);
     if (!confirmed) {
       return;
     }
@@ -556,7 +577,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
           body = {};
         }
 
-        alert(body.msg || 'Failed to delete workout');
+        alert(body.msg || 'Failed to delete exercise');
         return;
       }
 
@@ -569,7 +590,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       setStarred(false);
       setShowTemplateActions(false);
     } catch (err) {
-      console.error('Failed to delete workout template:', err);
+      console.error('Failed to delete exercise template:', err);
     }
   };
 
@@ -738,7 +759,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     event.preventDefault();
 
     if (!newTemplateFields.reps && !newTemplateFields.weight && !newTemplateFields.duration && !newTemplateFields.distance) {
-      alert('Choose at least one set field for this workout.');
+      alert('Choose at least one set field for this exercise.');
       return;
     }
 
@@ -763,7 +784,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       const body = await response.json();
 
       if (!response.ok) {
-        alert(body.msg || `Failed to ${isEditingTemplate ? 'update' : 'create'} workout`);
+        alert(body.msg || `Failed to ${isEditingTemplate ? 'update' : 'create'} exercise`);
         return;
       }
 
@@ -857,7 +878,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       setTemplateCreationSource("main");
       closeColorPickerModal();
     } catch (err) {
-      console.error(`Failed to ${isEditingTemplate ? 'update' : 'create'} workout template:`, err);
+      console.error(`Failed to ${isEditingTemplate ? 'update' : 'create'} exercise template:`, err);
     }
   };
 
@@ -893,7 +914,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     const colorValues = workoutColorPalette.map((paletteSlot) => nextPreferences[paletteSlot].color);
 
     if (new Set(colorValues).size !== colorValues.length) {
-      alert('Each workout color needs to stay unique.');
+      alert('Each exercise color needs to stay unique.');
       return;
     }
 
@@ -907,7 +928,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
       const body = await response.json();
       if (!response.ok) {
-        alert(body.msg || 'Failed to save workout colors');
+        alert(body.msg || 'Failed to save exercise colors');
         return;
       }
 
@@ -954,7 +975,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       setEditingColorSlot("");
       setColorPreferenceDraft({ label: "", color: "" });
     } catch (err) {
-      console.error('Failed to save workout colors:', err);
+      console.error('Failed to save exercise colors:', err);
     }
   };
 
@@ -1050,7 +1071,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     event.preventDefault();
 
     if (!selectedTemplate || !date || sets.length === 0) {
-      alert('Choose a workout, pick a date, and add at least one set before saving.');
+      alert('Choose an exercise, pick a date, and add at least one set before saving.');
       return;
     }
 
@@ -1073,7 +1094,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       const body = await response.json();
 
       if (!response.ok) {
-        alert(body.msg || 'Failed to save workout');
+        alert(body.msg || 'Failed to save session');
         return;
       }
 
@@ -1089,7 +1110,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       setShowRestTimerModal(false);
       window.localStorage.removeItem(LOGGER_DRAFT_KEY);
     } catch (err) {
-      console.error("Failed to update workouts in service:", err);
+      console.error("Failed to update sessions in service:", err);
     }
   };
 
@@ -1106,7 +1127,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
         <section className="logger-hero">
           <div>
             <p className="logger-kicker">Logger</p>
-            <h2>Log today&apos;s workout.</h2>
+            <h2>Log today&apos;s session.</h2>
           </div>
         </section>
 
@@ -1116,32 +1137,32 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
             <DatePicker
               value={date}
               onChange={setDate}
-              ariaLabel="Workout date"
+              ariaLabel="Session date"
             />
           </label>
 
           <label>
-            Workout
+            Exercise
             <div className="template-picker-row">
               <Dropdown
                 value={selectedTemplateId}
                 onChange={handleTemplateSelection}
-                placeholder="Select a workout"
+                placeholder="Select an exercise"
                 searchable
-                searchPlaceholder="Search workouts"
+                searchPlaceholder="Search exercises"
                 options={[
-                  { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
-                  { value: "", label: "Select a workout", disabled: true },
+                  { value: CREATE_TEMPLATE_OPTION_ID, label: "Create exercise", variant: "create" },
+                  { value: "", label: "Select an exercise", disabled: true },
                   { value: MIXED_WORKOUT_TEMPLATE_ID, label: MIXED_WORKOUT_NAME, badge: "New", badgeColor: "#f4b95e", color: "#f4b95e" },
                   ...templates.map(buildWorkoutOption),
                 ]}
-                ariaLabel="Workout"
+                ariaLabel="Exercise"
               />
               <div className="template-actions-menu" ref={templateActionsRef}>
                 <button
                   type="button"
                   className="template-actions-trigger"
-                  aria-label="Workout template actions"
+                  aria-label="Exercise actions"
                   onClick={() => setShowTemplateActions((current) => !current)}
                 >
                   ...
@@ -1153,7 +1174,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                       className="template-actions-item"
                       onClick={openCreateTemplateModal}
                     >
-                      Create new workout
+                      Create new exercise
                     </button>
                     <button
                       type="button"
@@ -1161,7 +1182,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                       onClick={openEditTemplateModal}
                       disabled={!selectedTemplate || selectedTemplate.isMixed}
                     >
-                      Edit selected workout
+                      Edit selected exercise
                     </button>
                     <button
                       type="button"
@@ -1169,7 +1190,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                       onClick={handleDeleteTemplate}
                       disabled={!selectedTemplate || selectedTemplate.isMixed}
                     >
-                      Delete selected workout
+                      Delete selected exercise
                     </button>
                   </div>
                 )}
@@ -1205,7 +1226,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                   <thead>
                     <tr>
                       <th>Set</th>
-                      {selectedTemplate?.isMixed && <th>Workout</th>}
+                      {selectedTemplate?.isMixed && <th>Exercise</th>}
                       {activeSetFields.map((field) => (
                         <th key={field.key}>{getFieldLabel(field, selectedTemplate.measurements)}</th>
                       ))}
@@ -1223,7 +1244,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                               style={{ '--workout-color': getWorkoutColor(set) }}
                             >
                               <span className="logger-inline-workout-dot" aria-hidden="true" />
-                              {set.templateName || "Mixed set"}
+                              {set.templateName || "Exercise set"}
                             </span>
                           </td>
                         )}
@@ -1267,12 +1288,12 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
           {selectedTemplate && activeSetFields.length === 0 && (
             <section>
               <p className="empty-template-note">
-                This workout template does not currently collect any log fields.
+                This exercise does not currently collect any log fields.
               </p>
             </section>
           )}
 
-          <button type="submit" className="btn btn-primary" disabled={!canSubmitWorkout}>Save Workout</button>
+          <button type="submit" className="btn btn-primary" disabled={!canSubmitWorkout}>Save Session</button>
         </form>
       </div>
 
@@ -1284,13 +1305,13 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
           role="presentation"
         >
           <div className="template-modal" role="dialog" aria-modal="true" aria-labelledby="create-workout-title">
-            <button type="button" className="template-close-button is-icon" onClick={closeTemplateModal} aria-label="Close workout template editor">
+            <button type="button" className="template-close-button is-icon" onClick={closeTemplateModal} aria-label="Close exercise editor">
               ×
             </button>
             <div className="template-modal-header">
               <div>
-                <p className="template-eyebrow">New Workout</p>
-                <h2 id="create-workout-title">Build your workout template</h2>
+                <p className="template-eyebrow">New Exercise</p>
+                <h2 id="create-workout-title">Build your exercise</h2>
               </div>
               <div className="modal-header-actions">
                 <button type="submit" form="workout-template-form" className="btn btn-primary">
@@ -1301,7 +1322,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
             <form id="workout-template-form" className="template-modal-form" onSubmit={handleSaveTemplate} onKeyDown={handleModalFormKeyDown}>
               <label>
-                Workout name
+                Exercise name
                 <input
                   ref={templateNameInputRef}
                   type="text"
@@ -1347,7 +1368,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                     checked={newTemplateUsesRestTimer}
                     onChange={(event) => setNewTemplateUsesRestTimer(event.target.checked)}
                   />
-                  Use a rest timer for this workout
+                  Use a rest timer for this exercise
                 </label>
                 <label className={!newTemplateUsesRestTimer ? "template-rest-duration is-disabled" : "template-rest-duration"}>
                   Default rest
@@ -1365,7 +1386,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
               <section className="template-fields-panel">
                 <div className="section-header">
                   <h3>Choose the fields you want every time</h3>
-                  <p>Pick what this workout tracks.</p>
+                  <p>Pick what this exercise tracks.</p>
                 </div>
                 <div className="template-field-grid">
                   {templateFieldOptions.map((field) => (
@@ -1402,7 +1423,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
               </div>
 
               <div className="template-modal-actions">
-                <button type="button" className="template-close-button" onClick={closeTemplateModal} aria-label="Close workout template editor">
+                <button type="button" className="template-close-button" onClick={closeTemplateModal} aria-label="Close exercise editor">
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary">
@@ -1429,17 +1450,17 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 <div className="set-modal-grid">
                   {selectedTemplate?.isMixed && (
                     <label>
-                      Workout
+                      Exercise
                       <Dropdown
                         value={pendingSet.templateId || templates[0]?.id || ""}
                         onChange={(nextValue) => handlePendingSetChange("templateId", nextValue)}
                         searchable
-                        searchPlaceholder="Search workouts"
+                        searchPlaceholder="Search exercises"
                         options={[
-                          { value: CREATE_TEMPLATE_OPTION_ID, label: "Create workout", variant: "create" },
+                          { value: CREATE_TEMPLATE_OPTION_ID, label: "Create exercise", variant: "create" },
                           ...templates.map(buildWorkoutOption),
                         ]}
-                        ariaLabel="Set workout"
+                        ariaLabel="Set exercise"
                       />
                     </label>
                   )}
@@ -1483,7 +1504,11 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 <button type="button" className="btn btn-outline-light" onClick={closeSetModal}>
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  onPointerUpCapture={submitFormOnPointerUp}
+                >
                   {editingSetId !== null ? "Save Changes" : "Save Set"}
                 </button>
               </div>
@@ -1500,7 +1525,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
             </button>
             <div className="template-modal-header">
               <div>
-                <p className="template-eyebrow">Workout Colors</p>
+                <p className="template-eyebrow">Exercise Colors</p>
                 <h2 id="color-picker-title">Pick a color label</h2>
               </div>
               <div className="modal-header-actions">
@@ -1512,7 +1537,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
             <div className="template-modal-form">
               <section className="template-color-panel">
-                <div className="template-color-list" role="list" aria-label="Workout colors">
+                <div className="template-color-list" role="list" aria-label="Exercise colors">
                   {workoutColorPalette.map((slotColor) => {
                     const isSelected = newTemplateColor === slotColor;
                     const isEditing = editingColorSlot === slotColor;
@@ -1531,7 +1556,10 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                         <button
                           type="button"
                           className="template-color-row-main"
-                          onClick={() => setNewTemplateColor(slotColor)}
+                          onClick={() => {
+                            setNewTemplateColor(slotColor);
+                            closeColorPickerModal();
+                          }}
                         >
                           <span className="template-color-swatch" style={{ "--template-color": displayColor }} aria-hidden="true" />
                           <span className={isUnlabeled ? "template-color-row-copy is-unlabeled" : "template-color-row-copy"}>

@@ -18,6 +18,7 @@ export function TimeCaptureModal({
   const [isRunning, setIsRunning] = React.useState(false);
   const [hasStarted, setHasStarted] = React.useState(false);
   const hasVibratedAtZeroRef = React.useRef(false);
+  const lastPointerActionRef = React.useRef(null);
 
   React.useEffect(() => {
     setTimerStartSeconds(safeInitialSeconds);
@@ -90,6 +91,38 @@ export function TimeCaptureModal({
     hasVibratedAtZeroRef.current = false;
   };
 
+  const runActionOnPointerUp = (event, actionKey, action) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const blockGhostClick = (clickEvent) => {
+      clickEvent.preventDefault();
+      clickEvent.stopPropagation();
+      document.removeEventListener("click", blockGhostClick, true);
+    };
+
+    document.addEventListener("click", blockGhostClick, true);
+    window.setTimeout(() => {
+      document.removeEventListener("click", blockGhostClick, true);
+    }, 400);
+
+    lastPointerActionRef.current = actionKey;
+    action();
+  };
+
+  const runActionOnClick = (actionKey, action) => {
+    if (lastPointerActionRef.current === actionKey) {
+      lastPointerActionRef.current = null;
+      return;
+    }
+
+    action();
+  };
+
   return (
     <div className="time-capture-backdrop" role="presentation">
       <div
@@ -141,16 +174,25 @@ export function TimeCaptureModal({
         )}
 
         <div className="time-capture-actions">
-          <button type="button" onClick={handleStartPause}>
+          <button
+            type="button"
+            onPointerUpCapture={(event) => runActionOnPointerUp(event, "start", handleStartPause)}
+            onClick={() => runActionOnClick("start", handleStartPause)}
+          >
             {isRunning ? "Pause" : "Start"}
           </button>
-          <button type="button" onClick={handleReset}>
+          <button
+            type="button"
+            onPointerUpCapture={(event) => runActionOnPointerUp(event, "reset", handleReset)}
+            onClick={() => runActionOnClick("reset", handleReset)}
+          >
             Reset
           </button>
           <button
             type="button"
             className="time-capture-confirm"
-            onClick={() => onConfirm(Math.max(0, capturedSeconds))}
+            onPointerUpCapture={(event) => runActionOnPointerUp(event, "confirm", () => onConfirm(Math.max(0, capturedSeconds)))}
+            onClick={() => runActionOnClick("confirm", () => onConfirm(Math.max(0, capturedSeconds)))}
             aria-label="Use this time"
           >
             ✓

@@ -27,7 +27,7 @@ function createWorkoutImportService({
     const hasFile = Boolean(fileName && encodedFile);
 
     if (!pastedText && !hasFile) {
-      throw createHttpError(400, 'Attach a file or paste workout text before importing');
+      throw createHttpError(400, 'Attach a file or paste session text before importing');
     }
 
     const parts = [];
@@ -150,27 +150,27 @@ function createWorkoutImportService({
             {
               type: 'input_text',
               text: [
-                'You convert workout logs into structured QuickSets workouts.',
+                'You convert training logs into structured QuickSets exercise sessions.',
                 'Return only valid JSON that matches the provided schema exactly.',
                 'The top-level response must contain exactly four keys: templates, workouts, skipped, and warnings.',
-                'templates must contain workout template objects only.',
-                'workouts must contain workout session objects only.',
+                'templates must contain exercise template objects only.',
+                'workouts must contain exercise session objects only. The key is named workouts for schema compatibility.',
                 'skipped must contain skipped source items only, each with sourceReference and reason.',
                 'warnings must contain plain strings only.',
-                'Do not put skipped or uncertain workouts into workouts.',
-                'Only return workouts that are new, meaning they are not obvious duplicates of workouts that have already been logged.',
-                'Only return workouts that have enough detail to save confidently.',
-                'Skip entries that are missing a date, missing a workout name, or missing usable set detail.',
-                'If a workout already exists in the provided history, put it in skipped instead of workouts.',
-                'Match existing workout templates by name whenever possible.',
+                'Do not put skipped or uncertain sessions into workouts.',
+                'Only return sessions that are new, meaning they are not obvious duplicates of sessions that have already been logged.',
+                'Only return sessions that have enough detail to save confidently.',
+                'Skip entries that are missing a date, missing an exercise name, or missing usable set detail.',
+                'If a session already exists in the provided history, put it in skipped instead of workouts.',
+                'Match existing exercise templates by name whenever possible.',
                 'If a needed template does not exist, include it in templates.',
-                'Do not return mixed workouts. If a source log combines multiple exercises on one day, split them into separate workout objects by exercise.',
+                'Do not return full/mixed workouts. If a source log combines multiple exercises on one day, split them into separate session objects by exercise.',
                 'Use 00:MM or HH:MM:SS style durations when needed.',
-                'Each workout in workouts should represent one exercise on one date.',
+                'Each object in workouts should represent one exercise session on one date.',
                 'Each set object must always include setType, reps, weight, duration, and distance, using empty strings for fields that do not apply.',
-                'Follow the example template objects and workout objects closely.',
-                'People track workouts differently. Sometimes they log by day instead of by exercise, but you should still output by exercise.',
-                'Some logs may require returning hundreds of workouts, and that is okay.',
+                'Follow the example exercise template objects and exercise session objects closely.',
+                'People track workouts differently. Sometimes they log by day instead of by exercise, but you should still output one exercise session per exercise.',
+                'Some logs may require returning hundreds of sessions, and that is okay.',
                 'Be decisive and structured. Prefer a confident skip over inventing missing data.',
               ].join(' '),
             },
@@ -183,21 +183,21 @@ function createWorkoutImportService({
               type: 'input_text',
               text: [
                 'Return shape requirements:',
-                '1. templates: an array of template objects to create or match.',
-                '2. workouts: an array of importable workout objects only.',
+                '1. templates: an array of exercise template objects to create or match.',
+                '2. workouts: an array of importable exercise session objects only.',
                 '3. skipped: an array of skipped items only, each with sourceReference and reason.',
                 '4. warnings: an array of plain warning strings.',
                 'Never mix these categories together.',
                 'Never put explanatory prose outside those arrays.',
                 '',
-                'Template object requirements:',
+                'Exercise template object requirements:',
                 '- name',
                 '- fields with boolean reps, weight, duration, distance',
                 '- measurements with weight and distance units',
                 '- usesRestTimer boolean',
                 '- restDuration string',
                 '',
-                'Workout object requirements:',
+                'Exercise session object requirements:',
                 '- date in YYYY-MM-DD',
                 '- templateName',
                 '- notes string',
@@ -209,16 +209,16 @@ function createWorkoutImportService({
                 '- sourceReference should identify the skipped source item as clearly as possible',
                 '- reason should explain exactly why it was skipped',
                 '',
-                'Current workout templates:',
+                'Current exercise templates:',
                 JSON.stringify(duplicateContext.templates),
                 '',
-                'Example QuickSets workout templates:',
+                'Example QuickSets exercise templates:',
                 JSON.stringify(templateExamples),
                 '',
-                'Five examples of correctly structured QuickSets workout objects:',
+                'Five examples of correctly structured QuickSets exercise session objects:',
                 JSON.stringify(workoutExamples),
                 '',
-                `Last ${duplicateContext.recentWorkouts.length} workouts for duplicate checking:`,
+                `Last ${duplicateContext.recentWorkouts.length} sessions for duplicate checking:`,
                 JSON.stringify(duplicateContext.recentWorkouts),
                 '',
                 trimmedNotes ? `Additional notes from the user:\n${trimmedNotes}\n` : '',
@@ -253,7 +253,7 @@ function createWorkoutImportService({
 
   function getOpenAiClient() {
     if (!openAiApiKey) {
-      throw createHttpError(503, 'Set OPENAI_API_KEY on the service before importing workouts.');
+      throw createHttpError(503, 'Set OPENAI_API_KEY on the service before importing sessions.');
     }
 
     let OpenAI;
@@ -464,7 +464,7 @@ function createWorkoutImportService({
       {
         date: '2026-05-02',
         templateName: 'Bodyweight Dips',
-        notes: 'Imported from freeform workout notes.',
+        notes: 'Imported from freeform session notes.',
         sets: [
           { setType: 'regular', reps: '9', weight: '', duration: '', distance: '' },
           { setType: 'regular', reps: '8', weight: '', duration: '', distance: '' },
@@ -640,7 +640,7 @@ function createWorkoutImportService({
       if (!template) {
         skipped.push({
           sourceReference: `${workoutDefinition.date} - ${workoutDefinition.templateName}`,
-          reason: 'Skipped because no matching workout template could be created.',
+          reason: 'Skipped because no matching exercise could be created.',
         });
         continue;
       }
@@ -652,7 +652,7 @@ function createWorkoutImportService({
       if (sanitizedSets.length === 0) {
         skipped.push({
           sourceReference: `${workoutDefinition.date} - ${workoutDefinition.templateName}`,
-          reason: 'Skipped because the workout did not contain enough set detail to save.',
+          reason: 'Skipped because the session did not contain enough set detail to save.',
         });
         continue;
       }
@@ -680,7 +680,7 @@ function createWorkoutImportService({
       if (existingWorkoutSignatures.has(signature)) {
         skipped.push({
           sourceReference: `${workoutDefinition.date} - ${workoutDefinition.templateName}`,
-          reason: 'Skipped duplicate workout.',
+          reason: 'Skipped duplicate session.',
         });
         continue;
       }
