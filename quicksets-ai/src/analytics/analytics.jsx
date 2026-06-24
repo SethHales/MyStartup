@@ -1,16 +1,23 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import "./analytics.css";
+import { DayViewModal } from "../components/dayViewModal";
 import { Dropdown } from "../components/dropdown";
 import { ExplorerPreferenceCard } from "../components/explorerPreferenceCard";
+import {
+  SessionEditorModal,
+  buildSessionTemplateOptions,
+  cloneSessionForEdit,
+  resolveStoredSession as resolveEditorStoredSession,
+} from "../components/sessionEditorModal";
 import { WorkoutHistoryPreview } from "../components/workoutHistoryPreview";
 import {
   formatMeasurementLabel,
-  getSetDisplayLabel,
   normalizeSetType,
   parseDurationToSeconds,
   parseLocalDate,
 } from "../utils/workoutDomain";
+import { apiFetch } from "../utils/apiFetch";
 import {
   findWorkoutColorSlot,
   getWorkoutColor,
@@ -24,11 +31,6 @@ const setFieldColumns = [
   { key: "weight", label: "Weight", inputType: "number", placeholder: "135" },
   { key: "duration", label: "Time", inputType: "text", placeholder: "00:30" },
   { key: "distance", label: "Distance", inputType: "number", placeholder: "1.5" },
-];
-const setTypeOptions = [
-  { value: "regular", label: "Regular" },
-  { value: "warmup", label: "Warmup" },
-  { value: "max", label: "Max" },
 ];
 const defaultExplorerPreferences = {
   statCards: {
@@ -45,11 +47,17 @@ const defaultExplorerPreferences = {
     averageSetsPerSession: true,
     averageRepsPerSet: true,
     averageWeightPerSet: true,
+    averageDistancePerSet: false,
     averageTimePerSet: true,
     averagePace: true,
   },
   charts: {
     performanceTrend: true,
+    weightTrend: false,
+    repsTrend: false,
+    distanceTrend: false,
+    durationTrend: false,
+    paceTrend: false,
     estimatedOneRepMaxTrend: true,
     setVolumeTrend: true,
     monthlyFrequency: true,
@@ -58,15 +66,89 @@ const defaultExplorerPreferences = {
   averageOrder: [],
   chartOrder: [],
 };
+const explorerStatCardDefinitions = [
+  { key: "lastPerformed", label: "Last Performed" },
+  { key: "bestWeight", label: "Best Weight" },
+  { key: "highestReps", label: "Highest Reps" },
+  { key: "farthestDistance", label: "Farthest Distance" },
+  { key: "longestDuration", label: "Longest Duration" },
+  { key: "shortestDuration", label: "Shortest Duration" },
+  { key: "bestPace", label: "Best Pace" },
+  { key: "estimatedOneRepMax", label: "Estimated 1RM" },
+];
+const explorerAverageDefinitions = [
+  { key: "averageSetsPerSession", label: "Average Sets / Session" },
+  { key: "averageRepsPerSet", label: "Average Reps / Set" },
+  { key: "averageWeightPerSet", label: "Average Weight / Set" },
+  { key: "averageDistancePerSet", label: "Average Distance / Set" },
+  { key: "averageTimePerSet", label: "Average Time / Set" },
+  { key: "averagePace", label: "Average Pace" },
+];
+const explorerMetricTrendKeys = [
+  "weightTrend",
+  "repsTrend",
+  "distanceTrend",
+  "durationTrend",
+  "paceTrend",
+];
+const ANALYTICS_SELECTED_WORKOUT_KEY = "quicksets.analytics.selectedExercise";
+const ANALYTICS_SELECTED_WORKOUT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getAnalyticsSelectionStorageKey(currentUser) {
+  const userKey = currentUser?.id || currentUser?._id || currentUser?.email;
+  return userKey ? `${ANALYTICS_SELECTED_WORKOUT_KEY}:${userKey}` : ANALYTICS_SELECTED_WORKOUT_KEY;
+}
+
+function readStoredAnalyticsWorkoutName(storageKey) {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(storageKey);
+    if (!rawValue) {
+      return "";
+    }
+
+    const storedValue = JSON.parse(rawValue);
+    const isFresh = Date.now() - Number(storedValue?.savedAt || 0) < ANALYTICS_SELECTED_WORKOUT_TTL_MS;
+    return isFresh && typeof storedValue?.name === "string" ? storedValue.name : "";
+  } catch (_err) {
+    return "";
+  }
+}
+
+function writeStoredAnalyticsWorkoutName(storageKey, name) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!name) {
+    window.localStorage.removeItem(storageKey);
+    return;
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify({
+    name,
+    savedAt: Date.now(),
+  }));
+}
 
 export function Analytics({ currentUser }) {
+  const analyticsSelectionStorageKey = React.useMemo(
+    () => getAnalyticsSelectionStorageKey(currentUser),
+    [currentUser]
+  );
   const [workouts, setWorkouts] = React.useState([]);
   const [templates, setTemplates] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [selectedWorkoutName, setSelectedWorkoutName] = React.useState("");
+  const [selectedWorkoutName, setSelectedWorkoutName] = React.useState(() =>
+    readStoredAnalyticsWorkoutName(getAnalyticsSelectionStorageKey(currentUser))
+  );
   const [workoutPageSize, setWorkoutPageSize] = React.useState("5");
   const [workoutPage, setWorkoutPage] = React.useState(1);
   const [sessionFocusRequest, setSessionFocusRequest] = React.useState(null);
+  const [selectedDayDate, setSelectedDayDate] = React.useState(null);
   const [showExplorerEditModal, setShowExplorerEditModal] = React.useState(false);
   const [showMobileWorkoutPicker, setShowMobileWorkoutPicker] = React.useState(false);
   const [openSessionMenuId, setOpenSessionMenuId] = React.useState(null);
@@ -87,11 +169,11 @@ export function Analytics({ currentUser }) {
 
   React.useEffect(() => {
     Promise.all([
-      fetch('/api/workouts', {
+      apiFetch('/api/workouts', {
         method: 'GET',
         credentials: 'include',
       }),
-      fetch('/api/workout-templates', {
+      apiFetch('/api/workout-templates', {
         method: 'GET',
         credentials: 'include',
       }),
@@ -113,7 +195,12 @@ export function Analytics({ currentUser }) {
         const expandedWorkouts = expandAnalyticsWorkouts(sortedWorkouts);
         const mostUsedWorkoutName = getMostUsedWorkoutName(expandedWorkouts);
         if (mostUsedWorkoutName && mostUsedWorkoutName !== "None yet") {
-          setSelectedWorkoutName((currentName) => currentName || mostUsedWorkoutName);
+          setSelectedWorkoutName((currentName) => {
+            const hasStoredWorkout = currentName
+              && expandedWorkouts.some((workout) => (workout.templateName || workout.exercise) === currentName);
+
+            return hasStoredWorkout ? currentName : mostUsedWorkoutName;
+          });
         }
       })
       .catch((err) => {
@@ -123,6 +210,11 @@ export function Analytics({ currentUser }) {
         setIsLoading(false);
       });
   }, []);
+
+  React.useEffect(() => {
+    const storedWorkoutName = readStoredAnalyticsWorkoutName(analyticsSelectionStorageKey);
+    setSelectedWorkoutName(storedWorkoutName);
+  }, [analyticsSelectionStorageKey]);
 
   React.useEffect(() => {
     if (!openSessionMenuId) {
@@ -142,7 +234,13 @@ export function Analytics({ currentUser }) {
   const analyticsWorkouts = React.useMemo(() => expandAnalyticsWorkouts(workouts), [workouts]);
   const workoutNames = React.useMemo(() => getWorkoutNames(analyticsWorkouts), [analyticsWorkouts]);
   const uniqueWorkoutDays = React.useMemo(() => getUniqueWorkoutDays(analyticsWorkouts), [analyticsWorkouts]);
-  const dayCountMap = React.useMemo(() => getWorkoutDayCountMap(analyticsWorkouts), [analyticsWorkouts]);
+  const daySetCountMap = React.useMemo(() => getWorkoutDaySetCountMap(analyticsWorkouts), [analyticsWorkouts]);
+  const selectedDaySessions = React.useMemo(
+    () => selectedDayDate
+      ? analyticsWorkouts.filter((workout) => workout.date === selectedDayDate)
+      : [],
+    [analyticsWorkouts, selectedDayDate]
+  );
 
   const profileIdentity = React.useMemo(
     () => buildProfileIdentity(analyticsWorkouts, currentUser),
@@ -155,8 +253,8 @@ export function Analytics({ currentUser }) {
   );
 
   const consistencyStats = React.useMemo(
-    () => buildConsistencyStats(analyticsWorkouts, uniqueWorkoutDays, dayCountMap),
-    [analyticsWorkouts, uniqueWorkoutDays, dayCountMap]
+    () => buildConsistencyStats(analyticsWorkouts, uniqueWorkoutDays, daySetCountMap),
+    [analyticsWorkouts, uniqueWorkoutDays, daySetCountMap]
   );
 
   const selectedWorkoutStats = React.useMemo(
@@ -201,7 +299,7 @@ export function Analytics({ currentUser }) {
     [selectedWorkoutName, selectedWorkoutStats, templates]
   );
   const workoutTemplateOptions = React.useMemo(
-    () => buildWorkoutTemplateOptions(templates, workoutColorPreferences),
+    () => buildSessionTemplateOptions(templates, workoutColorPreferences),
     [templates, workoutColorPreferences]
   );
   const selectedExplorerPreferences = React.useMemo(
@@ -241,6 +339,17 @@ export function Analytics({ currentUser }) {
   }, [totalWorkoutPages]);
 
   React.useEffect(() => {
+    if (!workoutExplorerItems.length || !selectedWorkoutName) {
+      return;
+    }
+
+    const selectedStillExists = workoutExplorerItems.some((workout) => workout.name === selectedWorkoutName);
+    if (!selectedStillExists) {
+      setSelectedWorkoutName(workoutExplorerItems[0].name);
+    }
+  }, [selectedWorkoutName, workoutExplorerItems]);
+
+  React.useEffect(() => {
     const selectedIndex = workoutExplorerItems.findIndex((workout) => workout.name === selectedWorkoutName);
     if (selectedIndex < 0) {
       return;
@@ -249,6 +358,10 @@ export function Analytics({ currentUser }) {
     const nextPage = Math.floor(selectedIndex / pageSize) + 1;
     setWorkoutPage((currentPage) => currentPage === nextPage ? currentPage : nextPage);
   }, [pageSize, selectedWorkoutName, workoutExplorerItems]);
+
+  React.useEffect(() => {
+    writeStoredAnalyticsWorkoutName(analyticsSelectionStorageKey, selectedWorkoutName);
+  }, [analyticsSelectionStorageKey, selectedWorkoutName]);
 
   const openExplorerEditModal = React.useCallback(() => {
     setExplorerPreferencesDraft(selectedExplorerPreferences);
@@ -273,11 +386,19 @@ export function Analytics({ currentUser }) {
   }, []);
 
   const openSessionEditModal = React.useCallback((session) => {
-    const storedSession = resolveStoredSession(session, workouts);
+    const storedSession = resolveEditorStoredSession(session, workouts);
     setOpenSessionMenuId(null);
     setEditingSession(storedSession);
-    setDraftSession(cloneAnalyticsSessionForEdit(storedSession));
+    setDraftSession(cloneSessionForEdit(storedSession));
   }, [workouts]);
+
+  const openSessionDayView = React.useCallback((session) => {
+    setOpenSessionMenuId(null);
+
+    if (session?.date) {
+      setSelectedDayDate(session.date);
+    }
+  }, []);
 
   const handleDraftSessionFieldChange = React.useCallback((field, value) => {
     setDraftSession((currentSession) => ({
@@ -286,61 +407,20 @@ export function Analytics({ currentUser }) {
     }));
   }, []);
 
-  const handleDraftSessionSetChange = React.useCallback((setId, field, value) => {
+  const handleDraftSessionCommitSet = React.useCallback((nextSet, editingSetId) => {
     setDraftSession((currentSession) => {
       if (!currentSession) {
         return currentSession;
       }
 
-      if (field === "templateId" && currentSession.isMixed) {
-        const nextTemplate = templates.find((template) => template.id === value);
-
-        return {
-          ...currentSession,
-          sets: currentSession.sets.map((set) =>
-            set.id === setId
-              ? {
-                id: set.id,
-                setType: normalizeSetType(set.setType),
-                templateId: nextTemplate?.id || value,
-                templateName: nextTemplate?.name || set.templateName || "",
-                color: nextTemplate ? getWorkoutColor(nextTemplate) : set.color,
-                fields: nextTemplate?.fields || set.fields || {},
-                measurements: nextTemplate?.measurements || set.measurements || {},
-                ...copyAnalyticsSetFields(set, nextTemplate?.fields || set.fields || {}),
-              }
-              : set
-          ),
-        };
-      }
-
       return {
         ...currentSession,
-        sets: currentSession.sets.map((set) =>
-          set.id === setId
-            ? { ...set, [field]: value }
-            : set
-        ),
+        sets: editingSetId === null
+          ? [...currentSession.sets, nextSet]
+          : currentSession.sets.map((set) => set.id === editingSetId ? nextSet : set),
       };
     });
-  }, [templates]);
-
-  const handleDraftSessionAddSet = React.useCallback(() => {
-    setDraftSession((currentSession) => {
-      if (!currentSession) {
-        return currentSession;
-      }
-
-      const nextSetId = currentSession.sets.length + 1;
-      return {
-        ...currentSession,
-        sets: [
-          ...currentSession.sets,
-          buildAnalyticsDraftSet(currentSession, templates, nextSetId),
-        ],
-      };
-    });
-  }, [templates]);
+  }, []);
 
   const handleDraftSessionDeleteSet = React.useCallback((setId) => {
     setDraftSession((currentSession) => {
@@ -365,7 +445,7 @@ export function Analytics({ currentUser }) {
     }
 
     try {
-      const response = await fetch(`/api/workouts/${editingSession.id}`, {
+      const response = await apiFetch(`/api/workouts/${editingSession.id}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         credentials: "include",
@@ -396,11 +476,11 @@ export function Analytics({ currentUser }) {
   }, [closeSessionEditModal, draftSession, editingSession]);
 
   const handleDeleteSession = React.useCallback(async (session) => {
-    const storedSession = resolveStoredSession(session, workouts);
+    const storedSession = resolveEditorStoredSession(session, workouts);
     setOpenSessionMenuId(null);
 
     try {
-      const response = await fetch(`/api/workouts/${storedSession.id}`, {
+      const response = await apiFetch(`/api/workouts/${storedSession.id}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -421,7 +501,7 @@ export function Analytics({ currentUser }) {
   }, [workouts]);
 
   const handleSeparateSession = React.useCallback(async (session) => {
-    const storedSession = resolveStoredSession(session, workouts);
+    const storedSession = resolveEditorStoredSession(session, workouts);
     setOpenSessionMenuId(null);
 
     if (!storedSession?.isMixed) {
@@ -438,7 +518,7 @@ export function Analytics({ currentUser }) {
     }
 
     try {
-      const response = await fetch(`/api/workouts/${storedSession.id}/separate`, {
+      const response = await apiFetch(`/api/workouts/${storedSession.id}/separate`, {
         method: "POST",
         credentials: "include",
       });
@@ -492,7 +572,7 @@ export function Analytics({ currentUser }) {
     setIsSavingExplorerPreferences(true);
 
     try {
-      const response = await fetch(`/api/workout-templates/${selectedWorkoutTemplate.id}/explorer-preferences`, {
+      const response = await apiFetch(`/api/workout-templates/${selectedWorkoutTemplate.id}/explorer-preferences`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -838,7 +918,10 @@ export function Analytics({ currentUser }) {
 
           <div className="consistency-layout">
             <TrendCard title="Heatmap" subtitle="Daily training">
-              <CalendarHeatmap weeks={consistencyStats.heatmapWeeks} />
+              <CalendarHeatmap
+                weeks={consistencyStats.heatmapWeeks}
+                onDayClick={setSelectedDayDate}
+              />
             </TrendCard>
             <TrendCard title="Weekly Frequency" subtitle="Last 12 weeks">
               <BarTrendChart points={consistencyStats.weeklyFrequency} scrollable defaultToEnd />
@@ -1045,6 +1128,7 @@ export function Analytics({ currentUser }) {
                   onOpenEditModal={openSessionEditModal}
                   onSeparateWorkout={handleSeparateSession}
                   onDeleteWorkout={handleDeleteSession}
+                  onViewDay={openSessionDayView}
                 />
               ) : (
                 <p className="panel-empty">Select an exercise to see its sessions.</p>
@@ -1054,139 +1138,17 @@ export function Analytics({ currentUser }) {
         </section>
 
           {editingSession && draftSession && (
-            <div className="history-modal-backdrop" role="presentation">
-              <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="analytics-edit-session-title">
-                <button type="button" className="history-close-button is-icon" onClick={closeSessionEditModal} aria-label="Close session editor">
-                  &times;
-                </button>
-                <div className="history-modal-header">
-                  <div>
-                    <p className="history-modal-eyebrow">Edit Session</p>
-                    <h2 id="analytics-edit-session-title">
-                      {draftSession.isMixed ? "Full Workout" : (draftSession.templateName || draftSession.exercise)}
-                    </h2>
-                  </div>
-                  <div className="modal-header-actions">
-                    <button type="submit" form="analytics-session-form" className="btn btn-primary">
-                      Save
-                    </button>
-                  </div>
-                </div>
-
-                <form id="analytics-session-form" className="history-modal-form" onSubmit={handleSaveSession}>
-                  <label>
-                    Date
-                    <input
-                      type="date"
-                      value={draftSession.date}
-                      onChange={(event) => handleDraftSessionFieldChange("date", event.target.value)}
-                      required
-                    />
-                  </label>
-
-                  <label>
-                    Notes
-                    <textarea
-                      rows="3"
-                      value={draftSession.notes}
-                      onChange={(event) => handleDraftSessionFieldChange("notes", event.target.value)}
-                    />
-                  </label>
-
-                  <label className="history-starred-toggle">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(draftSession.starred)}
-                      onChange={(event) => handleDraftSessionFieldChange("starred", event.target.checked)}
-                    />
-                    <span>Star this session</span>
-                  </label>
-
-                  <section className="history-modal-panel">
-                    <div className="history-modal-panel-header">
-                      <h3>Sets</h3>
-                      <button type="button" className="btn btn-outline-light btn-sm" onClick={handleDraftSessionAddSet}>
-                        + Add Set
-                      </button>
-                    </div>
-
-                    {draftSession.sets.length > 0 ? (
-                      <div className="history-edit-sets">
-                        {draftSession.sets.map((set) => (
-                          <div key={set.id} className="history-edit-set-card">
-                            <div className="history-edit-set-header">
-                              <span>{getSetDisplayLabel(set, draftSession.sets, draftSession.sets.findIndex((currentSet) => currentSet.id === set.id))}</span>
-                              <button
-                                type="button"
-                                className="history-delete-set-button"
-                                onClick={() => handleDraftSessionDeleteSet(set.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
-                            <div className="history-edit-set-grid">
-                              {draftSession.isMixed && (
-                                <label>
-                                  Exercise
-                                  <Dropdown
-                                    value={set.templateId || ""}
-                                    onChange={(nextValue) => handleDraftSessionSetChange(set.id, "templateId", nextValue)}
-                                    searchable
-                                    searchPlaceholder="Search exercises"
-                                    options={workoutTemplateOptions}
-                                    ariaLabel={`Set ${set.id} exercise`}
-                                  />
-                                </label>
-                              )}
-                              <label>
-                                Set type
-                                <Dropdown
-                                  value={set.setType || "regular"}
-                                  onChange={(nextValue) => handleDraftSessionSetChange(set.id, "setType", nextValue)}
-                                  options={setTypeOptions}
-                                  ariaLabel={`Set ${set.id} type`}
-                                />
-                              </label>
-                              {getAnalyticsVisibleFields(draftSession, set).map((field) => (
-                                <label key={field.key}>
-                                  {getAnalyticsFieldLabel(field, getAnalyticsWorkoutMeasurements(draftSession, set))}
-                                  <div className="input-with-unit">
-                                    <input
-                                      type={field.inputType || "text"}
-                                      value={set[field.key] ?? ""}
-                                      placeholder={field.placeholder || ""}
-                                      onChange={(event) => handleDraftSessionSetChange(set.id, field.key, event.target.value)}
-                                    />
-                                    {getAnalyticsFieldUnitSuffix(field, getAnalyticsWorkoutMeasurements(draftSession, set)) && (
-                                      <span className="input-unit">
-                                        {getAnalyticsFieldUnitSuffix(field, getAnalyticsWorkoutMeasurements(draftSession, set))}
-                                      </span>
-                                    )}
-                                  </div>
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="history-empty-edit-message">
-                        No sets yet.
-                      </p>
-                    )}
-                  </section>
-
-                  <div className="history-modal-actions">
-                    <button type="button" className="history-close-button" onClick={closeSessionEditModal} aria-label="Close session editor">
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-primary">
-                      Save
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+            <SessionEditorModal
+              draftSession={draftSession}
+              formId="analytics-session-form"
+              titleId="analytics-edit-session-title"
+              templateOptions={workoutTemplateOptions}
+              onClose={closeSessionEditModal}
+              onSubmit={handleSaveSession}
+              onFieldChange={handleDraftSessionFieldChange}
+              onCommitSet={handleDraftSessionCommitSet}
+              onDeleteSet={handleDraftSessionDeleteSet}
+            />
           )}
 
           {showExplorerEditModal && selectedWorkoutTemplate && typeof document !== "undefined"
@@ -1313,6 +1275,14 @@ export function Analytics({ currentUser }) {
               document.body
             )
             : null}
+
+          <DayViewModal
+            date={selectedDayDate}
+            sessions={selectedDaySessions}
+            onEditSession={openSessionEditModal}
+            onDeleteSession={handleDeleteSession}
+            onClose={() => setSelectedDayDate(null)}
+          />
 
           {showExplorerEditModal && dragState
             ? createPortal(
@@ -1518,9 +1488,19 @@ function buildDefaultExplorerPreferences(stats) {
     },
     averages: {
       ...defaultExplorerPreferences.averages,
+      averageRepsPerSet: false,
+      averageWeightPerSet: false,
+      averageDistancePerSet: false,
+      averageTimePerSet: false,
+      averagePace: false,
     },
     charts: {
       ...defaultExplorerPreferences.charts,
+      weightTrend: false,
+      repsTrend: false,
+      distanceTrend: false,
+      durationTrend: false,
+      paceTrend: false,
       estimatedOneRepMaxTrend: false,
     },
   };
@@ -1533,10 +1513,12 @@ function buildDefaultExplorerPreferences(stats) {
 
   if (fields.weight) {
     defaults.statCards.bestWeight = true;
+    defaults.averages.averageWeightPerSet = true;
   }
 
   if (fields.reps) {
     defaults.statCards.highestReps = true;
+    defaults.averages.averageRepsPerSet = true;
   }
 
   if (fields.weight && fields.reps) {
@@ -1548,12 +1530,17 @@ function buildDefaultExplorerPreferences(stats) {
     defaults.statCards.farthestDistance = true;
   }
 
+  if (fields.duration) {
+    defaults.averages.averageTimePerSet = true;
+  }
+
   if (fields.duration && !fields.weight && !fields.distance) {
     defaults.statCards.shortestDuration = true;
   }
 
   if (fields.distance && fields.duration) {
     defaults.statCards.bestPace = true;
+    defaults.averages.averagePace = true;
   }
 
   return defaults;
@@ -1591,8 +1578,9 @@ function buildSelectedWorkoutCharts(stats, preferences) {
   }
 
   const charts = [];
+  const applicableChartKeys = new Set(getApplicableExplorerChartKeys(stats));
 
-  if (preferences.charts.performanceTrend) {
+  if (applicableChartKeys.has("performanceTrend") && preferences.charts.performanceTrend) {
     charts.push({
       key: "performanceTrend",
       type: "line",
@@ -1605,16 +1593,35 @@ function buildSelectedWorkoutCharts(stats, preferences) {
     });
   }
 
-  if (preferences.charts.estimatedOneRepMaxTrend && stats.estimatedOneRepMaxTrend?.points?.length) {
+  explorerMetricTrendKeys.forEach((chartKey) => {
+    const trend = stats.metricTrends?.[chartKey];
+    if (!applicableChartKeys.has(chartKey) || !preferences.charts[chartKey] || !trend) {
+      return;
+    }
+
+    charts.push({
+      key: chartKey,
+      type: "line",
+      title: trend.title,
+      subtitle: trend.shortSubtitle || trend.subtitle,
+      points: trend.points,
+      yTickFormatter: trend.yTickFormatter,
+      tickMode: trend.tickMode,
+      startAtZero: trend.startAtZero,
+    });
+  });
+
+  if (applicableChartKeys.has("estimatedOneRepMaxTrend") && preferences.charts.estimatedOneRepMaxTrend) {
+    const estimatedOneRepMaxTrend = stats.estimatedOneRepMaxTrend || getEmptyExplorerChart("estimatedOneRepMaxTrend");
     charts.push({
       key: "estimatedOneRepMaxTrend",
       type: "line",
-      title: stats.estimatedOneRepMaxTrend.title,
-      subtitle: stats.estimatedOneRepMaxTrend.shortSubtitle || stats.estimatedOneRepMaxTrend.subtitle,
-      points: stats.estimatedOneRepMaxTrend.points,
-      yTickFormatter: stats.estimatedOneRepMaxTrend.yTickFormatter,
-      tickMode: stats.estimatedOneRepMaxTrend.tickMode,
-      startAtZero: stats.estimatedOneRepMaxTrend.startAtZero,
+      title: estimatedOneRepMaxTrend.title,
+      subtitle: estimatedOneRepMaxTrend.shortSubtitle || estimatedOneRepMaxTrend.subtitle,
+      points: estimatedOneRepMaxTrend.points,
+      yTickFormatter: estimatedOneRepMaxTrend.yTickFormatter,
+      tickMode: estimatedOneRepMaxTrend.tickMode,
+      startAtZero: estimatedOneRepMaxTrend.startAtZero,
     });
   }
 
@@ -1657,67 +1664,18 @@ function buildExplorerEditSections(stats) {
       accent: card.accent,
     },
   }));
-  const averageOptions = [];
-  const chartOptions = [];
   const chartsUnavailable = (stats.sessionsLogged || 0) < 2;
-
-  averageOptions.push(...(stats.averageMetrics || []).map((metric) => ({
+  const averageOptions = (stats.averageMetrics || []).map((metric) => ({
     key: metric.key,
     label: metric.label,
     preview: {
       type: "average",
       value: metric.value,
     },
-  })));
-
-  if (stats.performanceTrend?.points?.length) {
-    chartOptions.push({
-      key: "performanceTrend",
-      label: stats.performanceTrend.title,
-      preview: {
-        type: chartsUnavailable ? "emptyChart" : "lineChart",
-        message: "NOT ENOUGH DATA",
-        points: stats.performanceTrend.points,
-        yTickFormatter: stats.performanceTrend.yTickFormatter,
-        tickMode: stats.performanceTrend.tickMode,
-        startAtZero: stats.performanceTrend.startAtZero,
-      },
-    });
-  }
-
-  if (stats.estimatedOneRepMaxTrend?.points?.length) {
-    chartOptions.push({
-      key: "estimatedOneRepMaxTrend",
-      label: stats.estimatedOneRepMaxTrend.title,
-      preview: {
-        type: chartsUnavailable ? "emptyChart" : "lineChart",
-        message: "NOT ENOUGH DATA",
-        points: stats.estimatedOneRepMaxTrend.points,
-        yTickFormatter: stats.estimatedOneRepMaxTrend.yTickFormatter,
-        tickMode: stats.estimatedOneRepMaxTrend.tickMode,
-        startAtZero: stats.estimatedOneRepMaxTrend.startAtZero,
-      },
-    });
-  }
-
-  chartOptions.push({
-    key: "setVolumeTrend",
-    label: "Set Volume Trend",
-    preview: {
-      type: chartsUnavailable ? "emptyChart" : "barChart",
-      message: "NOT ENOUGH DATA",
-      points: stats.setVolumeTrend,
-    },
-  });
-  chartOptions.push({
-    key: "monthlyFrequency",
-    label: "Monthly Frequency",
-    preview: {
-      type: chartsUnavailable ? "emptyChart" : "barChart",
-      message: "NOT ENOUGH DATA",
-      points: stats.monthlyFrequency,
-    },
-  });
+  }));
+  const chartOptions = getApplicableExplorerChartKeys(stats).map((chartKey) =>
+    buildExplorerChartOption(chartKey, stats, chartsUnavailable)
+  );
 
   sections.push(
     {
@@ -1743,6 +1701,138 @@ function buildExplorerEditSections(stats) {
   return sections.filter((section) => section.options.length > 0);
 }
 
+function buildExplorerChartOption(chartKey, stats, chartsUnavailable) {
+  const chart = getExplorerChartByKey(chartKey, stats);
+  const isBarChart = chartKey === "setVolumeTrend" || chartKey === "monthlyFrequency";
+
+  return {
+    key: chartKey,
+    label: chartKey === "performanceTrend" ? "Primary Trend" : chart.title,
+    preview: {
+      type: chartsUnavailable ? "emptyChart" : (isBarChart ? "barChart" : "lineChart"),
+      message: "NOT ENOUGH DATA",
+      points: chart.points || [],
+      yTickFormatter: chart.yTickFormatter,
+      tickMode: chart.tickMode,
+      startAtZero: chart.startAtZero,
+    },
+  };
+}
+
+function getExplorerChartByKey(chartKey, stats) {
+  if (chartKey === "performanceTrend") {
+    return stats.performanceTrend || getEmptyExplorerChart(chartKey);
+  }
+
+  if (explorerMetricTrendKeys.includes(chartKey)) {
+    return stats.metricTrends?.[chartKey] || getEmptyExplorerChart(chartKey);
+  }
+
+  if (chartKey === "estimatedOneRepMaxTrend") {
+    return stats.estimatedOneRepMaxTrend || getEmptyExplorerChart(chartKey);
+  }
+
+  if (chartKey === "setVolumeTrend") {
+    return {
+      title: "Set Volume Trend",
+      subtitle: "Last 12 sessions",
+      points: stats.setVolumeTrend || [],
+    };
+  }
+
+  if (chartKey === "monthlyFrequency") {
+    return {
+      title: "Monthly Frequency",
+      subtitle: "Recent months",
+      points: stats.monthlyFrequency || [],
+    };
+  }
+
+  return getEmptyExplorerChart(chartKey);
+}
+
+function getEmptyExplorerChart(chartKey) {
+  const fallbackTitles = {
+    performanceTrend: "Performance Trend",
+    weightTrend: "Weight Trend",
+    repsTrend: "Reps Trend",
+    distanceTrend: "Distance Trend",
+    durationTrend: "Duration Trend",
+    paceTrend: "Pace Trend",
+    estimatedOneRepMaxTrend: "Estimated 1RM Trend",
+    setVolumeTrend: "Set Volume Trend",
+    monthlyFrequency: "Monthly Frequency",
+  };
+
+  return {
+    title: fallbackTitles[chartKey] || "Trend",
+    subtitle: "No data yet",
+    points: [],
+  };
+}
+
+function getApplicableExplorerStatCardDefinitions(fields = {}) {
+  return explorerStatCardDefinitions.filter((definition) => {
+    if (definition.key === "lastPerformed") return true;
+    if (definition.key === "bestWeight") return Boolean(fields.weight);
+    if (definition.key === "highestReps") return Boolean(fields.reps);
+    if (definition.key === "farthestDistance") return Boolean(fields.distance);
+    if (definition.key === "longestDuration" || definition.key === "shortestDuration") return Boolean(fields.duration);
+    if (definition.key === "bestPace") return Boolean(fields.distance && fields.duration);
+    if (definition.key === "estimatedOneRepMax") return Boolean(fields.weight && fields.reps);
+    return false;
+  });
+}
+
+function getApplicableExplorerAverageDefinitions(fields = {}) {
+  return explorerAverageDefinitions.filter((definition) => {
+    if (definition.key === "averageSetsPerSession") return true;
+    if (definition.key === "averageRepsPerSet") return Boolean(fields.reps);
+    if (definition.key === "averageWeightPerSet") return Boolean(fields.weight);
+    if (definition.key === "averageDistancePerSet") return Boolean(fields.distance);
+    if (definition.key === "averageTimePerSet") return Boolean(fields.duration);
+    if (definition.key === "averagePace") return Boolean(fields.distance && fields.duration);
+    return false;
+  });
+}
+
+function getApplicableExplorerChartKeys(stats) {
+  const fields = stats?.fields || {};
+  const keys = [];
+  const hasTrackedPerformanceField = Boolean(fields.weight || fields.reps || fields.distance || fields.duration);
+
+  if (hasTrackedPerformanceField) {
+    keys.push("performanceTrend");
+  }
+
+  if (fields.weight) {
+    keys.push("weightTrend");
+  }
+
+  if (fields.reps) {
+    keys.push("repsTrend");
+  }
+
+  if (fields.distance) {
+    keys.push("distanceTrend");
+  }
+
+  if (fields.duration) {
+    keys.push("durationTrend");
+  }
+
+  if (fields.distance && fields.duration) {
+    keys.push("paceTrend");
+  }
+
+  if (fields.weight && fields.reps) {
+    keys.push("estimatedOneRepMaxTrend");
+  }
+
+  keys.push("setVolumeTrend", "monthlyFrequency");
+  return keys;
+}
+
 function getExplorerOrderKey(sectionKey) {
   if (sectionKey === "statCards") {
     return "statCardOrder";
@@ -1761,22 +1851,14 @@ function getExplorerSectionOptionKeys(sectionKey, stats) {
   }
 
   if (sectionKey === "statCards") {
-    return (stats.availableStatCards || []).map((card) => card.key);
+    return getApplicableExplorerStatCardDefinitions(stats.fields).map((card) => card.key);
   }
 
   if (sectionKey === "averages") {
-    return (stats.averageMetrics || []).map((metric) => metric.key);
+    return getApplicableExplorerAverageDefinitions(stats.fields).map((metric) => metric.key);
   }
 
-  const keys = [];
-  if (stats.performanceTrend?.points?.length) {
-    keys.push("performanceTrend");
-  }
-  if (stats.estimatedOneRepMaxTrend?.points?.length) {
-    keys.push("estimatedOneRepMaxTrend");
-  }
-  keys.push("setVolumeTrend", "monthlyFrequency");
-  return keys;
+  return getApplicableExplorerChartKeys(stats);
 }
 
 function applyExplorerOrder(items, order) {
@@ -2431,7 +2513,7 @@ function BarTrendChart({ points, scrollable = false, defaultToEnd = false, compa
   );
 }
 
-function CalendarHeatmap({ weeks }) {
+function CalendarHeatmap({ weeks, onDayClick }) {
   const scrollRef = React.useRef(null);
   const [cellSize, setCellSize] = React.useState(16);
   const minimumCellSize = 16;
@@ -2482,10 +2564,14 @@ function CalendarHeatmap({ weeks }) {
           {weeks.map((week) => (
             <div key={week.key} className="heatmap-week">
               {week.days.map((day) => (
-                <div
+                <button
                   key={day.date}
+                  type="button"
                   className={`heatmap-cell intensity-${day.intensity}`}
-                  title={`${day.date}: ${day.count} session${day.count === 1 ? "" : "s"}`}
+                  title={`${day.date}: ${day.count} set${day.count === 1 ? "" : "s"}`}
+                  aria-label={`${day.date}: ${day.count} set${day.count === 1 ? "" : "s"}`}
+                  disabled={day.count === 0}
+                  onClick={() => onDayClick?.(day.date)}
                 />
               ))}
             </div>
@@ -2757,7 +2843,7 @@ function buildWorkoutGroupBadge(color, workoutColorPreferences) {
     : {};
 }
 
-function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
+function buildConsistencyStats(workouts, uniqueWorkoutDays, daySetCountMap) {
   const today = stripTime(new Date());
   const minimumHeatmapStart = addDays(getWeekStart(today), -49);
   const firstWorkoutDate = workouts.length > 0
@@ -2773,7 +2859,7 @@ function buildConsistencyStats(workouts, uniqueWorkoutDays, dayCountMap) {
     const weekDays = Array.from({ length: 7 }, (_, index) => {
       const currentDay = addDays(currentWeekStart, index);
       const dateKey = formatDateValue(currentDay);
-      const count = dayCountMap.get(dateKey) || 0;
+      const count = daySetCountMap.get(dateKey) || 0;
 
       return {
         date: dateKey,
@@ -2846,6 +2932,7 @@ function buildSelectedWorkoutStats(workouts, selectedWorkoutName) {
     availableStatCards,
     averageMetrics,
     performanceTrend: buildPerformanceTrend(selectedWorkouts, fields, measurements),
+    metricTrends: buildExplorerMetricTrends(selectedWorkouts, measurements),
     estimatedOneRepMaxTrend: buildEstimatedOneRepMaxTrend(selectedWorkouts, fields, measurements),
     setVolumeTrend: selectedWorkouts.slice(-12).map((workout, index) => ({
       label: `S${index + 1}`,
@@ -2886,64 +2973,35 @@ function classifyWorkout(workout) {
 }
 
 function buildWorkoutExplorerAvailableStatCards(workouts, fields, measurements, lastPerformedWorkout) {
-  const cards = [
-    {
+  const statCardMap = new Map([
+    ["lastPerformed", {
       key: "lastPerformed",
       label: "Last Performed",
       value: formatReadableDate(lastPerformedWorkout.date),
       workoutId: lastPerformedWorkout.id,
       accent: false,
-    },
-  ];
+    }],
+    ["bestWeight", getBestWeightMetric(workouts, measurements)],
+    ["estimatedOneRepMax", getEstimatedOneRepMaxMetric(workouts, measurements)],
+    ["highestReps", getMostRepsMetric(workouts)],
+    ["farthestDistance", getFarthestDistanceMetric(workouts, measurements)],
+    ["longestDuration", getLongestDurationMetric(workouts)],
+    ["shortestDuration", getShortestDurationMetric(workouts)],
+    ["bestPace", getBestPaceMetric(workouts, measurements)],
+  ]);
 
-  if (fields.weight) {
-    const bestWeight = getBestWeightMetric(workouts, measurements);
-    if (bestWeight) {
-      cards.push(bestWeight);
-    }
-  }
+  return getApplicableExplorerStatCardDefinitions(fields).map((definition) =>
+    statCardMap.get(definition.key) || buildUnavailableExplorerMetric(definition)
+  );
+}
 
-  if (fields.weight && fields.reps) {
-    const estimatedOneRepMax = getEstimatedOneRepMaxMetric(workouts, measurements);
-    if (estimatedOneRepMax) {
-      cards.push(estimatedOneRepMax);
-    }
-  }
-
-  if (fields.reps) {
-    const highestReps = getMostRepsMetric(workouts);
-    if (highestReps) {
-      cards.push(highestReps);
-    }
-  }
-
-  if (fields.distance) {
-    const farthestDistance = getFarthestDistanceMetric(workouts, measurements);
-    if (farthestDistance) {
-      cards.push(farthestDistance);
-    }
-  }
-
-  if (fields.duration) {
-    const longestDuration = getLongestDurationMetric(workouts);
-    if (longestDuration) {
-      cards.push(longestDuration);
-    }
-
-    const shortestDuration = getShortestDurationMetric(workouts);
-    if (shortestDuration) {
-      cards.push(shortestDuration);
-    }
-  }
-
-  if (fields.distance && fields.duration) {
-    const bestPace = getBestPaceMetric(workouts, measurements);
-    if (bestPace) {
-      cards.push(bestPace);
-    }
-  }
-
-  return cards;
+function buildUnavailableExplorerMetric(definition) {
+  return {
+    key: definition.key,
+    label: definition.label,
+    value: "N/A",
+    accent: false,
+  };
 }
 
 function getBestWeightMetric(workouts, measurements) {
@@ -3295,8 +3353,8 @@ function getPerformanceTrendConfig(fields, measurements) {
       title: "Average Pace Trend",
       subtitle: `Average working-set pace by session`,
       shortSubtitle: "Working-set average",
-      yTickFormatter: null,
-      tickMode: null,
+      yTickFormatter: (value) => formatPaceTick(value),
+      tickMode: "duration",
       startAtZero: false,
     };
   }
@@ -3307,8 +3365,8 @@ function getPerformanceTrendConfig(fields, measurements) {
       title: "Working Distance Trend",
       subtitle: `Average working-set ${formatMeasurementUnit(measurements.distance, "Miles")} by session`,
       shortSubtitle: "Working-set average",
-      yTickFormatter: null,
-      tickMode: null,
+      yTickFormatter: (value) => formatDistanceTick(value, measurements.distance),
+      tickMode: "distance",
       startAtZero: false,
     };
   }
@@ -3380,58 +3438,54 @@ function getMostRepsMetric(workouts) {
 }
 
 function buildWorkoutAverageMetrics(workouts, fields, measurements, averageSetsPerSession) {
-  const metrics = [
-    { key: "averageSetsPerSession", label: "Average Sets / Session", value: averageSetsPerSession },
-  ];
+  const metricValues = new Map([
+    ["averageSetsPerSession", averageSetsPerSession],
+  ]);
 
-  if (fields.reps) {
-    const averageReps = getAverageFromSets(workouts, (set) => Number(set.reps));
-    metrics.push({ key: "averageRepsPerSet", label: "Average Reps / Set", value: averageReps === null ? "N/A" : formatAverageNumber(averageReps) });
-  }
+  const averageReps = getAverageFromSets(workouts, (set) => Number(set.reps));
+  metricValues.set("averageRepsPerSet", averageReps === null ? "N/A" : formatAverageNumber(averageReps));
 
-  if (fields.weight) {
-    const averageWeight = getAverageFromSets(workouts, (set) => Number(set.weight));
-    metrics.push({
-      key: "averageWeightPerSet",
-      label: "Average Weight / Set",
-      value: averageWeight === null
-        ? "N/A"
-        : `${formatAverageNumber(averageWeight)} ${formatMeasurementUnit(measurements.weight, "lbs")}`,
-    });
-  }
+  const averageWeight = getAverageFromSets(workouts, (set) => Number(set.weight));
+  metricValues.set(
+    "averageWeightPerSet",
+    averageWeight === null
+      ? "N/A"
+      : `${formatAverageNumber(averageWeight)} ${formatMeasurementUnit(measurements.weight, "lbs")}`
+  );
 
-  if (fields.duration) {
-    const averageDurationSeconds = getAverageFromSets(workouts, (set) => parseDurationToSeconds(set.duration));
-    metrics.push({
-      key: "averageTimePerSet",
-      label: "Average Time / Set",
-      value: averageDurationSeconds === null ? "N/A" : formatSeconds(Math.round(averageDurationSeconds)),
-    });
-  }
+  const averageDistance = getAverageFromSets(workouts, (set) => Number(set.distance));
+  metricValues.set(
+    "averageDistancePerSet",
+    averageDistance === null
+      ? "N/A"
+      : `${formatAverageNumber(averageDistance)} ${formatMeasurementUnit(measurements.distance, "mi")}`
+  );
 
-  if (fields.distance && fields.duration) {
-    const paceSamples = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
-      const durationSeconds = parseDurationToSeconds(set.duration);
-      const distance = Number(set.distance);
-      if (!durationSeconds || !distance) {
-        return null;
-      }
+  const averageDurationSeconds = getAverageFromSets(workouts, (set) => parseDurationToSeconds(set.duration));
+  metricValues.set(
+    "averageTimePerSet",
+    averageDurationSeconds === null ? "N/A" : formatSeconds(Math.round(averageDurationSeconds))
+  );
 
-      return durationSeconds / distance;
-    }).filter((value) => value !== null));
+  const paceSamples = workouts.flatMap((workout) => (workout.sets || []).map((set) => {
+    const durationSeconds = parseDurationToSeconds(set.duration);
+    const distance = Number(set.distance);
+    if (!durationSeconds || !distance) {
+      return null;
+    }
 
-    const averagePace = paceSamples.length > 0
-      ? paceSamples.reduce((sum, value) => sum + value, 0) / paceSamples.length
-      : null;
+    return durationSeconds / distance;
+  }).filter((value) => value !== null));
 
-    metrics.push({
-      key: "averagePace",
-      label: "Average Pace",
-      value: averagePace === null ? "N/A" : formatPace(averagePace, measurements.distance),
-    });
-  }
+  const averagePace = paceSamples.length > 0
+    ? paceSamples.reduce((sum, value) => sum + value, 0) / paceSamples.length
+    : null;
+  metricValues.set("averagePace", averagePace === null ? "N/A" : formatPace(averagePace, measurements.distance));
 
-  return metrics;
+  return getApplicableExplorerAverageDefinitions(fields).map((definition) => ({
+    ...definition,
+    value: metricValues.get(definition.key) ?? "N/A",
+  }));
 }
 
 function getAverageFromSets(workouts, valueSelector) {
@@ -3485,6 +3539,92 @@ function buildPerformanceTrend(workouts, fields, measurements) {
     title: "Session Trend",
     subtitle: "Session frequency over time",
     points: [],
+  };
+}
+
+function buildExplorerMetricTrends(workouts, measurements) {
+  const configs = getExplorerMetricTrendConfigs(measurements);
+
+  return Object.fromEntries(
+    explorerMetricTrendKeys.map((chartKey) => [
+      chartKey,
+      buildMetricTrend(workouts, configs[chartKey], measurements),
+    ])
+  );
+}
+
+function buildMetricTrend(workouts, trendConfig, measurements) {
+  return {
+    title: trendConfig.title,
+    subtitle: trendConfig.subtitle,
+    shortSubtitle: trendConfig.shortSubtitle,
+    yTickFormatter: trendConfig.yTickFormatter,
+    tickMode: trendConfig.tickMode,
+    startAtZero: trendConfig.startAtZero,
+    points: workouts.map((workout) => {
+      const sessionMetric = getWorkoutTrendMetric(workout, trendConfig.metricKey);
+
+      if (!sessionMetric) {
+        return null;
+      }
+
+      return {
+        label: shortDateLabel(workout.date),
+        value: sessionMetric.value,
+        workoutId: workout.id,
+        ariaLabel: `${formatReadableDate(workout.date)}: ${formatTrendMetricValue(trendConfig.metricKey, sessionMetric, measurements)}`,
+      };
+    }).filter(Boolean),
+  };
+}
+
+function getExplorerMetricTrendConfigs(measurements) {
+  return {
+    weightTrend: {
+      metricKey: "weight",
+      title: "Weight Trend",
+      subtitle: "Average working-set weight by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => String(Math.round(value)),
+      tickMode: "numeric",
+      startAtZero: false,
+    },
+    repsTrend: {
+      metricKey: "reps",
+      title: "Reps Trend",
+      subtitle: "Average working-set reps by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => String(Math.round(value)),
+      tickMode: "numeric",
+      startAtZero: false,
+    },
+    distanceTrend: {
+      metricKey: "distance",
+      title: "Distance Trend",
+      subtitle: `Average working-set ${formatMeasurementUnit(measurements.distance, "Miles")} by session`,
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => formatDistanceTick(value, measurements.distance),
+      tickMode: "distance",
+      startAtZero: false,
+    },
+    durationTrend: {
+      metricKey: "duration",
+      title: "Duration Trend",
+      subtitle: "Average working-set time by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => formatSeconds(Math.round(value)),
+      tickMode: "duration",
+      startAtZero: true,
+    },
+    paceTrend: {
+      metricKey: "pace",
+      title: "Pace Trend",
+      subtitle: "Average working-set pace by session",
+      shortSubtitle: "Working-set average",
+      yTickFormatter: (value) => formatPaceTick(value),
+      tickMode: "duration",
+      startAtZero: false,
+    },
   };
 }
 
@@ -3589,11 +3729,11 @@ function getUniqueWorkoutDays(workouts) {
   return Array.from(new Set(workouts.map((workout) => workout.date))).sort();
 }
 
-function getWorkoutDayCountMap(workouts) {
+function getWorkoutDaySetCountMap(workouts) {
   const map = new Map();
 
   workouts.forEach((workout) => {
-    map.set(workout.date, (map.get(workout.date) || 0) + 1);
+    map.set(workout.date, (map.get(workout.date) || 0) + (workout.sets?.length || 0));
   });
 
   return map;
@@ -3685,8 +3825,8 @@ function getWorkoutBestPace(workout) {
 
 function getHeatIntensity(count) {
   if (count === 0) return 0;
-  if (count === 1) return 1;
-  if (count <= 3) return 2;
+  if (count <= 4) return 1;
+  if (count <= 9) return 2;
   return 3;
 }
 
@@ -3751,9 +3891,47 @@ function formatPace(secondsPerUnit, distanceMeasurement = 'miles') {
     return "N/A";
   }
 
-  const minutes = Math.floor(secondsPerUnit / 60);
-  const seconds = Math.round(secondsPerUnit % 60);
+  const roundedSeconds = Math.round(secondsPerUnit);
+  const minutes = Math.floor(roundedSeconds / 60);
+  const seconds = roundedSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")} / ${formatMeasurementUnit(distanceMeasurement, "Miles")}`;
+}
+
+function formatPaceTick(secondsPerUnit) {
+  if (!Number.isFinite(secondsPerUnit)) {
+    return "";
+  }
+
+  const roundedSeconds = Math.round(secondsPerUnit);
+  const minutes = Math.floor(roundedSeconds / 60);
+  const seconds = roundedSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDistanceTick(value, distanceMeasurement = "miles") {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+
+  return `${formatAverageNumber(value)} ${formatCompactDistanceUnit(distanceMeasurement)}`;
+}
+
+function formatCompactDistanceUnit(distanceMeasurement = "miles") {
+  const normalizedMeasurement = `${distanceMeasurement}`.toLowerCase();
+
+  if (normalizedMeasurement === "kms") {
+    return "km";
+  }
+
+  if (normalizedMeasurement === "meters") {
+    return "m";
+  }
+
+  if (normalizedMeasurement === "feet") {
+    return "ft";
+  }
+
+  return "mi";
 }
 
 function formatSeconds(totalSeconds) {

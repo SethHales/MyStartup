@@ -425,6 +425,77 @@ main {
     animation-delay: 0.12s;
 }
 
+.rest-stopwatch-popover {
+    position: fixed;
+    right: clamp(0.75rem, 3vw, 1.25rem);
+    bottom: calc(var(--footer-height) + 0.85rem);
+    z-index: 420;
+    width: min(280px, calc(100vw - 1.5rem));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-subtle));
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent), transparent 48%),
+        var(--bg-popover);
+    box-shadow: var(--shadow-overlay);
+    backdrop-filter: blur(18px);
+    padding: 0.85rem 0.9rem;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    pointer-events: auto;
+    animation: restStopwatchFloatIn 0.22s ease both;
+}
+
+.rest-stopwatch-popover p,
+.rest-stopwatch-popover span {
+    margin: 0;
+}
+
+.rest-stopwatch-popover strong {
+    display: block;
+    margin: 0.08rem 0 0;
+    color: var(--text-main);
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 1.8rem;
+    line-height: 1;
+    letter-spacing: 0.03em;
+}
+
+.rest-stopwatch-popover span {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.rest-stopwatch-kicker {
+    color: var(--text-soft);
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.rest-stopwatch-close {
+    width: 1.85rem;
+    height: 1.85rem;
+    border: 1px solid color-mix(in srgb, var(--text-main) 12%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+    color: var(--text-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.rest-stopwatch-close:hover,
+.rest-stopwatch-close:focus-visible {
+    color: var(--text-main);
+    border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+    outline: none;
+}
+
 .github-link {
     font-size: 0.85rem;
     color: var(--text-soft);
@@ -558,6 +629,18 @@ button:active {
     }
 }
 
+@keyframes restStopwatchFloatIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 *::-webkit-scrollbar {
     width: 8px;
 }
@@ -643,5 +726,17 @@ button:active {
     .tab {
         min-height: 42px;
         font-size: 0.88rem;
+    }
+
+    .rest-stopwatch-popover {
+        left: 0.75rem;
+        right: 0.75rem;
+        bottom: calc(var(--footer-height) + 0.65rem);
+        width: auto;
+        padding: 0.75rem 0.8rem;
+    }
+
+    .rest-stopwatch-popover strong {
+        font-size: 1.55rem;
     }
 }

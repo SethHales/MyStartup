@@ -24,6 +24,7 @@ export function WorkoutHistoryPreview({
   onOpenEditModal = null,
   onSeparateWorkout = null,
   onDeleteWorkout = null,
+  onViewDay = null,
 }) {
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
   const rowRefs = React.useRef(new Map());
@@ -83,6 +84,7 @@ export function WorkoutHistoryPreview({
               onOpenEditModal={onOpenEditModal}
               onSeparateWorkout={onSeparateWorkout}
               onDeleteWorkout={onDeleteWorkout}
+              onViewDay={onViewDay}
             />
           ))}
         </tbody>
@@ -101,13 +103,15 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
   onOpenEditModal,
   onSeparateWorkout,
   onDeleteWorkout,
+  onViewDay,
 }) {
   const workoutName = workout.isMixed ? "Full Workout" : (workout.templateName || workout.exercise);
   const [shouldRenderDetails, setShouldRenderDetails] = React.useState(isExpanded);
   const [detailsState, setDetailsState] = React.useState(isExpanded ? 'open' : 'closed');
   const menuTriggerRef = React.useRef(null);
+  const menuPopoverRef = React.useRef(null);
   const [menuPosition, setMenuPosition] = React.useState(null);
-  const hasMenuActions = Boolean(onToggleWorkoutMenu && onOpenEditModal && onDeleteWorkout);
+  const hasMenuActions = Boolean(onToggleWorkoutMenu && (onViewDay || onOpenEditModal || onDeleteWorkout));
 
   React.useEffect(() => {
     if (isExpanded) {
@@ -152,7 +156,7 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
         Math.max(12, desiredLeft),
         Math.max(12, viewportWidth - menuWidth - 12)
       );
-      const openUpward = rect.bottom + 156 > viewportHeight - 12;
+      const openUpward = rect.bottom + 204 > viewportHeight - 12;
 
       setMenuPosition({
         left,
@@ -170,6 +174,31 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
   }, [hasMenuActions, isMenuOpen]);
+
+  React.useEffect(() => {
+    if (!isMenuOpen || !hasMenuActions) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (
+        menuTriggerRef.current?.contains(event.target)
+        || menuPopoverRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+
+      onToggleWorkoutMenu(workout.id);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [hasMenuActions, isMenuOpen, onToggleWorkoutMenu, workout.id]);
 
   return (
     <>
@@ -230,6 +259,7 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
       )}
       {hasMenuActions && isMenuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
         <div
+          ref={menuPopoverRef}
           className={menuPosition.openUpward ? "workout-menu-popover workout-menu-popover-overlay is-open-upward" : "workout-menu-popover workout-menu-popover-overlay"}
           style={{
             position: 'fixed',
@@ -238,29 +268,58 @@ const WorkoutHistoryPreviewRow = React.memo(function WorkoutHistoryPreviewRow({
             bottom: menuPosition.openUpward ? `${window.innerHeight - menuPosition.top}px` : 'auto',
           }}
         >
-          <button
-            type="button"
-            className="workout-menu-item"
-            onClick={() => onOpenEditModal(workout)}
-          >
-            Edit
-          </button>
+          {onViewDay && (
+            <button
+              type="button"
+              className="workout-menu-item"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onViewDay(workout);
+              }}
+            >
+              View Day
+            </button>
+          )}
+          {onOpenEditModal && (
+            <button
+              type="button"
+              className="workout-menu-item"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onOpenEditModal(workout);
+              }}
+            >
+              Edit
+            </button>
+          )}
           {workout.isMixed && onSeparateWorkout && (
             <button
               type="button"
               className="workout-menu-item"
-              onClick={() => onSeparateWorkout(workout)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onSeparateWorkout(workout);
+              }}
             >
               Separate
             </button>
           )}
-          <button
-            type="button"
-            className="workout-menu-item delete"
-            onClick={() => onDeleteWorkout(workout)}
-          >
-            Delete
-          </button>
+          {onDeleteWorkout && (
+            <button
+              type="button"
+              className="workout-menu-item delete"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onDeleteWorkout(workout);
+              }}
+            >
+              Delete
+            </button>
+          )}
         </div>,
         document.body
       )}

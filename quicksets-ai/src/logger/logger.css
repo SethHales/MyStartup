@@ -3,8 +3,7 @@
 .workout-form section,
 .template-fields-panel,
 .template-preview,
-.template-color-panel,
-.template-rest-panel {
+.template-color-panel {
     background: var(--bg-panel);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-card);
@@ -16,83 +15,6 @@
 
 .logger-hero {
     background: var(--bg-panel-gradient);
-}
-
-.rest-timer-kicker,
-.rest-timer-copy {
-    margin: 0;
-}
-
-.rest-timer-kicker {
-    color: var(--text-soft);
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.rest-timer-modal h2 {
-    margin: 0.1rem 0;
-    font-family: 'Outfit', system-ui, sans-serif;
-    font-size: clamp(3.2rem, 13vw, 5.4rem);
-    line-height: 0.96;
-    letter-spacing: 0.04em;
-}
-
-.rest-timer-copy {
-    color: var(--text-muted);
-    font-size: 0.82rem;
-}
-
-.rest-timer-modal-backdrop {
-    align-items: center;
-}
-
-.rest-timer-modal {
-    --rest-pulse-color: rgba(54, 211, 153, 0.2);
-    width: min(420px, 100%);
-    min-height: 320px;
-    border: 1px solid rgba(54, 211, 153, 0.38);
-    border-radius: 28px;
-    background:
-        radial-gradient(circle at top left, rgba(54, 211, 153, 0.16), transparent 38%),
-        var(--bg-panel-gradient-strong);
-    box-shadow: var(--shadow-panel);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.9rem;
-    padding: 1.3rem;
-    text-align: center;
-    animation: restPulse 1.05s ease-in-out infinite;
-}
-
-.rest-timer-modal.is-warning {
-    --rest-pulse-color: rgba(246, 190, 80, 0.26);
-    border-color: rgba(246, 190, 80, 0.58);
-    background:
-        radial-gradient(circle at top left, rgba(246, 190, 80, 0.18), transparent 38%),
-        var(--bg-panel-gradient-strong);
-}
-
-.rest-timer-modal.is-expired {
-    --rest-pulse-color: rgba(255, 104, 104, 0.3);
-    border-color: rgba(255, 104, 104, 0.68);
-    background:
-        radial-gradient(circle at top left, rgba(255, 104, 104, 0.2), transparent 38%),
-        var(--bg-panel-gradient-strong);
-}
-
-.rest-timer-stop-button {
-    border: none;
-    border-radius: 999px;
-    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-    color: var(--text-on-accent);
-    padding: 0.75rem 1.45rem;
-    font-weight: 900;
-    min-width: 140px;
-    box-shadow: var(--shadow-glow);
 }
 
 .logger-kicker,
@@ -227,7 +149,8 @@
 .workout-form input,
 .workout-form textarea,
 .workout-form select,
-.template-modal input {
+.template-modal input,
+.template-modal textarea {
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: 10px;
@@ -250,7 +173,8 @@
 .workout-form input:focus,
 .workout-form textarea:focus,
 .workout-form select:focus,
-.template-modal input:focus {
+.template-modal input:focus,
+.template-modal textarea:focus {
     outline: none;
     border-color: var(--border-accent-active);
     box-shadow: 0 0 0 3px var(--accent-glow);
@@ -306,7 +230,8 @@
     box-shadow: var(--shadow-outline-soft);
 }
 
-.workout-form table {
+.workout-form table,
+.session-set-table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
@@ -319,17 +244,21 @@
 }
 
 .workout-form th,
-.workout-form td {
+.workout-form td,
+.session-set-table th,
+.session-set-table td {
     padding: 0.65rem 0.55rem;
     text-align: center;
     border-bottom: 1px solid var(--border-soft);
 }
 
-.workout-form tbody tr:last-child td {
+.workout-form tbody tr:last-child td,
+.session-set-table tbody tr:last-child td {
     border-bottom: none;
 }
 
-.workout-form th {
+.workout-form th,
+.session-set-table th {
     color: var(--text-soft);
     font-size: 0.76rem;
     text-transform: uppercase;
@@ -737,28 +666,6 @@
     box-shadow: var(--shadow-outline);
 }
 
-.template-rest-toggle {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 0.6rem !important;
-    font-weight: 700;
-}
-
-.template-rest-toggle input {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--accent);
-}
-
-.template-rest-duration {
-    transition: opacity 0.18s ease;
-}
-
-.template-rest-duration.is-disabled {
-    opacity: 0.55;
-}
-
 .template-field-card {
     display: flex;
     align-items: flex-start;
@@ -861,11 +768,6 @@
     .workout-form section,
     .template-fields-panel,
     .template-preview,
-    .template-rest-panel {
-        padding: 0.7rem 0.8rem;
-        gap: 0.6rem;
-    }
-
     .logger-kicker,
     .feed-title,
     .template-eyebrow {
@@ -903,12 +805,15 @@
         min-height: 42px;
     }
 
-    .workout-form table {
+    .workout-form table,
+    .session-set-table {
         font-size: 0.82rem;
     }
 
     .workout-form th,
-    .workout-form td {
+    .workout-form td,
+    .session-set-table th,
+    .session-set-table td {
         padding: 0.55rem 0.35rem;
     }
 
@@ -921,14 +826,4 @@
         gap: 0.55rem;
     }
 
-}
-
-@keyframes restPulse {
-    0%, 100% {
-        box-shadow: 0 0 0 0 var(--rest-pulse-color), var(--shadow-panel);
-    }
-
-    50% {
-        box-shadow: 0 0 0 10px var(--rest-pulse-color), var(--shadow-panel);
-    }
 }

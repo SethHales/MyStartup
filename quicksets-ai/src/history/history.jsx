@@ -2,12 +2,18 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Dropdown } from '../components/dropdown';
 import { MultiSelectDropdown } from '../components/multiSelectDropdown';
+import { DayViewModal } from '../components/dayViewModal';
+import {
+  SessionEditorModal,
+  buildMixedSessionTemplateOptions,
+  cloneSessionForEdit,
+} from '../components/sessionEditorModal';
 import {
   formatMeasurementLabel,
   getSetDisplayLabel,
-  normalizeSetType,
   parseLocalDate,
 } from '../utils/workoutDomain';
+import { apiFetch } from '../utils/apiFetch';
 import "./history.css";
 import {
   findWorkoutColorSlot,
@@ -40,10 +46,19 @@ const monthNames = [
   'December',
 ];
 
+const defaultHistoryView = 'date';
+const historyViewOptions = new Set(['date', 'group']);
+
+function sanitizeHistoryViewPreference(view) {
+  return historyViewOptions.has(view) ? view : defaultHistoryView;
+}
+
 export function History({ currentUser = null, setCurrentUser = null }) {
   const [workouts, setWorkouts] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [historyView, setHistoryView] = React.useState('date');
+  const [historyView, setHistoryView] = React.useState(() =>
+    sanitizeHistoryViewPreference(currentUser?.historyViewPreference)
+  );
   const [expandedWorkoutId, setExpandedWorkoutId] = React.useState(null);
   const [expandedGroupWorkoutKeys, setExpandedGroupWorkoutKeys] = React.useState([]);
   const [expandedGroupedSessionId, setExpandedGroupedSessionId] = React.useState(null);
@@ -60,7 +75,10 @@ export function History({ currentUser = null, setCurrentUser = null }) {
   const [isSavingColorPreference, setIsSavingColorPreference] = React.useState(false);
   const [isApplyingSelectionAction, setIsApplyingSelectionAction] = React.useState(false);
   const [openWorkoutMenuId, setOpenWorkoutMenuId] = React.useState(null);
+  const [selectedDayDate, setSelectedDayDate] = React.useState(null);
   const [showFilterMenu, setShowFilterMenu] = React.useState(false);
+  const [dateReorderDrag, setDateReorderDrag] = React.useState(null);
+  const [historySearchQuery, setHistorySearchQuery] = React.useState('');
   const [workoutFilters, setWorkoutFilters] = React.useState([]);
   const [monthFilters, setMonthFilters] = React.useState([]);
   const [yearFilters, setYearFilters] = React.useState([]);
@@ -73,6 +91,9 @@ export function History({ currentUser = null, setCurrentUser = null }) {
   const [isPreviewingImport, setIsPreviewingImport] = React.useState(false);
   const [isImportingWorkouts, setIsImportingWorkouts] = React.useState(false);
   const filterMenuRef = React.useRef(null);
+  const dateReorderPressRef = React.useRef(null);
+  const dateReorderDragRef = React.useRef(null);
+  const suppressHistoryRowClickRef = React.useRef(false);
   const workoutColorPreferences = React.useMemo(
     () => resolveWorkoutColorPreferences(currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels),
     [currentUser?.workoutColorPreferences, currentUser?.workoutColorLabels]
@@ -83,13 +104,25 @@ export function History({ currentUser = null, setCurrentUser = null }) {
   }, []);
 
   React.useEffect(() => {
+    setHistoryView(sanitizeHistoryViewPreference(currentUser?.historyViewPreference));
+  }, [currentUser?.historyViewPreference]);
+
+  React.useEffect(() => {
     const handlePointerDown = (event) => {
+      if (event.target?.closest?.('[data-qs-dropdown-layer="true"]')) {
+        return;
+      }
+
       if (!filterMenuRef.current?.contains(event.target)) {
         setShowFilterMenu(false);
       }
     };
 
     const handleViewportChange = (event) => {
+      if (event?.target?.closest?.('[data-qs-dropdown-layer="true"]')) {
+        return;
+      }
+
       const didScrollInsideFilter = event?.type === 'scroll'
         && filterMenuRef.current?.contains(event.target);
 
@@ -140,6 +173,10 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     },
     [workouts, workoutColorPreferences]
   );
+  const mixedSessionTemplateOptions = React.useMemo(
+    () => buildMixedSessionTemplateOptions(workouts, workoutColorPreferences),
+    [workouts, workoutColorPreferences]
+  );
   const yearOptions = React.useMemo(
     () => Array.from(new Set(workouts.map((workout) => String(parseLocalDate(workout.date).getFullYear())))).sort((left, right) => Number(right) - Number(left)),
     [workouts]
@@ -150,17 +187,36 @@ export function History({ currentUser = null, setCurrentUser = null }) {
       const workoutDate = parseLocalDate(workout.date);
       const workoutMonth = String(workoutDate.getMonth());
       const workoutYear = String(workoutDate.getFullYear());
+      const normalizedSearch = historySearchQuery.trim().toLowerCase();
+      const color = getWorkoutColor(workout);
+      const slotColor = findWorkoutColorSlot(color, workoutColorPreferences);
+      const groupLabel = getWorkoutColorPreferenceLabel(slotColor, workoutColorPreferences);
+      const searchHaystack = [
+        workoutName,
+        groupLabel,
+        workout.notes,
+        workout.date,
+        monthNames[workoutDate.getMonth()],
+        workoutYear,
+      ].join(' ').toLowerCase();
 
-      return (workoutFilters.length === 0 || workoutFilters.includes(workoutName))
+      return (!normalizedSearch || searchHaystack.includes(normalizedSearch))
+        && (workoutFilters.length === 0 || workoutFilters.includes(workoutName))
         && (monthFilters.length === 0 || monthFilters.includes(workoutMonth))
         && (yearFilters.length === 0 || yearFilters.includes(workoutYear))
         && (!starredOnly || Boolean(workout.starred));
     }),
-    [workouts, workoutFilters, monthFilters, yearFilters, starredOnly]
+    [workouts, historySearchQuery, workoutFilters, monthFilters, yearFilters, starredOnly, workoutColorPreferences]
   );
   const groupedWorkouts = React.useMemo(
     () => groupWorkoutsByMonth(filteredWorkouts),
     [filteredWorkouts]
+  );
+  const selectedDaySessions = React.useMemo(
+    () => selectedDayDate
+      ? workouts.filter((workout) => workout.date === selectedDayDate)
+      : [],
+    [workouts, selectedDayDate]
   );
   const groupedByColor = React.useMemo(
     () => groupWorkoutsByColorGroup(filteredWorkouts, workoutColorPreferences),
@@ -216,11 +272,259 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     }
   }, [historyView]);
 
+  const updateHistoryView = React.useCallback(async (nextView) => {
+    const sanitizedView = sanitizeHistoryViewPreference(nextView);
+
+    if (sanitizedView === historyView) {
+      return;
+    }
+
+    const previousView = historyView;
+    setHistoryView(sanitizedView);
+    setCurrentUser?.((currentUserValue) => ({
+      ...(currentUserValue || {}),
+      historyViewPreference: sanitizedView,
+    }));
+
+    try {
+      const response = await apiFetch('/api/user/history-preferences', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ historyViewPreference: sanitizedView }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body?.msg || 'Failed to save history preference');
+      }
+
+      setCurrentUser?.((currentUserValue) => ({
+        ...(currentUserValue || {}),
+        ...body,
+      }));
+    } catch (err) {
+      setHistoryView(previousView);
+      setCurrentUser?.((currentUserValue) => ({
+        ...(currentUserValue || {}),
+        historyViewPreference: previousView,
+      }));
+      console.error('Failed to save history view preference:', err);
+      alert('Failed to save history view preference');
+    }
+  }, [historyView, setCurrentUser]);
+
+  React.useEffect(() => () => {
+    if (dateReorderPressRef.current?.timeoutId) {
+      window.clearTimeout(dateReorderPressRef.current.timeoutId);
+    }
+
+    document.body.style.userSelect = dateReorderPressRef.current?.previousUserSelect || '';
+    dateReorderPressRef.current = null;
+    dateReorderDragRef.current = null;
+  }, []);
+
+  const setDateReorderDragState = React.useCallback((nextDragState) => {
+    dateReorderDragRef.current = nextDragState;
+    setDateReorderDrag(nextDragState);
+  }, []);
+
   const handleRowClick = React.useCallback((id) => {
+    if (suppressHistoryRowClickRef.current || dateReorderDragRef.current) {
+      return;
+    }
+
     setExpandedWorkoutId((current) =>
       current === id ? null : id
     );
   }, []);
+
+  const commitDateReorder = React.useCallback(async (dragState) => {
+    const { dayKey, orderedIds = [], previewIds = [] } = dragState || {};
+
+    if (!dayKey || previewIds.length < 2 || areStringArraysEqual(orderedIds, previewIds)) {
+      return;
+    }
+
+    const dayOrderById = new Map(previewIds.map((workoutId, index) => [workoutId, index]));
+    let previousWorkouts = null;
+
+    setWorkouts((currentWorkouts) => {
+      previousWorkouts = currentWorkouts;
+      return sortWorkouts(
+        currentWorkouts.map((workout) =>
+          dayOrderById.has(workout.id)
+            ? { ...workout, dayOrder: dayOrderById.get(workout.id) }
+            : workout
+        )
+      );
+    });
+
+    try {
+      const response = await apiFetch('/api/workouts/reorder-day', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          date: dayKey,
+          orderedWorkoutIds: previewIds,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(body?.msg || 'Failed to reorder sessions');
+      }
+    } catch (err) {
+      if (previousWorkouts) {
+        setWorkouts(previousWorkouts);
+      }
+      console.error('Error reordering sessions:', err);
+    }
+  }, []);
+
+  const beginDateReorderPress = React.useCallback((event, dayGroup, workout) => {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    if (!dayGroup || dayGroup.workouts.length < 2 || isInteractiveHistoryTarget(event.target)) {
+      return;
+    }
+
+    const orderedIds = dayGroup.workouts.map((dayWorkout) => dayWorkout.id);
+    const previousUserSelect = document.body.style.userSelect;
+    const pressState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dayKey: dayGroup.key,
+      draggingId: workout.id,
+      orderedIds,
+      previewIds: orderedIds,
+      isActive: false,
+      previousUserSelect,
+      timeoutId: null,
+    };
+
+    const cleanupPress = () => {
+      if (pressState.timeoutId) {
+        window.clearTimeout(pressState.timeoutId);
+      }
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointercancel', handlePointerCancel);
+      document.body.style.userSelect = previousUserSelect;
+
+      if (dateReorderPressRef.current === pressState) {
+        dateReorderPressRef.current = null;
+      }
+    };
+
+    const activateDrag = () => {
+      if (dateReorderPressRef.current !== pressState) {
+        return;
+      }
+
+      pressState.isActive = true;
+      document.body.style.userSelect = 'none';
+      suppressHistoryRowClickRef.current = true;
+      setOpenWorkoutMenuId(null);
+      setDateReorderDragState({
+        dayKey: pressState.dayKey,
+        draggingId: pressState.draggingId,
+        orderedIds: pressState.orderedIds,
+        previewIds: pressState.previewIds,
+      });
+    };
+
+    const updatePreviewFromPointer = (clientX, clientY) => {
+      const nextPreviewIds = getDateReorderPreviewIdsFromPoint({
+        clientX,
+        clientY,
+        dayKey: pressState.dayKey,
+        draggingId: pressState.draggingId,
+        orderedIds: pressState.orderedIds,
+        fallbackPreviewIds: pressState.previewIds,
+      });
+
+      if (areStringArraysEqual(nextPreviewIds, pressState.previewIds)) {
+        return;
+      }
+
+      pressState.previewIds = nextPreviewIds;
+      setDateReorderDragState({
+        dayKey: pressState.dayKey,
+        draggingId: pressState.draggingId,
+        orderedIds: pressState.orderedIds,
+        previewIds: nextPreviewIds,
+      });
+    };
+
+    function handlePointerMove(moveEvent) {
+      if (moveEvent.pointerId !== pressState.pointerId) {
+        return;
+      }
+
+      const movedDistance = Math.hypot(
+        moveEvent.clientX - pressState.startX,
+        moveEvent.clientY - pressState.startY
+      );
+
+      if (!pressState.isActive && movedDistance > 10) {
+        cleanupPress();
+        return;
+      }
+
+      if (!pressState.isActive) {
+        return;
+      }
+
+      moveEvent.preventDefault();
+      updatePreviewFromPointer(moveEvent.clientX, moveEvent.clientY);
+    }
+
+    function handlePointerUp(upEvent) {
+      if (upEvent.pointerId !== pressState.pointerId) {
+        return;
+      }
+
+      if (pressState.isActive) {
+        upEvent.preventDefault();
+        updatePreviewFromPointer(upEvent.clientX, upEvent.clientY);
+        commitDateReorder({
+          dayKey: pressState.dayKey,
+          orderedIds: pressState.orderedIds,
+          previewIds: pressState.previewIds,
+        });
+        setDateReorderDragState(null);
+        window.setTimeout(() => {
+          suppressHistoryRowClickRef.current = false;
+        }, 160);
+      }
+
+      cleanupPress();
+    }
+
+    function handlePointerCancel(cancelEvent) {
+      if (cancelEvent.pointerId !== pressState.pointerId) {
+        return;
+      }
+
+      setDateReorderDragState(null);
+      cleanupPress();
+      window.setTimeout(() => {
+        suppressHistoryRowClickRef.current = false;
+      }, 160);
+    }
+
+    dateReorderPressRef.current = pressState;
+    pressState.timeoutId = window.setTimeout(activateDrag, 280);
+    document.addEventListener('pointermove', handlePointerMove, { passive: false });
+    document.addEventListener('pointerup', handlePointerUp);
+    document.addEventListener('pointercancel', handlePointerCancel);
+  }, [commitDateReorder, setDateReorderDragState]);
+
   const toggleGroupWorkoutKey = React.useCallback((groupWorkoutKey) => {
     setExpandedGroupWorkoutKeys((currentKeys) =>
       currentKeys.includes(groupWorkoutKey)
@@ -262,7 +566,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
 
   const openEditModal = React.useCallback((workout) => {
     setEditingWorkout(workout);
-    setDraftWorkout(cloneWorkoutForEdit(workout));
+    setDraftWorkout(cloneSessionForEdit(workout));
     setOpenWorkoutMenuId(null);
   }, []);
 
@@ -324,7 +628,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsSavingGroup(true);
 
     try {
-      const response = await fetch('/api/user/color-preferences', {
+      const response = await apiFetch('/api/user/color-preferences', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -475,7 +779,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsSavingColorPreference(true);
 
     try {
-      const response = await fetch('/api/user/color-preferences', {
+      const response = await apiFetch('/api/user/color-preferences', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -509,7 +813,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsApplyingSelectionAction(true);
 
     try {
-      const response = await fetch('/api/workout-templates/group', {
+      const response = await apiFetch('/api/workout-templates/group', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -553,7 +857,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
 
     try {
       for (const templateId of selectedExerciseTemplateIds) {
-        const response = await fetch(`/api/workout-templates/${templateId}`, {
+        const response = await apiFetch(`/api/workout-templates/${templateId}`, {
           method: 'DELETE',
           credentials: 'include',
         });
@@ -599,7 +903,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsApplyingSelectionAction(true);
 
     try {
-      const response = await fetch('/api/workout-templates/merge', {
+      const response = await apiFetch('/api/workout-templates/merge', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -625,11 +929,16 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     }
   }, [clearExerciseSelection, selectedExerciseGroups, selectedExerciseTemplateIds]);
 
-  const handleDeleteWorkout = React.useCallback(async (workoutId) => {
+  const handleDeleteWorkout = React.useCallback(async (workoutOrId) => {
+    const workoutId = typeof workoutOrId === 'string' ? workoutOrId : workoutOrId?.id;
     setOpenWorkoutMenuId(null);
 
+    if (!workoutId) {
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/workouts/${workoutId}`, {
+      const response = await apiFetch(`/api/workouts/${workoutId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -665,7 +974,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     );
 
     try {
-      const response = await fetch(`/api/workouts/${workout.id}`, {
+      const response = await apiFetch(`/api/workouts/${workout.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -726,7 +1035,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     }
 
     try {
-      const response = await fetch(`/api/workouts/${workout.id}/separate`, {
+      const response = await apiFetch(`/api/workouts/${workout.id}/separate`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -756,6 +1065,14 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     );
   }, []);
 
+  const handleViewDay = React.useCallback((workout) => {
+    setOpenWorkoutMenuId(null);
+
+    if (workout?.date) {
+      setSelectedDayDate(workout.date);
+    }
+  }, []);
+
   const handleDraftFieldChange = (field, value) => {
     setDraftWorkout((currentWorkout) => ({
       ...currentWorkout,
@@ -763,49 +1080,12 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     }));
   };
 
-  const handleDraftSetChange = (setId, field, value) => {
-    if (field === 'templateId' && draftWorkout?.isMixed) {
-      const nextTemplate = workouts
-        .flatMap((workout) => Array.isArray(workout.sets) ? workout.sets : [])
-        .find((set) => set.templateId === value);
-
-      setDraftWorkout((currentWorkout) => ({
-        ...currentWorkout,
-        sets: currentWorkout.sets.map((set) =>
-          set.id === setId
-            ? {
-              id: set.id,
-              setType: 'regular',
-              templateId: nextTemplate?.templateId || value,
-              templateName: nextTemplate?.templateName || set.templateName || '',
-              fields: nextTemplate?.fields || set.fields || {},
-              measurements: nextTemplate?.measurements || set.measurements || {},
-              ...copyHistorySetFields(nextTemplate || set, nextTemplate?.fields || set.fields || {}),
-            }
-            : set
-        ),
-      }));
-      return;
-    }
-
+  const handleDraftCommitSet = (nextSet, editingSetId) => {
     setDraftWorkout((currentWorkout) => ({
       ...currentWorkout,
-      sets: currentWorkout.sets.map((set) =>
-        set.id === setId
-          ? { ...set, [field]: value }
-          : set
-      ),
-    }));
-  };
-
-  const handleDraftAddSet = () => {
-    const nextSetId = draftWorkout.sets.length + 1;
-    setDraftWorkout((currentWorkout) => ({
-      ...currentWorkout,
-      sets: [
-        ...currentWorkout.sets,
-        buildDraftSet(currentWorkout, workouts, nextSetId),
-      ],
+      sets: editingSetId === null
+        ? [...currentWorkout.sets, nextSet]
+        : currentWorkout.sets.map((set) => set.id === editingSetId ? nextSet : set),
     }));
   };
 
@@ -822,7 +1102,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     event.preventDefault();
 
     try {
-      const response = await fetch(`/api/workouts/${editingWorkout.id}`, {
+      const response = await apiFetch(`/api/workouts/${editingWorkout.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -855,6 +1135,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
   };
 
   const clearAllFilters = () => {
+    setHistorySearchQuery('');
     setWorkoutFilters([]);
     setMonthFilters([]);
     setYearFilters([]);
@@ -914,7 +1195,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsPreviewingImport(true);
 
     try {
-      const response = await fetch('/api/workouts/import/preview', {
+      const response = await apiFetch('/api/workouts/import/preview', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -951,7 +1232,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
     setIsImportingWorkouts(true);
 
     try {
-      const response = await fetch('/api/workouts/import/commit', {
+      const response = await apiFetch('/api/workouts/import/commit', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -996,7 +1277,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
                 className={historyView === 'date' ? "history-view-toggle-button is-active" : "history-view-toggle-button"}
                 role="tab"
                 aria-selected={historyView === 'date'}
-                onClick={() => setHistoryView('date')}
+                onClick={() => updateHistoryView('date')}
               >
                 By Date
               </button>
@@ -1005,7 +1286,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
                 className={historyView === 'group' ? "history-view-toggle-button is-active" : "history-view-toggle-button"}
                 role="tab"
                 aria-selected={historyView === 'group'}
-                onClick={() => setHistoryView('group')}
+                onClick={() => updateHistoryView('group')}
               >
                 By Group
               </button>
@@ -1014,18 +1295,22 @@ export function History({ currentUser = null, setCurrentUser = null }) {
         </section>
 
         <section className="history-controls-bar">
-          <button
-            type="button"
-            className="history-import-trigger"
-            onClick={() => setShowImportModal(true)}
-          >
-            Import sessions
-          </button>
-          <div className="history-filter-actions" ref={filterMenuRef}>
+          <div className="history-search-actions" ref={filterMenuRef}>
+            <div className="history-search-shell">
+              <input
+                type="search"
+                className="history-search-input"
+                value={historySearchQuery}
+                aria-label="Search session history"
+                placeholder="Search exercises, groups, notes..."
+                onChange={(event) => setHistorySearchQuery(event.target.value)}
+              />
+            </div>
             <button
               type="button"
               className="history-filter-trigger"
               aria-expanded={showFilterMenu}
+              aria-label="Advanced filters"
               onClick={() => setShowFilterMenu((current) => !current)}
             >
               {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
@@ -1129,12 +1414,14 @@ export function History({ currentUser = null, setCurrentUser = null }) {
             group={group}
             expandedWorkoutId={expandedWorkoutId}
             openWorkoutMenuId={openWorkoutMenuId}
+            dateReorderDrag={dateReorderDrag}
             onRowClick={handleRowClick}
             onToggleStarred={handleToggleStarred}
             onToggleWorkoutMenu={toggleWorkoutMenu}
             onOpenEditModal={openEditModal}
             onSeparateWorkout={handleSeparateWorkout}
             onDeleteWorkout={handleDeleteWorkout}
+            onBeginDateReorderPress={beginDateReorderPress}
           />
         ))}
 
@@ -1157,6 +1444,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
             onOpenEditModal={openEditModal}
             onSeparateWorkout={handleSeparateWorkout}
             onDeleteWorkout={handleDeleteWorkout}
+            onViewDay={handleViewDay}
           />
         ))}
 
@@ -1259,6 +1547,28 @@ export function History({ currentUser = null, setCurrentUser = null }) {
       )}
 
       {editingWorkout && draftWorkout && (
+        <SessionEditorModal
+          draftSession={draftWorkout}
+          formId="history-workout-form"
+          titleId="edit-workout-title"
+          templateOptions={mixedSessionTemplateOptions}
+          onClose={closeEditModal}
+          onSubmit={handleSaveWorkout}
+          onFieldChange={handleDraftFieldChange}
+          onCommitSet={handleDraftCommitSet}
+          onDeleteSet={handleDraftDeleteSet}
+        />
+      )}
+
+      <DayViewModal
+        date={selectedDayDate}
+        sessions={selectedDaySessions}
+        onEditSession={openEditModal}
+        onDeleteSession={handleDeleteWorkout}
+        onClose={() => setSelectedDayDate(null)}
+      />
+
+      {false && editingWorkout && draftWorkout && (
         <div className="history-modal-backdrop" role="presentation">
           <div className="history-modal" role="dialog" aria-modal="true" aria-labelledby="edit-workout-title">
             <button type="button" className="history-close-button is-icon" onClick={closeEditModal} aria-label="Close session editor">
@@ -1422,7 +1732,7 @@ export function History({ currentUser = null, setCurrentUser = null }) {
   );
 
   async function loadWorkouts() {
-    return fetch('/api/workouts', {
+    return apiFetch('/api/workouts', {
       method: 'GET',
       credentials: 'include',
     })
@@ -1588,7 +1898,7 @@ function ImportWorkoutsModal({
                             <strong>{template.name}</strong>
                             <p>{formatImportedTemplateMeta(template)}</p>
                           </div>
-                          <span>{template.usesRestTimer ? `Rest ${template.restDuration}` : 'No rest timer'}</span>
+                          <span>Exercise</span>
                         </article>
                       ))}
                     </div>
@@ -1684,12 +1994,14 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
   group,
   expandedWorkoutId,
   openWorkoutMenuId,
+  dateReorderDrag,
   onRowClick,
   onToggleStarred,
   onToggleWorkoutMenu,
   onOpenEditModal,
   onSeparateWorkout,
   onDeleteWorkout,
+  onBeginDateReorderPress,
 }) {
   const hasOpenMenu = group.days.some((dayGroup) =>
     dayGroup.workouts.some((workout) => workout.id === openWorkoutMenuId)
@@ -1702,27 +2014,39 @@ const HistoryMonthSection = React.memo(function HistoryMonthSection({
       </div>
       <table className="history-table table table-dark table-hover">
         <tbody>
-          {group.days.map((dayGroup) => (
-            <React.Fragment key={dayGroup.key}>
-              <tr className="history-day-row">
-                <td colSpan={3}>{dayGroup.label}</td>
-              </tr>
-              {dayGroup.workouts.map((workout) => (
-                <HistoryWorkoutRow
-                  key={workout.id}
-                  workout={workout}
-                  isExpanded={expandedWorkoutId === workout.id}
-                  isMenuOpen={openWorkoutMenuId === workout.id}
-                  onRowClick={onRowClick}
-                  onToggleStarred={onToggleStarred}
-                  onToggleWorkoutMenu={onToggleWorkoutMenu}
-                  onOpenEditModal={onOpenEditModal}
-                  onSeparateWorkout={onSeparateWorkout}
-                  onDeleteWorkout={onDeleteWorkout}
-                />
-              ))}
-            </React.Fragment>
-          ))}
+          {group.days.map((dayGroup) => {
+            const isDayReordering = dateReorderDrag?.dayKey === dayGroup.key;
+            const dayWorkouts = isDayReordering
+              ? orderWorkoutsByIds(dayGroup.workouts, dateReorderDrag.previewIds)
+              : dayGroup.workouts;
+
+            return (
+              <React.Fragment key={dayGroup.key}>
+                <tr className={isDayReordering ? "history-day-row is-reordering" : "history-day-row"}>
+                  <td colSpan={3}>{dayGroup.label}</td>
+                </tr>
+                {dayWorkouts.map((workout) => (
+                  <HistoryWorkoutRow
+                    key={workout.id}
+                    workout={workout}
+                    dayKey={dayGroup.key}
+                    isExpanded={expandedWorkoutId === workout.id}
+                    isMenuOpen={openWorkoutMenuId === workout.id}
+                    isDateReorderEnabled={dayGroup.workouts.length > 1 && expandedWorkoutId !== workout.id}
+                    isDateReorderActive={isDayReordering}
+                    isDateReorderDragging={dateReorderDrag?.draggingId === workout.id}
+                    onRowClick={onRowClick}
+                    onToggleStarred={onToggleStarred}
+                    onToggleWorkoutMenu={onToggleWorkoutMenu}
+                    onOpenEditModal={onOpenEditModal}
+                    onSeparateWorkout={onSeparateWorkout}
+                    onDeleteWorkout={onDeleteWorkout}
+                    onDateReorderPointerDown={(event) => onBeginDateReorderPress(event, dayGroup, workout)}
+                  />
+                ))}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </section>
@@ -1746,6 +2070,7 @@ const HistoryColorGroupSection = React.memo(function HistoryColorGroupSection({
   onOpenEditModal,
   onSeparateWorkout,
   onDeleteWorkout,
+  onViewDay,
 }) {
   const hasOpenMenu = group.workouts.some((workoutGroup) =>
     workoutGroup.sessions.some((workout) => workout.id === openWorkoutMenuId)
@@ -1807,6 +2132,7 @@ const HistoryColorGroupSection = React.memo(function HistoryColorGroupSection({
                         onOpenEditModal={onOpenEditModal}
                         onSeparateWorkout={onSeparateWorkout}
                         onDeleteWorkout={onDeleteWorkout}
+                        onViewDay={onViewDay}
                       />
                     ))}
                   </tbody>
@@ -2100,8 +2426,12 @@ function HistorySelectionGroupPickerModal({
 
 const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   workout,
+  dayKey = "",
   isExpanded,
   isMenuOpen,
+  isDateReorderEnabled = false,
+  isDateReorderActive = false,
+  isDateReorderDragging = false,
   rowLabel = "",
   rowLabelClassName = "",
   onRowClick,
@@ -2110,11 +2440,14 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
   onOpenEditModal,
   onSeparateWorkout,
   onDeleteWorkout,
+  onViewDay,
+  onDateReorderPointerDown,
 }) {
   const workoutName = workout.isMixed ? "Full Workout" : (workout.templateName || workout.exercise);
   const [shouldRenderDetails, setShouldRenderDetails] = React.useState(isExpanded);
   const [detailsState, setDetailsState] = React.useState(isExpanded ? 'open' : 'closed');
   const menuTriggerRef = React.useRef(null);
+  const menuPopoverRef = React.useRef(null);
   const [menuPosition, setMenuPosition] = React.useState(null);
 
   React.useEffect(() => {
@@ -2160,7 +2493,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
         Math.max(12, desiredLeft),
         Math.max(12, viewportWidth - menuWidth - 12)
       );
-      const openUpward = rect.bottom + 156 > viewportHeight - 12;
+      const openUpward = rect.bottom + 204 > viewportHeight - 12;
 
       setMenuPosition({
         left,
@@ -2179,15 +2512,54 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
     };
   }, [isMenuOpen]);
 
+  React.useEffect(() => {
+    if (!isMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (
+        menuTriggerRef.current?.contains(event.target)
+        || menuPopoverRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+
+      onToggleWorkoutMenu(workout.id);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [isMenuOpen, onToggleWorkoutMenu, workout.id]);
+
   return (
     <>
       <tr
-        onClick={() => onRowClick(workout.id)}
+        data-history-date-session-row={isDateReorderEnabled ? "true" : undefined}
+        data-history-day-key={isDateReorderEnabled ? dayKey : undefined}
+        data-history-workout-id={isDateReorderEnabled ? workout.id : undefined}
+        onPointerDown={isDateReorderEnabled ? onDateReorderPointerDown : undefined}
+        onClick={(event) => {
+          if (isDateReorderActive) {
+            event.preventDefault();
+            return;
+          }
+
+          onRowClick(workout.id);
+        }}
         className={[
           isExpanded ? "history-row-expanded history-row" : "history-row",
           workout.starred ? "history-row-starred" : "",
+          isDateReorderEnabled ? "history-row-reorderable" : "",
+          isDateReorderActive ? "is-date-reordering" : "",
+          isDateReorderDragging ? "is-date-reorder-dragging" : "",
         ].filter(Boolean).join(" ")}
-        style={{ cursor: "pointer" }}
+        style={{ cursor: isDateReorderActive ? "grabbing" : "pointer" }}
       >
         <td className="history-workout-cell">
           <span className="history-workout-leading">
@@ -2248,6 +2620,7 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
       )}
       {isMenuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
         <div
+          ref={menuPopoverRef}
           className={menuPosition.openUpward ? "workout-menu-popover workout-menu-popover-overlay is-open-upward" : "workout-menu-popover workout-menu-popover-overlay"}
           style={{
             position: 'fixed',
@@ -2256,6 +2629,15 @@ const HistoryWorkoutRow = React.memo(function HistoryWorkoutRow({
             bottom: menuPosition.openUpward ? `${window.innerHeight - menuPosition.top}px` : 'auto',
           }}
         >
+          {onViewDay && (
+            <button
+              type="button"
+              className="workout-menu-item"
+              onClick={() => onViewDay(workout)}
+            >
+              View Day
+            </button>
+          )}
           <button
             type="button"
             className="workout-menu-item"
@@ -2341,15 +2723,91 @@ function sortWorkouts(workouts) {
       return rightDate - leftDate;
     }
 
+    const leftDayOrder = getWorkoutDayOrderValue(left);
+    const rightDayOrder = getWorkoutDayOrderValue(right);
+
+    if (leftDayOrder !== null && rightDayOrder !== null && leftDayOrder !== rightDayOrder) {
+      return leftDayOrder - rightDayOrder;
+    }
+
     const leftChronology = getWorkoutChronologyValue(left);
     const rightChronology = getWorkoutChronologyValue(right);
 
     if (leftChronology !== rightChronology) {
-      return rightChronology - leftChronology;
+      return leftChronology - rightChronology;
     }
 
     return (left.id || '').localeCompare(right.id || '');
   });
+}
+
+function getWorkoutDayOrderValue(workout) {
+  const numericOrder = Number(workout?.dayOrder);
+  return Number.isFinite(numericOrder) ? numericOrder : null;
+}
+
+function getDateReorderPreviewIdsFromPoint({
+  clientX,
+  clientY,
+  dayKey,
+  draggingId,
+  orderedIds,
+  fallbackPreviewIds,
+}) {
+  if (typeof document === 'undefined') {
+    return fallbackPreviewIds;
+  }
+
+  const row = document
+    .elementsFromPoint(clientX, clientY)
+    .map((element) => element.closest?.('[data-history-date-session-row="true"]'))
+    .find((element) => element?.dataset?.historyDayKey === dayKey);
+
+  if (!row) {
+    return fallbackPreviewIds;
+  }
+
+  const targetId = row.dataset.historyWorkoutId;
+  if (!targetId || targetId === draggingId) {
+    return fallbackPreviewIds;
+  }
+
+  const rect = row.getBoundingClientRect();
+  const placement = clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  return buildDateReorderPreviewIds(orderedIds, draggingId, targetId, placement);
+}
+
+function buildDateReorderPreviewIds(orderedIds, draggingId, targetId, placement) {
+  const nextIds = orderedIds.filter((workoutId) => workoutId !== draggingId);
+  const targetIndex = nextIds.indexOf(targetId);
+
+  if (targetIndex < 0) {
+    return orderedIds;
+  }
+
+  nextIds.splice(placement === 'after' ? targetIndex + 1 : targetIndex, 0, draggingId);
+  return nextIds;
+}
+
+function orderWorkoutsByIds(workouts, orderedIds) {
+  const workoutMap = new Map(workouts.map((workout) => [workout.id, workout]));
+  const orderedWorkouts = orderedIds
+    .map((workoutId) => workoutMap.get(workoutId))
+    .filter(Boolean);
+  const orderedIdSet = new Set(orderedIds);
+
+  return [
+    ...orderedWorkouts,
+    ...workouts.filter((workout) => !orderedIdSet.has(workout.id)),
+  ];
+}
+
+function isInteractiveHistoryTarget(target) {
+  return Boolean(target?.closest?.('button, a, input, textarea, select, [role="button"], .workout-menu-popover'));
+}
+
+function areStringArraysEqual(left = [], right = []) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function getWorkoutChronologyValue(workout) {

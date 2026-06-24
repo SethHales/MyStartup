@@ -261,6 +261,162 @@
     flex-shrink: 0;
 }
 
+.qs-mobile-dropdown-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1800;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.75rem;
+    background:
+        radial-gradient(circle at bottom, color-mix(in srgb, var(--accent) 15%, transparent), transparent 42%),
+        color-mix(in srgb, var(--bg-root) 54%, transparent);
+    backdrop-filter: blur(8px);
+    animation: qs-mobile-dropdown-backdrop-in 0.18s ease both;
+    overscroll-behavior: contain;
+}
+
+.qs-mobile-dropdown-sheet {
+    width: min(100%, 620px);
+    max-height: min(82vh, calc(100vh - 1.5rem));
+    min-height: min(520px, calc(100vh - 1.5rem));
+    max-height: min(82dvh, calc(100dvh - 1.5rem));
+    min-height: min(520px, calc(100dvh - 1.5rem));
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    border-radius: 24px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--text-on-accent) 6%, transparent), transparent 44%),
+        var(--bg-popover);
+    box-shadow: var(--shadow-overlay);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: qs-mobile-dropdown-sheet-in 0.22s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+.qs-mobile-dropdown-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1rem 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 68%, transparent);
+}
+
+.qs-mobile-dropdown-eyebrow {
+    margin: 0 0 0.18rem;
+    color: var(--text-accent-soft);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.qs-mobile-dropdown-header h2 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 1.08rem;
+    line-height: 1.2;
+}
+
+.qs-mobile-dropdown-close {
+    min-width: 2.45rem;
+    min-height: 2.2rem;
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+    color: var(--text-main);
+    font-size: 0.86rem;
+    font-weight: 900;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.8rem;
+    box-shadow: var(--shadow-inline);
+}
+
+.qs-mobile-dropdown-close:focus-visible {
+    outline: none;
+    border-color: var(--border-accent-strong);
+    box-shadow:
+        0 0 0 1px var(--accent-ring),
+        var(--shadow-inline-strong);
+}
+
+.qs-mobile-dropdown-search-shell {
+    padding: 0.8rem 1rem 0.65rem;
+    background:
+        linear-gradient(180deg, var(--bg-popover), color-mix(in srgb, var(--bg-popover) 92%, transparent));
+}
+
+.qs-mobile-dropdown-search-input {
+    min-height: 2.75rem;
+    font-size: 1rem;
+}
+
+.qs-mobile-dropdown-options {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 0 0.75rem 0.9rem;
+}
+
+.qs-mobile-dropdown-options .qs-dropdown-option {
+    min-height: 48px;
+    margin-bottom: 0.22rem;
+}
+
+.qs-mobile-dropdown-options .qs-dropdown-option.is-create {
+    min-height: 58px;
+}
+
+.qs-mobile-dropdown-options::-webkit-scrollbar {
+    width: 9px;
+}
+
+.qs-mobile-dropdown-options::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--bg-surface) 56%, transparent);
+    border-radius: 999px;
+}
+
+.qs-mobile-dropdown-options::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 48%, transparent);
+    background-clip: padding-box;
+}
+
+.qs-mobile-dropdown-options::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--accent) 62%, transparent);
+    background-clip: padding-box;
+}
+
+@keyframes qs-mobile-dropdown-backdrop-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes qs-mobile-dropdown-sheet-in {
+    from {
+        opacity: 0;
+        transform: translateY(1.2rem) scale(0.985);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 @media (max-width: 700px) {
     .qs-dropdown-trigger {
         min-height: 42px;
@@ -278,5 +434,17 @@
 
     .qs-dropdown-search-shell {
         padding-bottom: 0.4rem;
+    }
+
+    .qs-mobile-dropdown-backdrop {
+        padding: 0.6rem;
+    }
+
+    .qs-mobile-dropdown-sheet {
+        border-radius: 22px 22px 18px 18px;
+        min-height: min(520px, calc(100vh - 1.2rem));
+        max-height: calc(100vh - 1.2rem);
+        min-height: min(520px, calc(100dvh - 1.2rem));
+        max-height: calc(100dvh - 1.2rem);
     }
 }

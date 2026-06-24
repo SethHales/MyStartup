@@ -1,5 +1,5 @@
 import React from "react";
-import "./dropdown.css";
+import { DropdownMobileSheet, optionMatchesSearch } from "./dropdown";
 import "./multiSelectDropdown.css";
 import { getWorkoutColor } from "../utils/workoutColors";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -23,6 +23,7 @@ export function MultiSelectDropdown({
   const containerRef = React.useRef(null);
   const buttonRef = React.useRef(null);
   const searchResetTimeoutRef = React.useRef(null);
+  const usesMobileSheet = searchable && isMobile;
 
   const filteredOptions = React.useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -30,13 +31,15 @@ export function MultiSelectDropdown({
       return options;
     }
 
-    return options.filter((option) =>
-      `${option.label || ""}`.toLowerCase().includes(normalizedQuery)
-    );
+    return options.filter((option) => optionMatchesSearch(option, normalizedQuery));
   }, [options, searchQuery]);
 
   React.useEffect(() => {
     const handlePointerDown = (event) => {
+      if (event.target?.closest?.('[data-qs-dropdown-layer="true"]')) {
+        return;
+      }
+
       if (!containerRef.current?.contains(event.target)) {
         setIsOpen(false);
       }
@@ -228,14 +231,39 @@ export function MultiSelectDropdown({
         aria-expanded={isOpen}
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setIsOpen((current) => !current)}
+        onClick={() => {
+          setIsOpen((current) => !current);
+        }}
         onKeyDown={handleButtonKeyDown}
       >
         <span className="qs-dropdown-label">{triggerLabel}</span>
         <span className="qs-dropdown-caret" aria-hidden="true">⌄</span>
       </button>
 
-      {isOpen && (
+      {usesMobileSheet && (
+        <DropdownMobileSheet
+          open={isOpen}
+          title={ariaLabel || placeholder}
+          searchPlaceholder={searchPlaceholder}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          isSearchFocused={isSearchFocused}
+          setIsSearchFocused={setIsSearchFocused}
+          options={filteredOptions}
+          values={values}
+          multiple
+          highlightedIndex={highlightedIndex}
+          setHighlightedIndex={setHighlightedIndex}
+          onSelect={toggleValue}
+          onClose={() => {
+            setIsOpen(false);
+            setSearchQuery("");
+            buttonRef.current?.focus();
+          }}
+        />
+      )}
+
+      {isOpen && !usesMobileSheet && (
         <div
           className="qs-dropdown-menu qs-multiselect-menu"
           role="listbox"

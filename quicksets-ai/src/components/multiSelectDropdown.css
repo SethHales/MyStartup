@@ -6,6 +6,14 @@
     padding-right: 0.7rem;
 }
 
+.qs-multiselect-option .qs-dropdown-option-label {
+    flex: 1 1 auto;
+}
+
+.qs-multiselect-option .qs-dropdown-badge {
+    margin-left: auto;
+}
+
 .qs-multiselect-option.is-selected::after {
     content: none;
 }
@@ -17,5 +25,5 @@
     font-size: 0.82rem;
     font-weight: 700;
     flex-shrink: 0;
-    margin-left: auto;
+    margin-left: 0;
 }

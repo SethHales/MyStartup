@@ -3,4 +3,6 @@ simon/simon-reactp1/
 other_files/
 dbConfig.json
 quicksets-ai/service/openaiConfig.local.json
+quicksets-ai/service/credentials.json
+quicksets-ai/service/token.json
 scriptures/service/openaiConfig.local.json

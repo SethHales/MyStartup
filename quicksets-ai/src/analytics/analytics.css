@@ -1213,6 +1213,28 @@ button.metric-card {
     border-radius: 4px;
     background: var(--bg-surface-soft);
     border: 1px solid var(--border-soft);
+    padding: 0;
+    cursor: pointer;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.heatmap-cell:hover,
+.heatmap-cell:focus-visible {
+    outline: none;
+    border-color: var(--border-accent);
+    box-shadow: 0 0 0 2px var(--accent-ring);
+    filter: brightness(1.06);
+}
+
+.heatmap-cell:disabled {
+    cursor: default;
+}
+
+.heatmap-cell:disabled:hover,
+.heatmap-cell:disabled:focus-visible {
+    border-color: var(--border-soft);
+    box-shadow: none;
+    filter: none;
 }
 
 .heatmap-cell.intensity-1 {

@@ -1,5 +1,6 @@
 import React from 'react';
 import "./account.css";
+import { apiFetch } from "../utils/apiFetch";
 
 export function Account({ currentUser, setCurrentUser }) {
   const [displayName, setDisplayName] = React.useState(currentUser?.name || "");
@@ -20,7 +21,7 @@ export function Account({ currentUser, setCurrentUser }) {
     setStatus({ type: "", message: "" });
 
     try {
-      const response = await fetch('/api/user/me', {
+      const response = await apiFetch('/api/user/me', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

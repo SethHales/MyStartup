@@ -1,16 +1,15 @@
-const fs = require('fs');
-const path = require('path');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const express = require('express');
 const uuid = require('uuid');
 const { createWorkoutImportService } = require('./workoutImportService');
+const { startGmailInboxPoller } = require('./gmailInboxService');
+const { getOpenAiApiKey } = require('./openAiConfig');
 const app = express();
 const mixedWorkoutTemplateId = '__mixed_workout__';
 const mixedWorkoutName = 'Full Workout';
-const defaultRestDuration = '00:30';
 const openAiImportModel = process.env.OPENAI_IMPORT_MODEL || 'gpt-4o-mini';
-const openAiApiKey = process.env.OPENAI_API_KEY || readLocalOpenAiApiKey();
+const openAiApiKey = getOpenAiApiKey();
 const importSourceCharacterLimit = 120000;
 const importNotesCharacterLimit = 8000;
 const importDuplicateContextCount = 200;
@@ -39,9 +38,11 @@ const legacyWorkoutColorMap = {
 };
 const explorerPreferenceKeys = {
   statCards: ['lastPerformed', 'bestWeight', 'highestReps', 'farthestDistance', 'longestDuration', 'shortestDuration', 'bestPace', 'estimatedOneRepMax'],
-  averages: ['averageSetsPerSession', 'averageRepsPerSet', 'averageWeightPerSet', 'averageTimePerSet', 'averagePace'],
-  charts: ['performanceTrend', 'estimatedOneRepMaxTrend', 'setVolumeTrend', 'monthlyFrequency'],
+  averages: ['averageSetsPerSession', 'averageRepsPerSet', 'averageWeightPerSet', 'averageDistancePerSet', 'averageTimePerSet', 'averagePace'],
+  charts: ['performanceTrend', 'weightTrend', 'repsTrend', 'distanceTrend', 'durationTrend', 'paceTrend', 'estimatedOneRepMaxTrend', 'setVolumeTrend', 'monthlyFrequency'],
 };
+const defaultHistoryViewPreference = 'date';
+const historyViewPreferenceValues = new Set(['date', 'group']);
 
 const authCookieName = 'token';
 
@@ -56,10 +57,8 @@ const workoutImportService = createWorkoutImportService({
   importSourceCharacterLimit,
   importNotesCharacterLimit,
   importDuplicateContextCount,
-  defaultRestDuration,
   sanitizeFields,
   sanitizeMeasurements,
-  sanitizeRestDuration,
   sanitizeSetType,
   sanitizeSet,
   inferFieldsFromSets,
@@ -255,6 +254,21 @@ apiRouter.put('/user/color-labels', verifyAuth, async (req, res) => {
   res.send(payload);
 });
 
+apiRouter.put('/user/history-preferences', verifyAuth, async (req, res) => {
+  const historyViewPreference = sanitizeHistoryViewPreference(req.body?.historyViewPreference);
+
+  await userCollection.updateOne(
+    { email: req.user.email },
+    { $set: { historyViewPreference } }
+  );
+
+  const payload = await buildUserPayload({
+    ...req.user,
+    historyViewPreference,
+  });
+  res.send(payload);
+});
+
 // Middleware to verify that the user is authorized to call an endpoint
 async function verifyAuth(req, res, next) {
   const user = await findUser('token', req.cookies[authCookieName]);
@@ -277,7 +291,7 @@ apiRouter.get('/workouts', verifyAuth, async (req, res) => {
       : normalizeStoredWorkoutColor(workout.color, workout.templateName || workout.exercise);
     const normalizedSets = Array.isArray(workout.sets)
       ? workout.sets.map((set) => ({
-        ...set,
+        ...omitLegacySetTimingFields(set),
         color: normalizeStoredWorkoutColor(set.color, set.templateName || set.templateId || workout.templateName || workout.exercise),
       }))
       : [];
@@ -298,7 +312,7 @@ apiRouter.get('/workouts', verifyAuth, async (req, res) => {
     }
 
     return {
-      ...workout,
+      ...omitLegacySetTimingFields(workout),
       color: workout.isMixed
         ? normalizedColor
         : normalizedColor || getFallbackWorkoutColor(workout.templateName || workout.exercise),
@@ -307,6 +321,43 @@ apiRouter.get('/workouts', verifyAuth, async (req, res) => {
   }));
 
   res.send(userWorkouts);
+});
+
+apiRouter.put('/workouts/reorder-day', verifyAuth, async (req, res) => {
+  const date = typeof req.body?.date === 'string' ? req.body.date : '';
+  const orderedWorkoutIds = sanitizeStringArray(req.body?.orderedWorkoutIds);
+
+  if (!date || orderedWorkoutIds.length < 2) {
+    res.status(400).send({ msg: 'Choose at least two sessions from the same day to reorder' });
+    return;
+  }
+
+  const matchingWorkouts = await workoutCollection.find({
+    userEmail: req.user.email,
+    date,
+    id: { $in: orderedWorkoutIds },
+  }, { projection: { id: 1 } }).toArray();
+  const matchingWorkoutIds = new Set(matchingWorkouts.map((workout) => workout.id));
+
+  if (matchingWorkoutIds.size !== orderedWorkoutIds.length) {
+    res.status(400).send({ msg: 'Only sessions from the selected day can be reordered together' });
+    return;
+  }
+
+  const updatedAt = new Date().toISOString();
+  await Promise.all(
+    orderedWorkoutIds.map((workoutId, index) =>
+      workoutCollection.updateOne(
+        { userEmail: req.user.email, date, id: workoutId },
+        { $set: { dayOrder: index, updatedAt } }
+      )
+    )
+  );
+
+  res.send({
+    date,
+    orderedWorkoutIds,
+  });
 });
 
 apiRouter.put('/workouts/:id', verifyAuth, async (req, res) => {
@@ -456,8 +507,6 @@ apiRouter.post('/workouts/:id/separate', verifyAuth, async (req, res) => {
       color: normalizeStoredWorkoutColor(template?.color, templateName)
         || normalizeStoredWorkoutColor(group.sets[0]?.color, templateName)
         || getFallbackWorkoutColor(templateName),
-      usesRestTimer: template ? Boolean(template.usesRestTimer) : false,
-      restDuration: template ? sanitizeRestDuration(template.restDuration) : defaultRestDuration,
       fields,
       measurements: template
         ? sanitizeMeasurements(template.measurements)
@@ -490,10 +539,8 @@ apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
     }
 
     return {
-      ...template,
+      ...omitLegacySetTimingFields(template),
       color: normalizedColor || getFallbackWorkoutColor(template.name),
-      usesRestTimer: Boolean(template.usesRestTimer),
-      restDuration: sanitizeRestDuration(template.restDuration),
       ...(template.explorerPreferences ? { explorerPreferences: sanitizeExplorerPreferences(template.explorerPreferences) } : {}),
     };
   }));
@@ -503,8 +550,6 @@ apiRouter.get('/workout-templates', verifyAuth, async (req, res) => {
 apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const requestedColor = sanitizeApprovedWorkoutColor(req.body.color);
-  const usesRestTimer = Boolean(req.body.usesRestTimer);
-  const restDuration = sanitizeRestDuration(req.body.restDuration);
   const fields = sanitizeFields(req.body.fields);
   const measurements = sanitizeMeasurements(req.body.measurements);
 
@@ -534,8 +579,6 @@ apiRouter.post('/workout-templates', verifyAuth, async (req, res) => {
     name,
     normalizedName: name.toLowerCase(),
     color: requestedColor || generateUniqueWorkoutColor(existingTemplateColors(await workoutTemplateCollection.find({ userEmail: req.user.email }).toArray()), name),
-    usesRestTimer,
-    restDuration,
     fields,
     measurements,
     ...(req.body.explorerPreferences ? { explorerPreferences: sanitizeExplorerPreferences(req.body.explorerPreferences) } : {}),
@@ -657,7 +700,6 @@ apiRouter.post('/workout-templates/merge', verifyAuth, async (req, res) => {
   const sourceTemplateNames = sourceTemplates.map((template) => template.name);
   const targetColor = normalizeStoredWorkoutColor(targetTemplate.color, targetTemplate.name) || getFallbackWorkoutColor(targetTemplate.name);
   const targetMeasurements = sanitizeMeasurements(targetTemplate.measurements);
-  const targetRestDuration = sanitizeRestDuration(targetTemplate.restDuration);
 
   await workoutCollection.updateMany(
     {
@@ -680,8 +722,6 @@ apiRouter.post('/workout-templates/merge', verifyAuth, async (req, res) => {
         templateName: targetTemplate.name,
         exercise: targetTemplate.name,
         color: targetColor,
-        usesRestTimer: Boolean(targetTemplate.usesRestTimer),
-        restDuration: targetRestDuration,
         fields: targetFields,
         measurements: targetMeasurements,
         updatedAt: new Date().toISOString(),
@@ -716,8 +756,6 @@ apiRouter.post('/workout-templates/merge', verifyAuth, async (req, res) => {
             color: targetColor,
             fields: targetFields,
             measurements: targetMeasurements,
-            usesRestTimer: Boolean(targetTemplate.usesRestTimer),
-            restDuration: targetRestDuration,
           };
         })
         : [];
@@ -742,11 +780,10 @@ apiRouter.post('/workout-templates/merge', verifyAuth, async (req, res) => {
 
   res.send({
     targetTemplate: {
-      ...targetTemplate,
+      ...omitLegacySetTimingFields(targetTemplate),
       color: targetColor,
       fields: targetFields,
       measurements: targetMeasurements,
-      restDuration: targetRestDuration,
     },
     mergedTemplateIds: sourceTemplateIds,
   });
@@ -765,8 +802,6 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
 
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
   const requestedColor = sanitizeApprovedWorkoutColor(req.body.color);
-  const usesRestTimer = Boolean(req.body.usesRestTimer);
-  const restDuration = sanitizeRestDuration(req.body.restDuration);
   const fields = sanitizeFields(req.body.fields);
   const measurements = sanitizeMeasurements(req.body.measurements);
 
@@ -796,8 +831,6 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
     name,
     normalizedName: name.toLowerCase(),
     color: requestedColor || normalizeStoredWorkoutColor(existingTemplate.color, name) || getFallbackWorkoutColor(name),
-    usesRestTimer,
-    restDuration,
     fields,
     measurements,
     explorerPreferences: req.body.explorerPreferences
@@ -812,8 +845,6 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
         name,
         normalizedName: name.toLowerCase(),
         color: updatedTemplate.color,
-        usesRestTimer,
-        restDuration,
         fields,
         measurements,
         ...(updatedTemplate.explorerPreferences ? { explorerPreferences: updatedTemplate.explorerPreferences } : {}),
@@ -836,8 +867,6 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
         templateName: name,
         exercise: name,
         color: updatedTemplate.color,
-        usesRestTimer,
-        restDuration,
         fields,
         measurements,
       },
@@ -867,8 +896,6 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
             templateId: existingTemplate.id,
             templateName: name,
             color: updatedTemplate.color,
-            usesRestTimer,
-            restDuration,
             fields,
             measurements,
           };
@@ -882,7 +909,7 @@ apiRouter.put('/workout-templates/:id', verifyAuth, async (req, res) => {
     })
   );
 
-  res.send(updatedTemplate);
+  res.send(omitLegacySetTimingFields(updatedTemplate));
 });
 
 apiRouter.put('/workout-templates/:id/explorer-preferences', verifyAuth, async (req, res) => {
@@ -904,10 +931,8 @@ apiRouter.put('/workout-templates/:id/explorer-preferences', verifyAuth, async (
   );
 
   res.send({
-    ...existingTemplate,
+    ...omitLegacySetTimingFields(existingTemplate),
     color: normalizeStoredWorkoutColor(existingTemplate.color, existingTemplate.name) || getFallbackWorkoutColor(existingTemplate.name),
-    usesRestTimer: Boolean(existingTemplate.usesRestTimer),
-    restDuration: sanitizeRestDuration(existingTemplate.restDuration),
     explorerPreferences,
   });
 });
@@ -1043,8 +1068,6 @@ apiRouter.post('/workouts', verifyAuth, async (req, res) => {
     exercise: isMixedWorkout ? mixedWorkoutName : template.name,
     isMixed: isMixedWorkout,
     color: isMixedWorkout ? '' : normalizeStoredWorkoutColor(template.color, template.name) || getFallbackWorkoutColor(template.name),
-    usesRestTimer: isMixedWorkout ? false : Boolean(template.usesRestTimer),
-    restDuration: isMixedWorkout ? defaultRestDuration : sanitizeRestDuration(template.restDuration),
     fields: isMixedWorkout ? buildFieldsFromMixedSets(sets) : template.fields,
     measurements: isMixedWorkout ? sanitizeMeasurements({}) : sanitizeMeasurements(template.measurements),
     notes,
@@ -1111,6 +1134,7 @@ async function createUser(name, email, password) {
     token: uuid.v4(),
     workoutColorPreferences: sanitizeWorkoutColorPreferences({}),
     workoutColorLabels: {},
+    historyViewPreference: defaultHistoryViewPreference,
   };
   await userCollection.insertOne(user);
 
@@ -1212,39 +1236,6 @@ function sanitizeExplorerPreferenceOrder(order, allowedKeys) {
   });
 }
 
-function sanitizeRestDuration(duration) {
-  if (!duration) {
-    return defaultRestDuration;
-  }
-
-  const seconds = parseDurationToSeconds(duration);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-}
-
-function parseDurationToSeconds(duration) {
-  if (!duration) {
-    return 30;
-  }
-
-  const parts = `${duration}`.split(':').map((part) => Number(part));
-  if (parts.some((part) => Number.isNaN(part) || part < 0)) {
-    return 30;
-  }
-
-  if (parts.length === 2) {
-    return Math.floor(parts[0] * 60 + parts[1]);
-  }
-
-  if (parts.length === 3) {
-    return Math.floor(parts[0] * 3600 + parts[1] * 60 + parts[2]);
-  }
-
-  const seconds = Number(duration);
-  return Number.isNaN(seconds) ? 30 : Math.max(0, Math.floor(seconds));
-}
-
 function sanitizeSet(set, fields, index) {
   return {
     id: index + 1,
@@ -1333,6 +1324,21 @@ function sanitizeStringArray(values) {
       seen.add(value);
       return true;
     });
+}
+
+function sanitizeHistoryViewPreference(value) {
+  return historyViewPreferenceValues.has(value) ? value : defaultHistoryViewPreference;
+}
+
+function omitLegacySetTimingFields(document = {}) {
+  const blockedKeys = new Set([
+    ['uses', 'Rest', 'Timer'].join(''),
+    ['rest', 'Duration'].join(''),
+  ]);
+
+  return Object.fromEntries(
+    Object.entries(document || {}).filter(([key]) => !blockedKeys.has(key))
+  );
 }
 
 function doTrackedFieldsMatch(leftFields, rightFields) {
@@ -1543,23 +1549,26 @@ async function buildUserPayload(user) {
     user?.workoutColorLabels
   );
   const workoutColorLabels = buildColorLabelMapFromPreferences(workoutColorPreferences);
+  const historyViewPreference = sanitizeHistoryViewPreference(user?.historyViewPreference);
   const currentStoredPreferences = user?.workoutColorPreferences && typeof user.workoutColorPreferences === 'object' && !Array.isArray(user.workoutColorPreferences)
     ? user.workoutColorPreferences
     : {};
   const currentStoredLabels = user?.workoutColorLabels && typeof user.workoutColorLabels === 'object' && !Array.isArray(user.workoutColorLabels)
     ? user.workoutColorLabels
     : {};
+  const shouldNormalizeHistoryViewPreference = user?.historyViewPreference !== historyViewPreference;
 
   if (
     user?.email
     && (
       stringifyStableObject(workoutColorPreferences) !== stringifyStableObject(currentStoredPreferences)
       || stringifyStableObject(workoutColorLabels) !== stringifyStableObject(currentStoredLabels)
+      || shouldNormalizeHistoryViewPreference
     )
   ) {
     await userCollection.updateOne(
       { email: user.email },
-      { $set: { workoutColorPreferences, workoutColorLabels } }
+      { $set: { workoutColorPreferences, workoutColorLabels, historyViewPreference } }
     );
   }
 
@@ -1568,6 +1577,7 @@ async function buildUserPayload(user) {
     name: user?.name || '',
     workoutColorPreferences,
     workoutColorLabels,
+    historyViewPreference,
   };
 }
 
@@ -1602,21 +1612,7 @@ function getFallbackWorkoutColor(seedName) {
   return workoutColorPalette[hash % workoutColorPalette.length];
 }
 
-function readLocalOpenAiApiKey() {
-  try {
-    const configPath = path.join(__dirname, 'openaiConfig.local.json');
-    if (!fs.existsSync(configPath)) {
-      return '';
-    }
-
-    const rawConfig = fs.readFileSync(configPath, 'utf8');
-    const parsedConfig = JSON.parse(rawConfig);
-    return typeof parsedConfig?.apiKey === 'string' ? parsedConfig.apiKey.trim() : '';
-  } catch (_err) {
-    return '';
-  }
-}
-
 app.listen(port, () => {
   console.log(`Listening on port ${port}`);
+  startGmailInboxPoller();
 });

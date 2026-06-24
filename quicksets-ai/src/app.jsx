@@ -10,8 +10,25 @@ import { Analytics } from './analytics/analytics';
 import { Account } from './account/account';
 import { BrandMark } from './components/brandMark';
 import { useIsMobile } from './hooks/useIsMobile';
+import { formatDuration } from './utils/workoutDomain';
+import { AUTH_EXPIRED_EVENT } from './utils/apiFetch';
 
 const THEME_STORAGE_KEY = "quicksets.theme";
+const REST_STOPWATCH_STORAGE_KEY_PREFIX = "quicksets.restStopwatchStartedAt";
+
+function getRestStopwatchStorageKey(currentUser) {
+    const userKey = currentUser?.id || currentUser?._id || currentUser?.email;
+    return userKey ? `${REST_STOPWATCH_STORAGE_KEY_PREFIX}:${userKey}` : null;
+}
+
+function readStoredRestStopwatch(storageKey) {
+    if (!storageKey || typeof window === "undefined") {
+        return null;
+    }
+
+    const storedValue = Number(window.localStorage.getItem(storageKey));
+    return Number.isFinite(storedValue) && storedValue > 0 ? storedValue : null;
+}
 
 function ProtectedRoute({ currentUser, isAuthChecked, children }) {
     if (!isAuthChecked) {
@@ -169,11 +186,49 @@ function Header({ currentUser, setCurrentUser, theme, toggleTheme }) {
     );
 }
 
-function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleTheme }) {
+function RestStopwatchPopover({ startedAt, now, onClose }) {
+    const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+
+    return (
+        <aside className="rest-stopwatch-popover" aria-live="polite" aria-label="Rest stopwatch">
+            <div>
+                <p className="rest-stopwatch-kicker">Rest Stopwatch</p>
+                <strong>{formatDuration(elapsedSeconds)}</strong>
+                <span>since your last set</span>
+            </div>
+            <button type="button" className="rest-stopwatch-close" onClick={onClose} aria-label="Hide rest stopwatch">
+                &times;
+            </button>
+        </aside>
+    );
+}
+
+function AppShell({
+    currentUser,
+    setCurrentUser,
+    isAuthChecked,
+    theme,
+    toggleTheme,
+    restStopwatchStartedAt,
+    restStopwatchNow,
+    onSetLogged,
+    onClearRestStopwatch,
+}) {
     const location = useLocation();
+    const navigate = useNavigate();
     const showFooterNav = Boolean(currentUser)
         && location.pathname !== "/"
         && location.pathname !== "/signup";
+
+    React.useEffect(() => {
+        const handleAuthExpired = () => {
+            setCurrentUser(null);
+            navigate("/", { replace: true });
+        };
+
+        window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+        return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    }, [navigate, setCurrentUser]);
 
     return (
         <div className="app">
@@ -202,7 +257,12 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
                     path="/logger"
                     element={
                         <ProtectedRoute currentUser={currentUser} isAuthChecked={isAuthChecked}>
-                            <Logger currentUser={currentUser} setCurrentUser={setCurrentUser} />
+                            <Logger
+                                currentUser={currentUser}
+                                setCurrentUser={setCurrentUser}
+                                onSetLogged={onSetLogged}
+                                onClearRestStopwatch={onClearRestStopwatch}
+                            />
                         </ProtectedRoute>
                     }
                 />
@@ -258,6 +318,14 @@ function AppShell({ currentUser, setCurrentUser, isAuthChecked, theme, toggleThe
                     </nav>
                 </footer>
             )}
+
+            {showFooterNav && restStopwatchStartedAt && (
+                <RestStopwatchPopover
+                    startedAt={restStopwatchStartedAt}
+                    now={restStopwatchNow}
+                    onClose={onClearRestStopwatch}
+                />
+            )}
         </div>
     );
 }
@@ -269,6 +337,12 @@ export default function App() {
         const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
         return storedTheme === "light" ? "light" : "dark";
     });
+    const restStopwatchStorageKey = React.useMemo(
+        () => getRestStopwatchStorageKey(currentUser),
+        [currentUser]
+    );
+    const [restStopwatchStartedAt, setRestStopwatchStartedAt] = React.useState(null);
+    const [restStopwatchNow, setRestStopwatchNow] = React.useState(Date.now());
 
     React.useEffect(() => {
         document.documentElement.setAttribute("data-theme", theme);
@@ -305,6 +379,59 @@ export default function App() {
         loadUser();
     }, []);
 
+    React.useEffect(() => {
+        setRestStopwatchStartedAt(readStoredRestStopwatch(restStopwatchStorageKey));
+        setRestStopwatchNow(Date.now());
+    }, [restStopwatchStorageKey]);
+
+    React.useEffect(() => {
+        if (!restStopwatchStartedAt) {
+            return undefined;
+        }
+
+        setRestStopwatchNow(Date.now());
+        const intervalId = window.setInterval(() => {
+            setRestStopwatchNow(Date.now());
+        }, 1000);
+
+        return () => window.clearInterval(intervalId);
+    }, [restStopwatchStartedAt]);
+
+    React.useEffect(() => {
+        if (!restStopwatchStorageKey) {
+            return undefined;
+        }
+
+        const handleStorage = (event) => {
+            if (event.key === restStopwatchStorageKey) {
+                setRestStopwatchStartedAt(readStoredRestStopwatch(restStopwatchStorageKey));
+                setRestStopwatchNow(Date.now());
+            }
+        };
+
+        window.addEventListener("storage", handleStorage);
+        return () => window.removeEventListener("storage", handleStorage);
+    }, [restStopwatchStorageKey]);
+
+    const startRestStopwatch = React.useCallback(() => {
+        const now = Date.now();
+
+        if (restStopwatchStorageKey) {
+            window.localStorage.setItem(restStopwatchStorageKey, String(now));
+        }
+
+        setRestStopwatchStartedAt(now);
+        setRestStopwatchNow(now);
+    }, [restStopwatchStorageKey]);
+
+    const clearRestStopwatch = React.useCallback(() => {
+        if (restStopwatchStorageKey) {
+            window.localStorage.removeItem(restStopwatchStorageKey);
+        }
+
+        setRestStopwatchStartedAt(null);
+    }, [restStopwatchStorageKey]);
+
     return (
         <BrowserRouter>
             <AppShell
@@ -313,6 +440,10 @@ export default function App() {
                 isAuthChecked={isAuthChecked}
                 theme={theme}
                 toggleTheme={() => setTheme((currentTheme) => currentTheme === "dark" ? "light" : "dark")}
+                restStopwatchStartedAt={restStopwatchStartedAt}
+                restStopwatchNow={restStopwatchNow}
+                onSetLogged={startRestStopwatch}
+                onClearRestStopwatch={clearRestStopwatch}
             />
         </BrowserRouter>
     );

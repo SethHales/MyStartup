@@ -1,30 +1,23 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
 import "./logger.css";
 import { Dropdown } from "../components/dropdown";
 import { DatePicker } from "../components/datePicker";
+import { SessionSetTable } from "../components/sessionSetTable";
+import { SetEditorModal } from "../components/setEditorModal";
 import { TimeCaptureModal } from "../components/timeCaptureModal";
+import { formatDuration } from "../utils/workoutDomain";
 import {
   copyTrackedFields,
   formatColorHexLabel,
-  formatSignedDuration,
   formatTemplatePreview,
   getDefaultSetValues,
   getFieldLabel,
-  getFieldUnitSuffix,
   getLoggerVisibleFields,
-  getSetDisplayLabel,
   getSetMeasurements,
-  getSetRestDuration,
   getSetTemplateFields,
-  MobileSetField,
-  normalizeRestDuration,
   parseDurationToSeconds,
-  shouldShowSetField,
   shouldUseEnterShortcut,
-  shouldUseSetRestTimer,
 } from "./loggerHelpers";
-import { playTimerPing, primeTimerAudio, vibrate } from "../utils/timerFeedback";
 import {
   findWorkoutColorSlot,
   getWorkoutColor,
@@ -33,12 +26,12 @@ import {
   resolveWorkoutColorPreferences,
   workoutColorPalette,
 } from "../utils/workoutColors";
+import { apiFetch } from "../utils/apiFetch";
 
 const LOGGER_DRAFT_KEY = "quicksets.loggerDraft";
 const MIXED_WORKOUT_TEMPLATE_ID = "__mixed_workout__";
 const CREATE_TEMPLATE_OPTION_ID = "__create_workout_template__";
 const MIXED_WORKOUT_NAME = "Full Workout";
-const DEFAULT_REST_DURATION = "00:30";
 const UNLABELED_COLOR_COPY = "Unlabeled";
 
 const defaultTemplateFields = {
@@ -147,8 +140,6 @@ function normalizeTemplate(template) {
   return {
     ...template,
     color: getWorkoutColor(template),
-    usesRestTimer: Boolean(template?.usesRestTimer),
-    restDuration: normalizeRestDuration(template?.restDuration, DEFAULT_REST_DURATION),
     fields: {
       reps: Boolean(template?.fields?.reps),
       weight: Boolean(template?.fields?.weight),
@@ -166,8 +157,6 @@ function buildMixedTemplate() {
     name: MIXED_WORKOUT_NAME,
     fields: mixedTemplateFields,
     measurements: defaultTemplateMeasurements,
-    usesRestTimer: false,
-    restDuration: DEFAULT_REST_DURATION,
     isMixed: true,
   };
 }
@@ -184,7 +173,12 @@ function normalizeTemplateMeasurements(measurements) {
   };
 }
 
-export function Logger({ currentUser = null, setCurrentUser = null }) {
+export function Logger({
+  currentUser = null,
+  setCurrentUser = null,
+  onSetLogged = null,
+  onClearRestStopwatch = null,
+}) {
   const mixedTemplate = React.useMemo(() => buildMixedTemplate(), []);
   const storedDraft = React.useMemo(() => readLoggerDraft(), []);
   const [templates, setTemplates] = React.useState([]);
@@ -203,25 +197,17 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   const [showSetModal, setShowSetModal] = React.useState(false);
   const [showTemplateActions, setShowTemplateActions] = React.useState(false);
   const [editingSetId, setEditingSetId] = React.useState(null);
-  const [openSetMenu, setOpenSetMenu] = React.useState(null);
   const [newTemplateName, setNewTemplateName] = React.useState("");
   const [newTemplateColor, setNewTemplateColor] = React.useState(workoutColorPalette[0]);
-  const [newTemplateUsesRestTimer, setNewTemplateUsesRestTimer] = React.useState(false);
-  const [newTemplateRestDuration, setNewTemplateRestDuration] = React.useState(DEFAULT_REST_DURATION);
   const [newTemplateFields, setNewTemplateFields] = React.useState(defaultTemplateFields);
   const [newTemplateMeasurements, setNewTemplateMeasurements] = React.useState(defaultTemplateMeasurements);
   const [showColorPickerModal, setShowColorPickerModal] = React.useState(false);
   const [editingColorSlot, setEditingColorSlot] = React.useState("");
   const [colorPreferenceDraft, setColorPreferenceDraft] = React.useState({ label: "", color: "" });
   const [pendingSet, setPendingSet] = React.useState(buildEmptySet(defaultTemplateFields, 1));
-  const [restTimerSeconds, setRestTimerSeconds] = React.useState(null);
-  const [isRestTimerActive, setIsRestTimerActive] = React.useState(false);
-  const [showRestTimerModal, setShowRestTimerModal] = React.useState(false);
   const [timeCaptureMode, setTimeCaptureMode] = React.useState(null);
   const [timeCaptureInitialSeconds, setTimeCaptureInitialSeconds] = React.useState(0);
-  const hasVibratedForCurrentTimer = React.useRef(false);
   const templateActionsRef = React.useRef(null);
-  const setMenuRef = React.useRef(null);
   const templateNameInputRef = React.useRef(null);
   const submitFormOnPointerUp = React.useCallback((event) => {
     if (event.button !== undefined && event.button !== 0) {
@@ -264,7 +250,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   React.useEffect(() => {
     let isMounted = true;
 
-    fetch('/api/workout-templates', {
+    apiFetch('/api/workout-templates', {
       method: 'GET',
       credentials: 'include',
     })
@@ -303,33 +289,9 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
   }, [mixedTemplate, templates, selectedTemplateId]);
 
   React.useEffect(() => {
-    if (!isRestTimerActive || restTimerSeconds === null) {
-      return undefined;
-    }
-
-    const interval = window.setInterval(() => {
-      setRestTimerSeconds((currentSeconds) => {
-        if (currentSeconds === null) {
-          return currentSeconds;
-        }
-
-        if (currentSeconds === 1 && !hasVibratedForCurrentTimer.current) {
-          hasVibratedForCurrentTimer.current = true;
-          vibrate([180, 90, 180]);
-          playTimerPing();
-        }
-
-        return currentSeconds - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(interval);
-  }, [isRestTimerActive, restTimerSeconds]);
-
-  React.useEffect(() => {
     let isMounted = true;
 
-    fetch('/api/workouts', {
+    apiFetch('/api/workouts', {
       method: 'GET',
       credentials: 'include',
     })
@@ -392,36 +354,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
     return () => window.clearTimeout(timeoutId);
   }, [showTemplateModal]);
-
-  React.useEffect(() => {
-    const handlePointerDown = (event) => {
-      const target = event.target;
-      if (
-        setMenuRef.current?.contains(target)
-        || target?.closest?.(".set-menu-trigger")
-      ) {
-        return;
-      }
-
-      setOpenSetMenu(null);
-    };
-
-    const handleViewportChange = () => {
-      setOpenSetMenu(null);
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("touchstart", handlePointerDown);
-    window.addEventListener("scroll", handleViewportChange, true);
-    window.addEventListener("resize", handleViewportChange);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("touchstart", handlePointerDown);
-      window.removeEventListener("scroll", handleViewportChange, true);
-      window.removeEventListener("resize", handleViewportChange);
-    };
-  }, []);
 
   React.useEffect(() => {
     const normalizedSets = Array.isArray(sets)
@@ -500,9 +432,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setNotes("");
     setStarred(false);
     setSets([]);
-    setRestTimerSeconds(null);
-    setIsRestTimerActive(false);
-    setShowRestTimerModal(false);
+    onClearRestStopwatch?.();
     if (!template) {
       setDate(getTodayLocal());
     }
@@ -515,8 +445,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setIsEditingTemplate(false);
     setNewTemplateName("");
     setNewTemplateColor(workoutColorPalette[0]);
-    setNewTemplateUsesRestTimer(false);
-    setNewTemplateRestDuration(DEFAULT_REST_DURATION);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
     setShowTemplateModal(true);
@@ -531,8 +459,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setIsEditingTemplate(true);
     setNewTemplateName(selectedTemplate.name);
     setNewTemplateColor(findWorkoutColorSlot(selectedTemplate.color || workoutColorPalette[0], workoutColorPreferences));
-    setNewTemplateUsesRestTimer(Boolean(selectedTemplate.usesRestTimer));
-    setNewTemplateRestDuration(normalizeRestDuration(selectedTemplate.restDuration, DEFAULT_REST_DURATION));
     setNewTemplateFields({ ...defaultTemplateFields, ...selectedTemplate.fields });
     setNewTemplateMeasurements({
       ...defaultTemplateMeasurements,
@@ -564,7 +490,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
 
     try {
-      const response = await fetch(`/api/workout-templates/${selectedTemplate.id}`, {
+      const response = await apiFetch(`/api/workout-templates/${selectedTemplate.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -602,7 +528,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     const nextId = sets.length + 1;
     const defaults = getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates, defaultTemplateFields, defaultTemplateMeasurements, buildEmptySet);
     setEditingSetId(null);
-    setOpenSetMenu(null);
     setPendingSet({
       id: nextId,
       ...defaults,
@@ -614,7 +539,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
   const openEditSetModal = (setToEdit) => {
     setEditingSetId(setToEdit.id);
-    setOpenSetMenu(null);
     setPendingSet({
       id: setToEdit.id,
       ...copyTrackedFields(setToEdit, getSetTemplateFields(selectedTemplate, setToEdit, templates, defaultTemplateFields)),
@@ -627,7 +551,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     setShowSetModal(false);
     setEditingSetId(null);
     setTimeCaptureMode(null);
-    setOpenSetMenu(null);
     setPendingSet(getDefaultSetValues(selectedTemplate, sets, savedWorkouts, templates, defaultTemplateFields, defaultTemplateMeasurements, buildEmptySet));
   };
 
@@ -680,8 +603,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
   const handleConfirmAddSet = (event) => {
     event.preventDefault();
-    const shouldStartRestTimer = editingSetId === null;
-    const restDuration = getSetRestDuration(selectedTemplate, pendingSet, templates, DEFAULT_REST_DURATION);
     if (editingSetId !== null) {
       setSets((prevSets) =>
         prevSets.map((set) =>
@@ -692,39 +613,13 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       );
     } else {
       setSets((prevSets) => [...prevSets, pendingSet]);
+      onSetLogged?.();
     }
     setShowSetModal(false);
     setEditingSetId(null);
-    if (shouldStartRestTimer) {
-      startRestTimer(restDuration, shouldUseSetRestTimer(selectedTemplate, pendingSet, templates));
-    }
-  };
-
-  const startRestTimer = (duration, shouldStart = true) => {
-    if (!shouldStart) {
-      return;
-    }
-
-    const seconds = parseDurationToSeconds(duration);
-    primeTimerAudio();
-    setRestTimerSeconds(seconds);
-    setIsRestTimerActive(true);
-    setShowRestTimerModal(true);
-    hasVibratedForCurrentTimer.current = seconds <= 0;
-
-    if (seconds <= 0) {
-      vibrate([180, 90, 180]);
-      playTimerPing();
-    }
-  };
-
-  const stopRestTimer = () => {
-    setIsRestTimerActive(false);
-    setShowRestTimerModal(false);
   };
 
   const handleDeleteSet = (setId) => {
-    setOpenSetMenu(null);
     setSets((prevSets) =>
       prevSets
         .filter((set) => set.id !== setId)
@@ -764,7 +659,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         isEditingTemplate ? `/api/workout-templates/${selectedTemplate.id}` : '/api/workout-templates',
         {
           method: isEditingTemplate ? 'PUT' : 'POST',
@@ -772,8 +667,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
         body: JSON.stringify({
           name: newTemplateName,
           color: getWorkoutColorPreferenceValue(newTemplateColor, workoutColorPreferences),
-          usesRestTimer: newTemplateUsesRestTimer,
-          restDuration: normalizeRestDuration(newTemplateRestDuration, DEFAULT_REST_DURATION),
           fields: newTemplateFields,
           measurements: newTemplateMeasurements,
         }),
@@ -812,10 +705,8 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 templateName: savedTemplate.name,
                 exercise: savedTemplate.name,
                 color: savedTemplate.color,
-                usesRestTimer: savedTemplate.usesRestTimer,
                 fields: savedTemplate.fields,
                 measurements: savedTemplate.measurements,
-                restDuration: savedTemplate.restDuration,
               };
             }
 
@@ -834,10 +725,8 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 templateId: savedTemplate.id,
                 templateName: savedTemplate.name,
                 color: savedTemplate.color,
-                usesRestTimer: savedTemplate.usesRestTimer,
                 fields: savedTemplate.fields,
                 measurements: savedTemplate.measurements,
-                restDuration: savedTemplate.restDuration,
               };
             });
 
@@ -869,8 +758,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
       setNewTemplateName("");
       setNewTemplateColor(workoutColorPalette[0]);
-      setNewTemplateUsesRestTimer(false);
-      setNewTemplateRestDuration(DEFAULT_REST_DURATION);
       setNewTemplateFields(defaultTemplateFields);
       setNewTemplateMeasurements(defaultTemplateMeasurements);
       setShowTemplateModal(false);
@@ -919,7 +806,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     }
 
     try {
-      const response = await fetch('/api/user/color-preferences', {
+      const response = await apiFetch('/api/user/color-preferences', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -981,83 +868,11 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
 
   const selectedTemplateColorLabel = getWorkoutColorPreferenceLabel(newTemplateColor, workoutColorPreferences) || UNLABELED_COLOR_COPY;
 
-  const openSetMenuEntry = React.useMemo(() => {
-    if (!openSetMenu) {
-      return null;
-    }
-
-    return sets.find((set, index) => `${set.id}-${index}` === openSetMenu.rowKey) || null;
-  }, [openSetMenu, sets]);
-
-  React.useLayoutEffect(() => {
-    if (!openSetMenu || !setMenuRef.current || !openSetMenu.anchorRect) {
-      return;
-    }
-
-    const menuRect = setMenuRef.current.getBoundingClientRect();
-    const viewportPadding = 12;
-    const footerHeightValue = Number.parseFloat(
-      window.getComputedStyle(document.documentElement).getPropertyValue("--footer-height")
-    );
-    const footerReserve = (Number.isFinite(footerHeightValue) ? footerHeightValue : 76) + 18;
-    const maxTop = window.innerHeight - footerReserve - menuRect.height;
-    const preferredTop = openSetMenu.anchorRect.bottom + 8;
-    const fallbackTop = openSetMenu.anchorRect.top - menuRect.height - 8;
-    const nextTop = preferredTop <= maxTop
-      ? preferredTop
-      : Math.max(viewportPadding, fallbackTop);
-    const nextLeft = Math.max(
-      viewportPadding,
-      Math.min(
-        openSetMenu.anchorRect.right - menuRect.width,
-        window.innerWidth - menuRect.width - viewportPadding
-      )
-    );
-
-    if (openSetMenu.top !== nextTop || openSetMenu.left !== nextLeft) {
-      setOpenSetMenu((currentMenu) => (
-        currentMenu
-        && currentMenu.rowKey === openSetMenu.rowKey
-        && currentMenu.anchorRect === openSetMenu.anchorRect
-          ? { ...currentMenu, top: nextTop, left: nextLeft }
-          : currentMenu
-      ));
-    }
-  }, [openSetMenu]);
-
-  const toggleSetMenu = (event, set, index) => {
-    event.stopPropagation();
-
-    const rowKey = `${set.id}-${index}`;
-    setOpenSetMenu((currentMenu) => {
-      if (currentMenu?.rowKey === rowKey) {
-        return null;
-      }
-
-      const rect = event.currentTarget.getBoundingClientRect();
-
-      return {
-        rowKey,
-        setId: set.id,
-        anchorRect: {
-          top: rect.top,
-          right: rect.right,
-          bottom: rect.bottom,
-          left: rect.left,
-        },
-        top: rect.bottom + 8,
-        left: rect.right,
-      };
-    });
-  };
-
   const closeTemplateModal = () => {
     setShowTemplateModal(false);
     setIsEditingTemplate(false);
     setNewTemplateName("");
     setNewTemplateColor(workoutColorPalette[0]);
-    setNewTemplateUsesRestTimer(false);
-    setNewTemplateRestDuration(DEFAULT_REST_DURATION);
     setNewTemplateFields(defaultTemplateFields);
     setNewTemplateMeasurements(defaultTemplateMeasurements);
     setTemplateCreationSource("main");
@@ -1084,7 +899,7 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
     };
 
     try {
-      const response = await fetch('/api/workouts', {
+      const response = await apiFetch('/api/workouts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(workout),
@@ -1105,21 +920,12 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       setNotes("");
       setStarred(false);
       setSets([]);
-      setRestTimerSeconds(null);
-      setIsRestTimerActive(false);
-      setShowRestTimerModal(false);
+      onClearRestStopwatch?.();
       window.localStorage.removeItem(LOGGER_DRAFT_KEY);
     } catch (err) {
       console.error("Failed to update sessions in service:", err);
     }
   };
-
-  const restTimerDisplaySeconds = restTimerSeconds ?? parseDurationToSeconds(selectedTemplate?.restDuration || DEFAULT_REST_DURATION, parseDurationToSeconds(DEFAULT_REST_DURATION, 30));
-  const restTimerStatus = restTimerDisplaySeconds <= 0
-    ? "is-expired"
-    : restTimerDisplaySeconds <= 5
-      ? "is-warning"
-      : "is-running";
 
   return (
     <main>
@@ -1222,52 +1028,14 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
               </div>
 
               {sets.length > 0 ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Set</th>
-                      {selectedTemplate?.isMixed && <th>Exercise</th>}
-                      {activeSetFields.map((field) => (
-                        <th key={field.key}>{getFieldLabel(field, selectedTemplate.measurements)}</th>
-                      ))}
-                      <th className="set-actions-header"></th>
-                    </tr>
-                  </thead>
-                    <tbody>
-                    {sets.map((set, index) => (
-                      <tr key={set.id}>
-                        <td>{getSetDisplayLabel(set, sets, index)}</td>
-                        {selectedTemplate?.isMixed && (
-                          <td className="logger-mixed-workout-cell">
-                            <span
-                              className="logger-inline-workout"
-                              style={{ '--workout-color': getWorkoutColor(set) }}
-                            >
-                              <span className="logger-inline-workout-dot" aria-hidden="true" />
-                              {set.templateName || "Exercise set"}
-                            </span>
-                          </td>
-                        )}
-                        {activeSetFields.map((field) => (
-                          <td key={field.key}>{set[field.key] ?? ""}</td>
-                        ))}
-                        <td className="set-actions-cell">
-                          <div className="set-actions-menu">
-                            <button
-                              type="button"
-                              className="set-menu-trigger"
-                              aria-label={`Manage set ${set.id}`}
-                              aria-expanded={openSetMenu?.rowKey === `${set.id}-${index}`}
-                              onClick={(event) => toggleSetMenu(event, set, index)}
-                            >
-                              ...
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <SessionSetTable
+                  sets={sets}
+                  fields={activeSetFields}
+                  measurements={selectedTemplate.measurements}
+                  isMixed={selectedTemplate?.isMixed}
+                  onEditSet={openEditSetModal}
+                  onDeleteSet={handleDeleteSet}
+                />
               ) : (
                 <div className="empty-sets-state">
                   <p>No sets logged yet.</p>
@@ -1357,32 +1125,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
                 </button>
               </section>
 
-              <section className="template-rest-panel">
-                <div className="section-header">
-                  <h3>Rest timer</h3>
-                  <p>Optionally start a timer after saving a set.</p>
-                </div>
-                <label className="template-rest-toggle">
-                  <input
-                    type="checkbox"
-                    checked={newTemplateUsesRestTimer}
-                    onChange={(event) => setNewTemplateUsesRestTimer(event.target.checked)}
-                  />
-                  Use a rest timer for this exercise
-                </label>
-                <label className={!newTemplateUsesRestTimer ? "template-rest-duration is-disabled" : "template-rest-duration"}>
-                  Default rest
-                  <input
-                    type="text"
-                    value={newTemplateRestDuration}
-                    placeholder={DEFAULT_REST_DURATION}
-                    disabled={!newTemplateUsesRestTimer}
-                    onChange={(event) => setNewTemplateRestDuration(event.target.value)}
-                    onBlur={() => setNewTemplateRestDuration((currentValue) => normalizeRestDuration(currentValue, DEFAULT_REST_DURATION))}
-                  />
-                </label>
-              </section>
-
               <section className="template-fields-panel">
                 <div className="section-header">
                   <h3>Choose the fields you want every time</h3>
@@ -1436,85 +1178,36 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
       )}
 
       {showSetModal && selectedTemplate && (
-        <div className="template-modal-backdrop" role="presentation">
-          <div className="template-modal set-modal" role="dialog" aria-modal="true" aria-labelledby="add-set-title">
-            <div className="template-modal-header">
-              <div>
-                <p className="template-eyebrow">New Set</p>
-                <h2 id="add-set-title">Add a set for {selectedTemplate.name}</h2>
-              </div>
+        <SetEditorModal
+          eyebrow={editingSetId !== null ? "Edit Set" : "New Set"}
+          title={`${editingSetId !== null ? "Edit" : "Add"} a set for ${selectedTemplate.name}`}
+          pendingSet={pendingSet}
+          fields={pendingSetFields}
+          measurements={getSetMeasurements(selectedTemplate, pendingSet, defaultTemplateMeasurements)}
+          isMixed={selectedTemplate?.isMixed}
+          allowExerciseChange={selectedTemplate?.isMixed}
+          exerciseOptions={[
+            { value: CREATE_TEMPLATE_OPTION_ID, label: "Create exercise", variant: "create" },
+            ...templates.map(buildWorkoutOption),
+          ]}
+          setTypeOptions={setTypeOptions}
+          submitLabel={editingSetId !== null ? "Save Changes" : "Save Set"}
+          onChange={handlePendingSetChange}
+          onSubmit={handleConfirmAddSet}
+          onClose={closeSetModal}
+          onKeyDown={handleModalFormKeyDown}
+          onPointerUpSubmit={submitFormOnPointerUp}
+          renderFieldActions={(field) => field.key === "duration" ? (
+            <div className="duration-capture-buttons">
+              <button type="button" onClick={() => openTimeCaptureModal("stopwatch")}>
+                Stopwatch
+              </button>
+              <button type="button" onClick={() => openTimeCaptureModal("timer")}>
+                Timer
+              </button>
             </div>
-
-            <form className="template-modal-form" onSubmit={handleConfirmAddSet} onKeyDown={handleModalFormKeyDown}>
-              <section className="template-fields-panel">
-                <div className="set-modal-grid">
-                  {selectedTemplate?.isMixed && (
-                    <label>
-                      Exercise
-                      <Dropdown
-                        value={pendingSet.templateId || templates[0]?.id || ""}
-                        onChange={(nextValue) => handlePendingSetChange("templateId", nextValue)}
-                        searchable
-                        searchPlaceholder="Search exercises"
-                        options={[
-                          { value: CREATE_TEMPLATE_OPTION_ID, label: "Create exercise", variant: "create" },
-                          ...templates.map(buildWorkoutOption),
-                        ]}
-                        ariaLabel="Set exercise"
-                      />
-                    </label>
-                  )}
-                  <label>
-                    Set type
-                    <Dropdown
-                      value={pendingSet.setType || "regular"}
-                      onChange={(nextValue) => handlePendingSetChange("setType", nextValue)}
-                      options={setTypeOptions}
-                      ariaLabel="Set type"
-                    />
-                  </label>
-                  {pendingSetFields.map((field) => (
-                    shouldShowSetField(field.key, selectedTemplate, pendingSet, defaultTemplateFields)
-                      ? (
-                    <label key={field.key}>
-                      {getFieldLabel(field, getSetMeasurements(selectedTemplate, pendingSet, defaultTemplateMeasurements))}
-                      <MobileSetField
-                        field={field}
-                        measurements={getSetMeasurements(selectedTemplate, pendingSet, defaultTemplateMeasurements)}
-                        value={pendingSet[field.key] ?? ""}
-                        onChange={(nextValue) => handlePendingSetChange(field.key, nextValue)}
-                      />
-                      {field.key === "duration" && (
-                        <div className="duration-capture-buttons">
-                          <button type="button" onClick={() => openTimeCaptureModal("stopwatch")}>
-                            Stopwatch
-                          </button>
-                          <button type="button" onClick={() => openTimeCaptureModal("timer")}>
-                            Timer
-                          </button>
-                        </div>
-                      )}
-                    </label>
-                      ) : null
-                  ))}
-                </div>
-              </section>
-
-              <div className="template-modal-actions">
-                <button type="button" className="btn btn-outline-light" onClick={closeSetModal}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  onPointerUpCapture={submitFormOnPointerUp}
-                >
-                  {editingSetId !== null ? "Save Changes" : "Save Set"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          ) : null}
+        />
       )}
 
       {showColorPickerModal && (
@@ -1638,28 +1331,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
         </div>
       )}
 
-      {showRestTimerModal && (
-        <div className="template-modal-backdrop rest-timer-modal-backdrop" role="presentation">
-          <div
-            className={`rest-timer-modal ${restTimerStatus}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rest-timer-title"
-          >
-            <p className="rest-timer-kicker">Rest Timer</p>
-            <h2 id="rest-timer-title">{formatSignedDuration(restTimerDisplaySeconds)}</h2>
-            <p className="rest-timer-copy">
-              {restTimerDisplaySeconds <= 0
-                ? "Rest is up. Start when you're ready."
-                : "Resting between sets."}
-            </p>
-            <button type="button" className="rest-timer-stop-button" onClick={stopRestTimer}>
-              Stop
-            </button>
-          </div>
-        </div>
-      )}
-
       {timeCaptureMode && (
         <TimeCaptureModal
           mode={timeCaptureMode}
@@ -1667,29 +1338,6 @@ export function Logger({ currentUser = null, setCurrentUser = null }) {
           onConfirm={handleConfirmTimeCapture}
           onClose={closeTimeCaptureModal}
         />
-      )}
-      {openSetMenu && openSetMenuEntry && typeof document !== "undefined" && createPortal(
-        <div
-          ref={setMenuRef}
-          className="set-menu-popover is-floating"
-          style={{ top: `${openSetMenu.top}px`, left: `${openSetMenu.left}px` }}
-        >
-          <button
-            type="button"
-            className="set-menu-item"
-            onClick={() => openEditSetModal(openSetMenuEntry)}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="set-menu-item delete"
-            onClick={() => handleDeleteSet(openSetMenu.setId)}
-          >
-            Delete
-          </button>
-        </div>,
-        document.body
       )}
     </main>
   );

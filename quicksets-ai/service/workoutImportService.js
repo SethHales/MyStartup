@@ -7,10 +7,8 @@ function createWorkoutImportService({
   importSourceCharacterLimit,
   importNotesCharacterLimit,
   importDuplicateContextCount,
-  defaultRestDuration,
   sanitizeFields,
   sanitizeMeasurements,
-  sanitizeRestDuration,
   sanitizeSetType,
   sanitizeSet,
   inferFieldsFromSets,
@@ -129,8 +127,6 @@ function createWorkoutImportService({
           name: template.name,
           fields: sanitizeFields(template.fields),
           measurements: sanitizeMeasurements(template.measurements),
-          usesRestTimer: Boolean(template.usesRestTimer),
-          restDuration: sanitizeRestDuration(template.restDuration),
         })),
       recentWorkouts,
     };
@@ -194,8 +190,6 @@ function createWorkoutImportService({
                 '- name',
                 '- fields with boolean reps, weight, duration, distance',
                 '- measurements with weight and distance units',
-                '- usesRestTimer boolean',
-                '- restDuration string',
                 '',
                 'Exercise session object requirements:',
                 '- date in YYYY-MM-DD',
@@ -314,10 +308,8 @@ function createWorkoutImportService({
                 },
                 required: ['weight', 'distance'],
               },
-              usesRestTimer: { type: 'boolean' },
-              restDuration: { type: 'string' },
             },
-            required: ['name', 'fields', 'measurements', 'usesRestTimer', 'restDuration'],
+            required: ['name', 'fields', 'measurements'],
           },
         },
         workouts: {
@@ -383,8 +375,6 @@ function createWorkoutImportService({
           weight: 'lbs',
           distance: 'miles',
         },
-        usesRestTimer: true,
-        restDuration: '01:30',
       },
       {
         name: 'Planks',
@@ -398,8 +388,6 @@ function createWorkoutImportService({
           weight: 'lbs',
           distance: 'miles',
         },
-        usesRestTimer: false,
-        restDuration: '00:30',
       },
       {
         name: 'Running',
@@ -413,8 +401,6 @@ function createWorkoutImportService({
           weight: 'lbs',
           distance: 'miles',
         },
-        usesRestTimer: false,
-        restDuration: '00:30',
       },
     ];
   }
@@ -530,8 +516,6 @@ function createWorkoutImportService({
       name,
       fields,
       measurements: sanitizeMeasurements(template.measurements),
-      usesRestTimer: Boolean(template.usesRestTimer),
-      restDuration: sanitizeRestDuration(template.restDuration),
     };
   }
 
@@ -618,8 +602,6 @@ function createWorkoutImportService({
         name: templateDefinition.name,
         normalizedName,
         color: generateUniqueWorkoutColor(existingTemplateColors(workingTemplates), templateDefinition.name),
-        usesRestTimer: Boolean(templateDefinition.usesRestTimer),
-        restDuration: sanitizeRestDuration(templateDefinition.restDuration),
         fields: sanitizeFields(templateDefinition.fields),
         measurements: sanitizeMeasurements(templateDefinition.measurements),
       };
@@ -667,8 +649,6 @@ function createWorkoutImportService({
         exercise: template.name,
         isMixed: false,
         color: normalizeStoredWorkoutColor(template.color, template.name) || getFallbackWorkoutColor(template.name),
-        usesRestTimer: Boolean(template.usesRestTimer),
-        restDuration: sanitizeRestDuration(template.restDuration),
         fields: template.fields,
         measurements: sanitizeMeasurements(template.measurements),
         notes: workoutDefinition.notes,
@@ -707,8 +687,6 @@ function createWorkoutImportService({
         name: template.name,
         fields: sanitizeFields(template.fields),
         measurements: sanitizeMeasurements(template.measurements),
-        usesRestTimer: Boolean(template.usesRestTimer),
-        restDuration: sanitizeRestDuration(template.restDuration),
       }])
     );
 
@@ -726,8 +704,6 @@ function createWorkoutImportService({
         name: workout.templateName,
         fields: inferFieldsFromSets(workout.sets),
         measurements: sanitizeMeasurements({}),
-        usesRestTimer: false,
-        restDuration: defaultRestDuration,
       });
     });
 

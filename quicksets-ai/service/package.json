@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "gmail:authorize": "node authorizeGmail.js",
+    "gmail:check": "node gmailInboxService.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -14,6 +16,7 @@
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
+    "googleapis": "^173.0.0",
     "mongodb": "^7.1.1",
     "openai": "^6.1.0",
     "uuid": "^13.0.0",
